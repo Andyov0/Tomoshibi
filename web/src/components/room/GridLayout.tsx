@@ -1,37 +1,33 @@
 import { Button } from "@/components/ui/button";
+import { useMeasure } from "@/hooks/useMeasure";
 import { cn } from "@/lib/utils";
+import { arrange } from "@/live/layout";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
  * Tiles per page.
  *
- * Nine keeps a 3x3 grid readable on a laptop, and caps how many video streams
- * the call can ask for at once regardless of how many people joined.
+ * Nine keeps a grid readable on a laptop, and caps how many video streams the
+ * call asks for at once regardless of how many people joined.
  */
 export const TILES_PER_PAGE = 9;
 
-/**
- * Columns for a given tile count.
- *
- * A lookup rather than `ceil(sqrt(n))` because the square root is wrong at the
- * sizes that matter: two people should be side by side, not stacked, and six
- * read better as 3x2 than 3x3-with-a-hole.
- */
-function columns(count: number): number {
-	if (count <= 1) return 1;
-	if (count <= 4) return 2;
-	if (count <= 9) return 3;
-	if (count <= 16) return 4;
-	return 5;
-}
+/** Space between tiles, and between the tiles and the edge. */
+const GAP = 8;
 
 /**
- * An equal-size grid of tiles.
+ * An arrangement of equally sized tiles, centred.
  *
- * Sizing is pure CSS: the column count comes from the tile count and the rows
- * divide the available height. No measurement, so there is no reflow loop
- * between the grid and the tiles measuring themselves for rendition selection.
+ * The sizes come from [`arrange`](../../live/layout.ts) rather than from CSS
+ * fractions, because a fraction of the container is whatever shape the container
+ * is, and a 16:9 picture in a tall thin cell is mostly cropped away. Measuring
+ * costs a resize observer and gives back pictures that keep their shape with
+ * space around them.
+ *
+ * Measuring cannot loop here: the container's size decides the tiles, and the
+ * tiles are absolutely sized rather than intrinsic, so they never decide the
+ * container's.
  */
 export function GridLayout({
 	children,
@@ -48,19 +44,29 @@ export function GridLayout({
 	onNext?: () => void;
 	onPrevious?: () => void;
 }) {
-	const count = children.length;
+	const [ref, size] = useMeasure();
+	const layout = arrange(size, children.length, GAP);
 	const paged = (pages ?? 1) > 1;
 
 	return (
 		<div className="relative h-full w-full">
-			<div
-				className={cn("grid h-full w-full gap-2 p-2", className)}
-				style={{
-					gridTemplateColumns: `repeat(${columns(count)}, minmax(0, 1fr))`,
-					gridAutoRows: "minmax(0, 1fr)",
-				}}
-			>
-				{children}
+			<div ref={ref} className={cn("flex h-full w-full items-center justify-center p-2", className)}>
+				{layout && (
+					<div
+						className="grid"
+						style={{
+							gap: GAP,
+							gridTemplateColumns: `repeat(${layout.columns}, ${layout.width}px)`,
+							gridAutoRows: `${layout.height}px`,
+							// The last row is short whenever the count does not
+							// divide evenly, and centring it keeps the gap where
+							// somebody is missing rather than off to one side.
+							justifyItems: "center",
+						}}
+					>
+						{children}
+					</div>
+				)}
 			</div>
 
 			{paged && (

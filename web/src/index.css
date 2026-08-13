@@ -1,29 +1,42 @@
 @import "tailwindcss";
 
 /*
- * Dark-first, because a call UI is looked at for an hour at a time and the video
- * is the only thing that should be bright. Light mode exists so the lobby does
- * not ambush someone at a desk, but the room itself stays dark either way (see
- * `.room-surface`).
+ * Dark in every theme, on purpose. A room is looked at for an hour at a stretch
+ * and the pictures are the only thing in it that should be bright.
+ *
+ * The neutrals lean warm rather than blue. A blue-grey ground pushes skin tones
+ * towards green, and this interface is a screen full of faces.
+ *
+ * There is one signal colour. Speaking, sharing, unread, copied — all amber, so
+ * at any moment only one thing on screen is saying something and the eye never
+ * has to choose. Red appears twice in the whole application, on leaving and on
+ * errors. Keyboard focus is white rather than a second hue.
  */
 @theme {
-	--color-bg: oklch(0.16 0.006 265);
-	--color-surface: oklch(0.21 0.008 265);
-	--color-surface-hi: oklch(0.26 0.01 265);
-	--color-border: oklch(0.32 0.012 265);
-	--color-fg: oklch(0.97 0.002 265);
-	--color-fg-muted: oklch(0.72 0.012 265);
+	--color-bg: oklch(0.165 0.003 68);
+	--color-surface: oklch(0.214 0.002 68);
+	--color-surface-hi: oklch(0.253 0.005 68);
+	--color-border: oklch(0.294 0.005 68);
 
-	--color-accent: oklch(0.72 0.15 235);
-	--color-accent-fg: oklch(0.18 0.02 235);
+	--color-fg: oklch(0.965 0.005 78);
+	--color-fg-muted: oklch(0.662 0.011 73);
 
-	/* Speaking ring. Green reads as "live" without competing with the accent. */
-	--color-speaking: oklch(0.78 0.17 152);
+	/* Named for what it is rather than what it looks like: a studio camera
+	   lights up when it is live, and everything wearing this colour is live in
+	   the same sense. */
+	--color-tally: oklch(0.79 0.157 64);
+	--color-tally-fg: oklch(0.2 0.03 64);
 
-	--color-danger: oklch(0.63 0.21 22);
-	--color-danger-fg: oklch(0.98 0.01 22);
+	--color-danger: oklch(0.627 0.185 31);
+	--color-danger-fg: oklch(0.99 0 0);
 
-	--radius-tile: 0.85rem;
+	--radius-tile: 0.5rem;
+
+	/* One curve for anything that moves into place, one for anything that
+	   leaves. Arrivals decelerate into position; departures need no such
+	   courtesy. */
+	--ease-settle: cubic-bezier(0.2, 0.9, 0.3, 1);
+	--ease-leave: cubic-bezier(0.4, 0, 1, 1);
 }
 
 @layer base {
@@ -46,9 +59,74 @@
 			"Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
 	}
 
-	/* A canvas has no intrinsic aspect ratio until the first frame lands, so
-	 * without this every tile is 300x150 for a beat and the grid jumps. */
-	canvas {
-		display: block;
+	/*
+	 * Anything a machine produced is set in a monospace and aligned by digit:
+	 * room names, signatures, timestamps, rates. Anything a person wrote is
+	 * set in the sans. No typeface is bundled — this client is compiled into a
+	 * binary, and a face is a few hundred kilobytes — so the character comes
+	 * from that division rather than from the letterforms.
+	 */
+	.readout {
+		font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.01em;
+	}
+
+	/* Instrument silkscreen: small, wide, quiet. */
+	.silk {
+		font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+		font-size: 10px;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+}
+
+@layer utilities {
+	/*
+	 * How a tile arrives. Everything already in the room slides to its new
+	 * place; only the newcomer lifts in, which is what makes it possible to see
+	 * who just joined without being told.
+	 */
+	@keyframes arrive {
+		from {
+			opacity: 0;
+			transform: scale(0.94) translateY(8px);
+		}
+	}
+
+	.animate-arrive {
+		animation: arrive 320ms var(--ease-settle) both;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.animate-arrive {
+			animation-duration: 1ms;
+		}
+	}
+
+	/*
+	 * The tally. A line along the bottom edge of a picture rather than a halo
+	 * around it, opening from the centre and closing back to it, so starting
+	 * and stopping are the same gesture in reverse.
+	 */
+	.tally-line::after {
+		content: "";
+		position: absolute;
+		inset: auto 0 0;
+		height: 2px;
+		background: var(--color-tally);
+		box-shadow: 0 0 14px color-mix(in oklch, var(--color-tally) 55%, transparent);
+		transform: scaleX(0);
+		transition: transform 260ms var(--ease-settle);
+	}
+
+	.tally-line.is-live::after {
+		transform: scaleX(1);
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.tally-line::after {
+			transition-duration: 1ms;
+		}
 	}
 }

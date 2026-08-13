@@ -15,7 +15,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
 			className={cn(
 				"h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm text-fg",
 				"placeholder:text-fg-muted outline-none transition-colors",
-				"focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/40",
+				"focus-visible:border-fg/40 focus-visible:ring-2 focus-visible:ring-fg/30",
 				"disabled:cursor-not-allowed disabled:opacity-50",
 				className,
 			)}

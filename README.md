@@ -125,6 +125,35 @@ for one nobody is using succeeds exactly like asking for a busy one. There is no
 failure to count, which leaves the rate as the only thing between a script and
 somebody else's meeting.
 
+**One signal colour.** Speaking, sharing, unread, copied — all amber, so at any
+moment only one thing on screen is saying something. Red appears twice in the
+whole application, on leaving and on errors; keyboard focus is white rather than
+a second hue. Speaking is drawn as a line along the bottom edge of a picture
+rather than a halo around it, opening from the centre and closing back to it, on
+the model of the tally light that marks the live camera in a studio.
+
+The neutrals lean warm. A blue-grey ground pushes skin tones towards green, and
+this interface is a screen full of faces.
+
+**A camera that is off shows who is missing, not what.** An avatar derived from
+the identity: the same picture every time that person appears, different enough
+between people that a grid of dark tiles is still a grid of individuals. Its
+palette is muted on purpose — an avatar is content, standing in for video, but
+it must never out-shout the tally.
+
+**Messages arrive on the speaker's own picture.** A message is something a
+person said, and the tile is already labelled with who they are, so the bubble
+carries neither face nor name. Anybody with no tile to borrow — on another page,
+or hidden behind a share — falls back to the corner, which is the only place a
+message needs both. The panel that holds the whole conversation floats over the
+room rather than pushing it aside: pushing would move and resize every tile at
+once because one person wanted to type.
+
+Nothing is written down. Messages last as long as the call, which is the same
+rule the room follows, and the empty panel says so — whether that is true and
+whether it looks true are different things, and only the second stops somebody
+posting what they would rather not leave behind.
+
 ## Configuration
 
 One file describes the whole process. The media server's loader rejects keys it

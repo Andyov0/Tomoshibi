@@ -2,7 +2,16 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SHARE_FRAME_RATES, type ShareFrameRate, share } from "@/live/room";
 import type { Room } from "livekit-client";
-import { Mic, MicOff, MonitorOff, MonitorUp, PhoneOff, Video, VideoOff } from "lucide-react";
+import {
+	MessageSquare,
+	Mic,
+	MicOff,
+	MonitorOff,
+	MonitorUp,
+	PhoneOff,
+	Video,
+	VideoOff,
+} from "lucide-react";
 import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
 import { useLocalState } from "@/hooks/useLocalState";
@@ -14,7 +23,20 @@ import { useLocalState } from "@/hooks/useLocalState";
  * not turn the camera off, which is what lets one person contribute two pictures
  * to the layout.
  */
-export function ControlBar({ room, onLeave }: { room: Room; onLeave: () => void }) {
+export function ControlBar({
+	room,
+	chatting,
+	unread,
+	onChat,
+	onLeave,
+}: {
+	room: Room;
+	chatting: boolean;
+	/** Something was said while the panel was closed. */
+	unread: boolean;
+	onChat: () => void;
+	onLeave: () => void;
+}) {
 	const local = useLocalState(room);
 	const [frameRate, setFrameRate] = useState<ShareFrameRate>(30);
 	const [busy, setBusy] = useState(false);
@@ -60,13 +82,25 @@ export function ControlBar({ room, onLeave }: { room: Room; onLeave: () => void 
 				on={local.screen}
 				onLabel="Stop sharing"
 				offLabel="Share your screen"
-				// Sharing is on when the switch is on, so the lit colour is
-				// inverted relative to the others: a lit share button means you
-				// are sharing, not that you are able to.
-				activeVariant="default"
+				signal
 				onClick={guard(() => share(room, !local.screen, frameRate))}
 			>
 				{local.screen ? <MonitorOff /> : <MonitorUp />}
+			</Toggle>
+
+			<Toggle
+				on={chatting}
+				onLabel="Hide messages"
+				offLabel="Show messages"
+				signal
+				onClick={onChat}
+			>
+				<MessageSquare />
+				{/* Whether, not how many: in a call the first question is the only
+				    one anybody asks. */}
+				{unread && !chatting && (
+					<span className="absolute top-0.5 right-0.5 size-2 rounded-full border-2 border-surface bg-tally" />
+				)}
 			</Toggle>
 
 			<FrameRate value={frameRate} onChange={setFrameRate} disabled={local.screen} />
@@ -80,28 +114,41 @@ export function ControlBar({ room, onLeave }: { room: Room; onLeave: () => void 
 	);
 }
 
+/**
+ * One control, lit or not.
+ *
+ * Off is drawn as unlit rather than as an alarm. Colouring every closed switch
+ * red put four warnings in a row on a bar whose only real one is leaving, and a
+ * warning that is always on stops being a warning. A muted microphone is a
+ * choice somebody made, not a fault.
+ *
+ * `signal` marks the controls where being on is itself worth announcing —
+ * sharing a screen, an open panel with something unread in it — and those take
+ * the one colour that means something is happening.
+ */
 function Toggle({
 	on,
 	onLabel,
 	offLabel,
 	onClick,
 	children,
-	activeVariant = "secondary",
+	signal,
 }: {
 	on: boolean;
 	onLabel: string;
 	offLabel: string;
 	onClick: () => void;
 	children: React.ReactNode;
-	activeVariant?: "secondary" | "default";
+	signal?: boolean;
 }) {
 	return (
 		<Button
-			variant={on ? activeVariant : "danger"}
+			variant={on && signal ? "default" : "secondary"}
 			size="icon"
 			aria-label={on ? onLabel : offLabel}
 			aria-pressed={on}
 			onClick={onClick}
+			className={cn("relative", !on && "text-fg-muted")}
 		>
 			{children}
 		</Button>

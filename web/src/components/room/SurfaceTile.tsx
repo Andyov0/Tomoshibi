@@ -1,7 +1,8 @@
 import { type Surface, label, owner, signature } from "@/live/surface";
 import type { TrackReference } from "@livekit/components-core";
 import { VideoTrack } from "@livekit/components-react";
-import { VideoOff } from "lucide-react";
+import type { ReactNode } from "react";
+import { Avatar } from "./Avatar";
 import { Tile } from "./Tile";
 
 /**
@@ -18,6 +19,7 @@ export function SurfaceTile({
 	subscribed = true,
 	unverified = false,
 	selected,
+	overlay,
 	onSelect,
 	onExpand,
 }: {
@@ -25,6 +27,8 @@ export function SurfaceTile({
 	subscribed?: boolean;
 	unverified?: boolean;
 	selected?: boolean;
+	/** Drawn over the picture, such as what this person just said. */
+	overlay?: ReactNode;
 	onSelect?: () => void;
 	onExpand?: () => void;
 }) {
@@ -53,6 +57,7 @@ export function SurfaceTile({
 			label={surface.local ? `${label(surface)} (you)` : label(surface)}
 			signature={camera ? signature(surface) : undefined}
 			unverified={camera && unverified}
+			overlay={overlay}
 			speaking={participant.isSpeaking && camera}
 			muted={camera && !participant.isMicrophoneEnabled}
 			selected={selected}
@@ -66,8 +71,8 @@ export function SurfaceTile({
 					className={`absolute inset-0 size-full ${fit} ${mirror ? "-scale-x-100" : ""}`}
 				/>
 			) : (
-				<div className="absolute inset-0 grid place-items-center bg-surface text-fg-muted">
-					<VideoOff className="size-7" />
+				<div className="absolute inset-0 grid place-items-center bg-surface">
+					<Avatar identity={participant.identity} />
 				</div>
 			)}
 		</Tile>

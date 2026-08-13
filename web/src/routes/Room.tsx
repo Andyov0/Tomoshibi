@@ -1,19 +1,24 @@
+import { ChatPanel } from "@/components/room/ChatPanel";
 import { ControlBar } from "@/components/room/ControlBar";
 import { FocusLayout } from "@/components/room/FocusLayout";
 import { GridLayout, TILES_PER_PAGE } from "@/components/room/GridLayout";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
 import { ShareCard } from "@/components/room/ShareCard";
+import { SaidInCorner, SaidOnTile } from "@/components/room/Said";
 import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
+import { useChat } from "@/hooks/useChat";
 import { useFullscreen } from "@/hooks/useFullscreen";
 import { usePagination } from "@/hooks/usePagination";
 import { usePin } from "@/hooks/usePin";
 import { useConnection, useRoster } from "@/hooks/useRoomState";
 import { useSpeakingOrder } from "@/hooks/useSpeakingOrder";
+import { say } from "@/live/chat";
 import { impersonating } from "@/live/name";
+import type { Said } from "@/live/chat";
 import { type Surface, owner, surfaces } from "@/live/surface";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
-import type { ReactNode } from "react";
+import { type ReactNode, useCallback, useState } from "react";
 
 export interface RoomProps {
 	room: LiveRoom;
@@ -21,15 +26,39 @@ export interface RoomProps {
 }
 
 export function Room({ room, onLeave }: RoomProps) {
+	const [chatting, setChatting] = useState(false);
+	const chat = useChat(room, chatting);
+
+	const openChat = useCallback(() => {
+		setChatting(true);
+		chat.markRead();
+	}, [chat.markRead]);
+
 	return (
 		<div className="flex h-full flex-col">
-			<Stage room={room} />
-			<ControlBar room={room} onLeave={onLeave} />
+			<Stage room={room} chat={chat} chatting={chatting} onCloseChat={() => setChatting(false)} />
+			<ControlBar
+				room={room}
+				chatting={chatting}
+				unread={chat.unread}
+				onChat={() => (chatting ? setChatting(false) : openChat())}
+				onLeave={onLeave}
+			/>
 		</div>
 	);
 }
 
-function Stage({ room }: { room: LiveRoom }) {
+function Stage({
+	room,
+	chat,
+	chatting,
+	onCloseChat,
+}: {
+	room: LiveRoom;
+	chat: ReturnType<typeof useChat>;
+	chatting: boolean;
+	onCloseChat: () => void;
+}) {
 	const participants = useRoster(room);
 	const state = useConnection(room);
 	const screen = useFullscreen<HTMLDivElement>();
@@ -66,38 +95,61 @@ function Stage({ room }: { room: LiveRoom }) {
 			)
 		: undefined;
 
+	/**
+	 * Render one surface, wrapped so the grid can recognise it.
+	 *
+	 * `data-flip` is what lets the layout tell a tile that moved from a tile
+	 * that arrived: the first is animated from where it used to be, the second
+	 * is left to its own entrance.
+	 */
+	// Whoever is on screen carries their own words. Anybody who is not — on
+	// another page, or hidden behind a share — falls back to the corner, which
+	// is the only place a message needs a face and a name of its own.
+	const visible = new Set<string>();
+	const saidBy = (surface: Surface): Said[] => {
+		const identity = owner(surface).identity;
+		visible.add(identity);
+		return chat.showing.get(identity) ?? [];
+	};
+
+	const inStrip = pinned !== undefined;
+
 	const tile = (surface: Surface, onStage: boolean): ReactNode => {
-		if (surface.kind === "screen" && !onStage) {
-			return (
+		const inner =
+			surface.kind === "screen" && !onStage ? (
 				<ShareCard
-					key={surface.id}
 					label={owner(surface).name || owner(surface).identity}
 					onOpen={() => pin(surface)}
 				/>
+			) : (
+				<SurfaceTile
+					surface={surface}
+					subscribed={onStage || surface.kind === "camera"}
+					unverified={suspect.has(owner(surface).identity)}
+					selected={onStage}
+					overlay={<SaidOnTile said={saidBy(surface)} compact={!onStage && inStrip} />}
+					onSelect={() => toggle(surface)}
+					onExpand={onStage ? screen.toggle : undefined}
+				/>
 			);
-		}
 
 		return (
-			<SurfaceTile
-				key={surface.id}
-				surface={surface}
-				subscribed={onStage || surface.kind === "camera"}
-				unverified={suspect.has(owner(surface).identity)}
-				selected={onStage}
-				onSelect={() => toggle(surface)}
-				onExpand={onStage ? screen.toggle : undefined}
-			/>
+			<div key={surface.id} data-flip={surface.id} className="size-full animate-arrive">
+				{inner}
+			</div>
 		);
 	};
 
 	const mine = self
 		? [
-				<SurfaceTile
-					key={self.id}
-					surface={self}
-					unverified={suspect.has(owner(self).identity)}
-					onSelect={() => toggle(self)}
-				/>,
+				<div key={self.id} data-flip={self.id} className="size-full animate-arrive">
+					<SurfaceTile
+						surface={self}
+						unverified={suspect.has(owner(self).identity)}
+						overlay={<SaidOnTile said={saidBy(self)} />}
+						onSelect={() => toggle(self)}
+					/>
+				</div>,
 			]
 		: [];
 
@@ -139,6 +191,21 @@ function Stage({ room }: { room: LiveRoom }) {
 					</div>
 				</div>
 			)}
+
+			{chatting && (
+				<ChatPanel
+					said={chat.all}
+					onSay={(body) => void say(room, body)}
+					onClose={onCloseChat}
+				/>
+			)}
+
+			{/* Only for people with no tile to borrow. */}
+			<SaidInCorner
+				said={[...chat.showing.entries()]
+					.filter(([identity]) => !visible.has(identity))
+					.flatMap(([, said]) => said)}
+			/>
 
 			{state !== ConnectionState.Connected && (
 				<div className="-translate-x-1/2 pointer-events-none absolute top-3 left-1/2 rounded-full bg-surface-hi px-3 py-1 text-fg-muted text-xs shadow">

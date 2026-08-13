@@ -2,12 +2,17 @@ import { cn } from "@/lib/utils";
 import { type VariantProps, cva } from "class-variance-authority";
 import * as React from "react";
 
+/*
+ * Keyboard focus is a white ring rather than a second colour. The palette has
+ * exactly one hue that means something is happening, and spending it on "this
+ * is where the keyboard is" would make it mean two things.
+ */
 const buttonVariants = cva(
-	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
+	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-fg/70 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0",
 	{
 		variants: {
 			variant: {
-				default: "bg-accent text-accent-fg hover:bg-accent/90",
+				default: "bg-tally text-tally-fg hover:bg-tally/90",
 				secondary: "bg-surface-hi text-fg hover:bg-surface-hi/80",
 				outline: "border border-border bg-transparent text-fg hover:bg-surface-hi",
 				ghost: "text-fg hover:bg-surface-hi",

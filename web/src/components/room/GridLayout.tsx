@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useFlip } from "@/hooks/useFlip";
 import { useMeasure } from "@/hooks/useMeasure";
 import { cn } from "@/lib/utils";
 import { arrange } from "@/live/layout";
@@ -48,11 +49,19 @@ export function GridLayout({
 	const layout = arrange(size, children.length, GAP);
 	const paged = (pages ?? 1) > 1;
 
+	// Tiles slide to their new places when somebody joins, leaves, or the window
+	// changes shape. The alternative is that everybody jumps at once, which
+	// reads as a glitch rather than as a room rearranging itself.
+	const grid = useFlip<HTMLDivElement>(
+		`${layout?.columns}x${layout?.rows}:${layout?.width}:${children.length}`,
+	);
+
 	return (
 		<div className="relative h-full w-full">
 			<div ref={ref} className={cn("flex h-full w-full items-center justify-center p-2", className)}>
 				{layout && (
 					<div
+						ref={grid}
 						className="grid"
 						style={{
 							gap: GAP,

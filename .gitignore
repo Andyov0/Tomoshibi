@@ -8,8 +8,11 @@
 /web/dist/*
 !/web/dist/.gitkeep
 
-# Local state.
+# Local state. The tripcode key signs the marks people wear, so it belongs
+# nowhere near a repository: committing one would hand every signature it has
+# ever produced to whoever reads the history.
 /dev/*.db
 /dev/*.local.yaml
+/dev/tripcode.key
 
 node_modules/

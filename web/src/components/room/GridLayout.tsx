@@ -18,6 +18,17 @@ export const TILES_PER_PAGE = 9;
 const GAP = 8;
 
 /**
+ * Height the floating controls occupy at the bottom of the window.
+ *
+ * Taken out of the space the arrangement may use, but not out of the space it
+ * is centred in: reserving it on both sides would push the pictures upward and
+ * leave a band of nothing under them, which is what a full-width bar used to
+ * do. Reserving it on one keeps the grid where the eye expects it and simply
+ * stops it reaching the island.
+ */
+const ISLAND = 68;
+
+/**
  * An arrangement of equally sized tiles, centred.
  *
  * The sizes come from [`arrange`](../../live/layout.ts) rather than from CSS
@@ -46,7 +57,11 @@ export function GridLayout({
 	onPrevious?: () => void;
 }) {
 	const [ref, size] = useMeasure();
-	const layout = arrange(size, children.length, GAP);
+	const layout = arrange(
+		{ width: size.width, height: Math.max(0, size.height - ISLAND) },
+		children.length,
+		GAP,
+	);
 	const paged = (pages ?? 1) > 1;
 
 	// Tiles slide to their new places when somebody joins, leaves, or the window

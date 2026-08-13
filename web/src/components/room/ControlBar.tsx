@@ -27,6 +27,7 @@ export function ControlBar({
 	room,
 	chatting,
 	unread,
+	hidden,
 	onChat,
 	onLeave,
 }: {
@@ -34,6 +35,8 @@ export function ControlBar({
 	chatting: boolean;
 	/** Something was said while the panel was closed. */
 	unread: boolean;
+	/** Out of the way, because the stage is filling the screen. */
+	hidden?: boolean;
 	onChat: () => void;
 	onLeave: () => void;
 }) {
@@ -59,7 +62,22 @@ export function ControlBar({
 	};
 
 	return (
-		<footer className="flex shrink-0 items-center justify-center gap-2 border-border border-t bg-surface/60 px-4 py-3">
+		<footer
+			className={cn(
+				// An island rather than a bar. A full-width strip with a rule
+				// above it divides the window into a room and a chrome, and the
+				// chrome then owns a band of height whether or not anything is
+				// happening in it. Floating gives the pictures the whole window
+				// and puts the controls on the same layer as everything else
+				// that appears over them: the panel, the notices, the bubbles.
+				"-translate-x-1/2 absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5",
+				"rounded-full border border-border bg-surface/90 p-1.5 shadow-2xl backdrop-blur-md",
+				// Steps aside when the stage takes the screen: somebody who asked
+				// for the whole screen asked for the whole screen.
+				"transition-[transform,opacity] duration-200",
+				hidden && "pointer-events-none translate-y-24 opacity-0",
+			)}
+		>
 			<Toggle
 				on={local.microphone}
 				onLabel="Mute microphone"
@@ -107,7 +125,9 @@ export function ControlBar({
 
 			<DeviceMenu room={room} />
 
-			<Button variant="danger" size="icon" aria-label="Leave" onClick={onLeave} className="ml-4">
+			<span className="mx-1 h-5 w-px bg-border" />
+
+			<Button variant="danger" size="icon" aria-label="Leave" onClick={onLeave}>
 				<PhoneOff />
 			</Button>
 		</footer>

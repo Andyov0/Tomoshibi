@@ -28,6 +28,7 @@ export interface RoomProps {
 export function Room({ room, onLeave }: RoomProps) {
 	const [chatting, setChatting] = useState(false);
 	const chat = useChat(room, chatting);
+	const screen = useFullscreen<HTMLDivElement>();
 
 	const openChat = useCallback(() => {
 		setChatting(true);
@@ -35,12 +36,19 @@ export function Room({ room, onLeave }: RoomProps) {
 	}, [chat.markRead]);
 
 	return (
-		<div className="flex h-full flex-col">
-			<Stage room={room} chat={chat} chatting={chatting} onCloseChat={() => setChatting(false)} />
+		<div className="relative h-full">
+			<Stage
+				room={room}
+				chat={chat}
+				chatting={chatting}
+				screen={screen}
+				onCloseChat={() => setChatting(false)}
+			/>
 			<ControlBar
 				room={room}
 				chatting={chatting}
 				unread={chat.unread}
+				hidden={screen.active}
 				onChat={() => (chatting ? setChatting(false) : openChat())}
 				onLeave={onLeave}
 			/>
@@ -52,16 +60,17 @@ function Stage({
 	room,
 	chat,
 	chatting,
+	screen,
 	onCloseChat,
 }: {
 	room: LiveRoom;
 	chat: ReturnType<typeof useChat>;
 	chatting: boolean;
+	screen: ReturnType<typeof useFullscreen<HTMLDivElement>>;
 	onCloseChat: () => void;
 }) {
 	const participants = useRoster(room);
 	const state = useConnection(room);
-	const screen = useFullscreen<HTMLDivElement>();
 
 	// Whoever has spoken recently comes forward, but only once there are more
 	// people than fit on a page. Below that the order holds still, since a grid
@@ -154,7 +163,7 @@ function Stage({
 		: [];
 
 	return (
-		<main className="relative min-h-0 flex-1">
+		<main className="relative h-full">
 			{pinned ? (
 				<FocusLayout
 					stageRef={screen.ref}

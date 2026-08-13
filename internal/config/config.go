@@ -31,6 +31,15 @@ type Meet struct {
 	// Database is the key-value file recording which rooms have been used.
 	Database string `yaml:"database"`
 
+	// TripcodeKey signs the passphrases that turn a display name into one
+	// nobody else can wear. Created on first use.
+	//
+	// Its own file rather than the API credentials, because the two have
+	// opposite lifetimes: those should be rotated, and rotating this one
+	// silently changes everybody's signature, which is the one thing a
+	// signature must never do.
+	TripcodeKey string `yaml:"tripcode_key"`
+
 	// PublicURL overrides the address clients are told to dial. Only needed
 	// behind a proxy or a name the request does not already carry.
 	PublicURL string `yaml:"public_url"`
@@ -72,12 +81,13 @@ type Config struct {
 // working server. The burst covers a large meeting arriving at once; the rate is
 // what a script is left with afterwards.
 var defaults = Meet{
-	Listen:     ":8080",
-	Database:   "meet.db",
-	TokenTTL:   5 * time.Minute,
-	JoinRate:   10,
-	JoinBurst:  120,
-	TrustProxy: false,
+	Listen:      ":8080",
+	Database:    "meet.db",
+	TripcodeKey: "tripcode.key",
+	TokenTTL:    5 * time.Minute,
+	JoinRate:    10,
+	JoinBurst:   120,
+	TrustProxy:  false,
 }
 
 // Load reads the configuration from path, or returns the defaults if path is

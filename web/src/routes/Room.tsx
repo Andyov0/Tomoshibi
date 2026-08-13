@@ -6,6 +6,7 @@ import { SurfaceTile } from "@/components/room/SurfaceTile";
 import { usePagination } from "@/hooks/usePagination";
 import { usePin } from "@/hooks/usePin";
 import { useConnection, useRoster } from "@/hooks/useRoomState";
+import { impersonating } from "@/live/name";
 import { type Surface, owner, surfaces } from "@/live/surface";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import type { ReactNode } from "react";
@@ -29,6 +30,14 @@ function Stage({ room }: { room: LiveRoom }) {
 	const state = useConnection(room);
 
 	const all = surfaces(participants, room.localParticipant.identity);
+
+	// Worked out here rather than inside a tile, because the question is about
+	// the room: whether anybody unsigned is wearing a name somebody else signed.
+	// A tile can only see itself.
+	const roster = participants.map((p) => ({ name: p.name ?? "", identity: p.identity }));
+	const suspect = new Set(
+		roster.filter((p) => impersonating(p, roster)).map((p) => p.identity),
+	);
 	const { pinned, toggle, pin } = usePin(all);
 
 	// Our own camera never pages away; everybody else shares the rest of the
@@ -61,12 +70,21 @@ function Stage({ room }: { room: LiveRoom }) {
 				key={surface.id}
 				surface={surface}
 				subscribed={onStage || surface.kind === "camera"}
+				unverified={suspect.has(owner(surface).identity)}
 				onDoubleClick={() => toggle(surface)}
 			/>
 		);
 	};
 
-	const mine = self ? [<SurfaceTile key={self.id} surface={self} />] : [];
+	const mine = self
+		? [
+				<SurfaceTile
+					key={self.id}
+					surface={self}
+					unverified={suspect.has(owner(self).identity)}
+				/>,
+			]
+		: [];
 
 	return (
 		<main className="relative min-h-0 flex-1">

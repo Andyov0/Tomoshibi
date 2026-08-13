@@ -1,8 +1,10 @@
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RoomBar } from "@/components/room/RoomBar";
 import { devicesAvailable, insecureReason } from "@/live/context";
-import { ShieldAlert } from "lucide-react";
+import { parseName } from "@/live/name";
+import { KeyRound, ShieldAlert } from "lucide-react";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { Mic, MicOff, Video, VideoOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -12,6 +14,8 @@ const DEVICES_KEY = "meet-live.devices";
 
 export interface Choices {
 	name: string;
+	/** Never leaves this tab except in the join request. */
+	passphrase: string;
 	camera: boolean;
 	microphone: boolean;
 }
@@ -24,17 +28,23 @@ export interface Choices {
  * anybody has decided to be seen, which is the wrong way round for somebody
  * joining late or from somewhere they would rather not show.
  */
-export function PreJoin({ onJoin }: { onJoin: (choices: Choices) => void }) {
+export interface PreJoinProps {
+	room: string;
+	onRoomChange: (room: string) => void;
+	onJoin: (choices: Choices) => void;
+}
+
+export function PreJoin({ room, onRoomChange, onJoin }: PreJoinProps) {
 	// Checked before anything reaches for a device, so the page explains why it
 	// cannot rather than failing on a property that is simply not there.
 	if (!devicesAvailable()) {
 		return <Unavailable reason={insecureReason()} />;
 	}
 
-	return <Form onJoin={onJoin} />;
+	return <Form room={room} onRoomChange={onRoomChange} onJoin={onJoin} />;
 }
 
-function Form({ onJoin }: { onJoin: (choices: Choices) => void }) {
+function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
 	const [devices, setDevices] = useState(remembered);
 	const [track, setTrack] = useState<LocalVideoTrack>();
@@ -79,15 +89,19 @@ function Form({ onJoin }: { onJoin: (choices: Choices) => void }) {
 	// preview and prompt again a moment later.
 	useEffect(() => () => current.current?.stop(), []);
 
-	const submit = () => {
-		const trimmed = name.trim();
-		if (!trimmed || joining) return;
+	const { name: display, passphrase } = parseName(name);
 
-		localStorage.setItem(NAME_KEY, trimmed);
+	const submit = () => {
+		if (!display || joining) return;
+
+		// Only the name is remembered. A passphrase is a secret, and local
+		// storage is shared with every tab on this origin and outlives the
+		// session; it is typed again or not used.
+		localStorage.setItem(NAME_KEY, display);
 		localStorage.setItem(DEVICES_KEY, JSON.stringify(devices));
 
 		setJoining(true);
-		onJoin({ name: trimmed, ...devices });
+		onJoin({ name: display, passphrase, ...devices });
 	};
 
 	return (
@@ -97,6 +111,8 @@ function Form({ onJoin }: { onJoin: (choices: Choices) => void }) {
 					<h1 className="font-semibold text-2xl tracking-tight">Ready to join?</h1>
 					<p className="text-fg-muted text-sm">Check your camera and microphone first.</p>
 				</header>
+
+				<RoomBar room={room} onChange={onRoomChange} />
 
 				<SelfView track={track} />
 
@@ -134,9 +150,25 @@ function Form({ onJoin }: { onJoin: (choices: Choices) => void }) {
 						placeholder="Your name"
 						aria-label="Your name"
 						autoFocus
-						maxLength={40}
+						maxLength={80}
 					/>
-					<Button type="submit" size="lg" className="w-full" disabled={!name.trim() || joining}>
+
+					{passphrase ? (
+						<p className="flex items-center justify-center gap-1.5 text-fg-muted text-xs">
+							<KeyRound className="size-3" />
+							<span>
+								Joining as <strong className="text-fg">{display || "?"}</strong> with a
+								signature only you can produce
+							</span>
+						</p>
+					) : (
+						<p className="text-center text-fg-muted text-xs">
+							Add <code className="text-fg">#</code> and a passphrase to sign your name, so
+							nobody else can appear under it.
+						</p>
+					)}
+
+					<Button type="submit" size="lg" className="w-full" disabled={!display || joining}>
 						{joining ? "Joining…" : "Join"}
 					</Button>
 				</form>

@@ -1,4 +1,4 @@
-import { type Surface, label, owner } from "@/live/surface";
+import { type Surface, label, owner, signature } from "@/live/surface";
 import type { TrackReference } from "@livekit/components-core";
 import { VideoTrack } from "@livekit/components-react";
 import { VideoOff } from "lucide-react";
@@ -16,10 +16,12 @@ import { Tile } from "./Tile";
 export function SurfaceTile({
 	surface,
 	subscribed = true,
+	unverified = false,
 	onDoubleClick,
 }: {
 	surface: Surface;
 	subscribed?: boolean;
+	unverified?: boolean;
 	onDoubleClick?: () => void;
 }) {
 	const participant = owner(surface);
@@ -45,6 +47,8 @@ export function SurfaceTile({
 	return (
 		<Tile
 			label={surface.local ? `${label(surface)} (you)` : label(surface)}
+			signature={camera ? signature(surface) : undefined}
+			unverified={camera && unverified}
 			speaking={participant.isSpeaking && camera}
 			muted={camera && !participant.isMicrophoneEnabled}
 			onDoubleClick={onDoubleClick}

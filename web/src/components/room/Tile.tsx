@@ -11,6 +11,8 @@ import type { ReactNode } from "react";
  */
 export function Tile({
 	label,
+	signature,
+	unverified,
 	speaking,
 	muted,
 	children,
@@ -18,6 +20,10 @@ export function Tile({
 	onDoubleClick,
 }: {
 	label: string;
+	/** A signature only this person can produce, when they signed their name. */
+	signature?: string;
+	/** Wearing a name somebody else signed, without one of their own. */
+	unverified?: boolean;
 	speaking?: boolean;
 	muted?: boolean;
 	children: ReactNode;
@@ -42,6 +48,31 @@ export function Tile({
 
 			<div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/70 to-transparent px-3 pt-8 pb-2">
 				<span className="truncate font-medium text-sm text-white drop-shadow">{label}</span>
+
+				{/* Monospaced and dimmed: it belongs to the name without being
+				    read as part of it, and lining the characters up is what makes
+				    two signatures comparable at a glance. */}
+				{signature && (
+					<span
+						title="A signature only this person can produce"
+						className="shrink-0 font-mono text-[11px] text-white/60 drop-shadow"
+					>
+						·{signature}
+					</span>
+				)}
+
+				{/* Said only about somebody unsigned wearing a name that was
+				    signed. Two people genuinely called Alex is ordinary; this is
+				    the one shape impersonation takes. */}
+				{unverified && (
+					<span
+						title="Somebody else signed this name; this participant did not"
+						className="shrink-0 rounded bg-danger/90 px-1.5 py-px font-medium text-[10px] text-danger-fg"
+					>
+						unverified
+					</span>
+				)}
+
 				{muted && <MutedIcon />}
 			</div>
 		</div>

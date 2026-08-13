@@ -57,6 +57,33 @@ room and one identity, with no administrative rights, and a room exists because
 somebody named it. Nothing has to be created first and nothing has to be cleaned
 up after.
 
+That also makes the name the credential, so arriving at the bare address
+generates one rather than funnelling everybody into a shared default, which is a
+room strangers walk into. Three words and four digits is 37 bits, drawn from
+`crypto.getRandomValues`; guessed at the rate the server allows, stumbling onto
+one of a few thousand rooms in use takes longer than anybody will spend. A name
+somebody typed instead is short and meaningful, which is exactly what makes it
+guessable, so the client says so about those and stays quiet about the rest.
+
+**A name can be signed.** Anybody can call themselves anything, so `Alice#secret`
+sends the passphrase with the join request and the server derives a short
+signature from it, keyed with a file of its own. The signature goes into the
+identity, which is signed into the token and enforced by the media server, so it
+is not a claim travelling beside the name but part of what the participant
+provably is. The same passphrase always signs the same, which is the whole point;
+a different one signs differently and takes effect on the next join.
+
+Two things follow from where the key lives. It is separate from the API
+credentials because the two have opposite lifetimes: those should be rotated, and
+rotating this one silently changes everybody's signature. And without it a
+signature cannot be attacked offline at all, which is the difference between this
+and the tripcodes it borrows its syntax from: the only way to find a passphrase
+is to guess it through the join endpoint, where the rate limiter is waiting.
+
+Somebody unsigned wearing a name that somebody else signed is marked, and nothing
+else is. Two people genuinely called Alex is ordinary; impersonating a name
+nobody recognises achieves nothing.
+
 **Identity and display name are both signed in.** The identity comes back on the
 next join so that reloading a tab keeps the same one, which is why a refresh does
 not look like somebody leaving and a stranger arriving. The display name travels
@@ -90,6 +117,9 @@ over. See `dev/meet.yaml`.
 Two ports need to be reachable: the one under `meet.listen`, over TCP, and
 `rtc.udp_port`, over UDP. A single UDP port rather than a range, because every
 track is multiplexed onto it.
+
+`meet.tripcode_key` names the file that signs passphrases. It is created on
+first use and must not be replaced: doing so changes every existing signature.
 
 Behind a proxy, set `meet.trust_proxy` so that `X-Forwarded-For` and
 `X-Forwarded-Host` are believed. Exposed directly they are whatever the caller
@@ -127,7 +157,9 @@ yet is not counted twice.
 - **End-to-end encryption.** The SDK supports it; nothing here turns it on.
 - **Chat, recording, and telephony.** All available from the media server, none
   wired up.
-- **Accounts.** Everybody is a guest, and an identity lasts as long as the tab.
+- **Accounts.** Everybody is a guest. An identity lasts as long as the tab, and a
+  signed name is the closest thing to a persistent one: it survives because the
+  passphrase does, not because anything was stored.
 - **TLS.** Put a proxy in front for the web port; the UDP port needs none, since
   media is encrypted end to end regardless. Until that is done the server is
   only usable from the machine it runs on: browsers withhold cameras and

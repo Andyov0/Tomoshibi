@@ -28,9 +28,17 @@ const MaxDisplayName = 40
 // stays something a person can repeat over the phone.
 const MaxName = 64
 
-// guest prefixes an identity this server minted, so one can be told from a name
-// a caller invented.
+// guest prefixes an unsigned identity this server minted, so one can be told
+// from a name a caller invented. A signed identity uses its own prefix; see
+// [Trip].
 const guest = "g-"
+
+// random is how many hex characters of randomness every identity carries.
+//
+// Present even on a signed identity, so that one person joining twice is two
+// participants who happen to share a signature rather than one who keeps
+// evicting themselves.
+const random = 32
 
 // ValidName reports whether name is one this server will authorise.
 //
@@ -57,18 +65,47 @@ func ValidName(name string) bool {
 	return true
 }
 
-// ValidIdentity reports whether identity looks like one MintIdentity produced.
+// ValidIdentity reports whether identity is one MintIdentity could have made.
 //
 // A caller returning something else is given a fresh one rather than refused:
 // they get a working session instead of an error they cannot act on, and cannot
 // smuggle in an identity of their own choosing.
 func ValidIdentity(identity string) bool {
+	if trip, ok := TripOf(identity); ok {
+		return isTrip(trip) && isRandom(identity[len(signed)+TripLength+1:])
+	}
+
 	rest, ok := strings.CutPrefix(identity, guest)
-	if !ok || len(rest) != 32 {
+	return ok && isRandom(rest)
+}
+
+// MintIdentity returns a fresh identity, carrying trip when there is one.
+//
+// The signature goes into the identity rather than beside it because the
+// identity is signed into the token and enforced by the media server: it is the
+// one field about a participant that nobody, including that participant, can
+// change after the fact. A signature sent any other way would be a claim.
+func MintIdentity(trip string) string {
+	var raw [random / 2]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		// crypto/rand does not fail on any platform this runs on, and a
+		// predictable identity is worse than not starting.
+		panic(fmt.Sprintf("read random bytes: %v", err))
+	}
+
+	if trip == "" {
+		return guest + hex.EncodeToString(raw[:])
+	}
+
+	return signed + trip + "-" + hex.EncodeToString(raw[:])
+}
+
+func isRandom(hex string) bool {
+	if len(hex) != random {
 		return false
 	}
 
-	for _, r := range rest {
+	for _, r := range hex {
 		switch {
 		case r >= '0' && r <= '9', r >= 'a' && r <= 'f':
 		default:
@@ -79,16 +116,20 @@ func ValidIdentity(identity string) bool {
 	return true
 }
 
-// MintIdentity returns a fresh identity for a participant.
-func MintIdentity() string {
-	var raw [16]byte
-	if _, err := rand.Read(raw[:]); err != nil {
-		// crypto/rand does not fail on any platform this runs on, and a
-		// predictable identity is worse than not starting.
-		panic(fmt.Sprintf("read random bytes: %v", err))
+func isTrip(trip string) bool {
+	if len(trip) != TripLength {
+		return false
 	}
 
-	return guest + hex.EncodeToString(raw[:])
+	for _, r := range trip {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '2' && r <= '7':
+		default:
+			return false
+		}
+	}
+
+	return true
 }
 
 // Grant is what a client needs to join.
@@ -108,6 +149,10 @@ type Request struct {
 	Identity string
 	// Display is what they would like to be called.
 	Display string
+	// Passphrase signs the display name, when they gave one.
+	Passphrase Passphrase
+	// TripKey signs passphrases for this deployment.
+	TripKey []byte
 	// TTL is how long the token stays valid.
 	TTL time.Duration
 }
@@ -128,9 +173,19 @@ func Authorise(key, secret string, req Request) (Grant, error) {
 		return Grant{}, fmt.Errorf("invalid room name")
 	}
 
+	// A signature the caller cannot influence: it comes from their passphrase
+	// and this deployment's key, and nothing else.
+	trip := ""
+	if !req.Passphrase.Empty() {
+		trip = Trip(req.TripKey, strings.TrimSpace(string(req.Passphrase)))
+	}
+
+	// Kept only when it still matches, so changing or dropping a passphrase
+	// takes effect immediately rather than being masked by the identity a client
+	// happens to be holding.
 	identity := req.Identity
-	if !ValidIdentity(identity) {
-		identity = MintIdentity()
+	if !ValidIdentity(identity) || tripOrEmpty(identity) != trip {
+		identity = MintIdentity(trip)
 	}
 
 	token := auth.NewAccessToken(key, secret).
@@ -171,6 +226,12 @@ func display(wanted, identity string) string {
 	}
 
 	return trimmed
+}
+
+// tripOrEmpty is the signature an identity carries, or "" for an unsigned one.
+func tripOrEmpty(identity string) string {
+	trip, _ := TripOf(identity)
+	return trip
 }
 
 func ptr[T any](value T) *T {

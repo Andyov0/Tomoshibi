@@ -32,13 +32,13 @@ func TestValidName(t *testing.T) {
 }
 
 func TestMintedIdentityIsValid(t *testing.T) {
-	minted := MintIdentity()
+	minted := MintIdentity("")
 
 	if !ValidIdentity(minted) {
 		t.Fatalf("ValidIdentity(%q) = false for a minted identity", minted)
 	}
 
-	if minted == MintIdentity() {
+	if minted == MintIdentity("") {
 		t.Fatal("two minted identities are the same")
 	}
 }
@@ -71,7 +71,7 @@ func TestInventedIdentityIsReplaced(t *testing.T) {
 }
 
 func TestIdentityWeMintedIsKept(t *testing.T) {
-	minted := MintIdentity()
+	minted := MintIdentity("")
 
 	grant, err := Authorise(key, secret, Request{
 		Room: "demo", Identity: minted, Display: "Alice", TTL: time.Minute,

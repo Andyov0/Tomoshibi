@@ -1,3 +1,4 @@
+import { tripOf } from "@/live/name";
 import type { TrackReferenceOrPlaceholder } from "@livekit/components-core";
 import { type Participant, Track } from "livekit-client";
 
@@ -34,6 +35,16 @@ export function label(surface: Surface): string {
 	const name = participant.name || participant.identity;
 
 	return surface.kind === "screen" ? `${name} (screen)` : name;
+}
+
+/**
+ * The signature this surface's owner carries, if they signed their name.
+ *
+ * Read out of the identity, which is signed into their token and enforced by the
+ * media server, so it is a fact about them rather than something they told us.
+ */
+export function signature(surface: Surface): string | undefined {
+	return tripOf(owner(surface).identity);
 }
 
 /**

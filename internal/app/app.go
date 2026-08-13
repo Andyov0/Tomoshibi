@@ -22,21 +22,23 @@ import (
 
 // App holds what the handlers need.
 type App struct {
-	conf  *config.Config
-	store *store.Store
-	limit *limit.Limiter
-	media *rtc.Server
-	web   http.Handler
+	conf    *config.Config
+	store   *store.Store
+	limit   *limit.Limiter
+	media   *rtc.Server
+	web     http.Handler
+	tripKey []byte
 }
 
 // New assembles the application.
-func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handler) *App {
+func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handler, tripKey []byte) *App {
 	return &App{
-		conf:  conf,
-		store: st,
-		limit: limit.New(conf.Meet.JoinRate, conf.Meet.JoinBurst, conf.Meet.TrustProxy),
-		media: media,
-		web:   web,
+		conf:    conf,
+		store:   st,
+		limit:   limit.New(conf.Meet.JoinRate, conf.Meet.JoinBurst, conf.Meet.TrustProxy),
+		media:   media,
+		web:     web,
+		tripKey: tripKey,
 	}
 }
 
@@ -66,6 +68,12 @@ type joinRequest struct {
 	Identity string `json:"identity"`
 	// Name they would like to be called.
 	Name string `json:"name"`
+	// Passphrase turning that name into one nobody else can wear.
+	//
+	// Typed so that logging this struct cannot leak it, and read only from the
+	// body: a query parameter would reach the access log, the browser history,
+	// and any Referer sent onward.
+	Passphrase room.Passphrase `json:"passphrase"`
 }
 
 type joinResponse struct {
@@ -105,10 +113,12 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
 
 	grant, err := room.Authorise(a.conf.Key, a.conf.Secret, room.Request{
-		Room:     name,
-		Identity: body.Identity,
-		Display:  body.Name,
-		TTL:      a.conf.Meet.TokenTTL,
+		Room:       name,
+		Identity:   body.Identity,
+		Display:    body.Name,
+		Passphrase: body.Passphrase,
+		TripKey:    a.tripKey,
+		TTL:        a.conf.Meet.TokenTTL,
 	})
 	if err != nil {
 		slog.Error("failed to authorise a join", "room", name, "error", err)

@@ -25,6 +25,7 @@ import (
 
 	"meet-live/internal/app"
 	"meet-live/internal/config"
+	"meet-live/internal/room"
 	"meet-live/internal/rtc"
 	"meet-live/internal/store"
 )
@@ -130,6 +131,11 @@ func serve(args []string) error {
 	}
 	defer st.Close()
 
+	tripKey, err := room.LoadTripKey(conf.Meet.TripcodeKey)
+	if err != nil {
+		return err
+	}
+
 	media, err := rtc.Start(conf.LiveKit)
 	if err != nil {
 		return err
@@ -137,7 +143,7 @@ func serve(args []string) error {
 
 	server := &http.Server{
 		Addr:    conf.Meet.Listen,
-		Handler: app.New(conf, st, media, web).Handler(),
+		Handler: app.New(conf, st, media, web, tripKey).Handler(),
 		// Absent on purpose: a signalling WebSocket is meant to stay open for
 		// the length of a meeting, and a write timeout would cut it. Read
 		// headers are still bounded, which is what protects against a client

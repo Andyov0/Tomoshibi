@@ -17,12 +17,16 @@ export function SurfaceTile({
 	surface,
 	subscribed = true,
 	unverified = false,
-	onDoubleClick,
+	selected,
+	onSelect,
+	onExpand,
 }: {
 	surface: Surface;
 	subscribed?: boolean;
 	unverified?: boolean;
-	onDoubleClick?: () => void;
+	selected?: boolean;
+	onSelect?: () => void;
+	onExpand?: () => void;
 }) {
 	const participant = owner(surface);
 	const camera = surface.kind === "camera";
@@ -51,7 +55,9 @@ export function SurfaceTile({
 			unverified={camera && unverified}
 			speaking={participant.isSpeaking && camera}
 			muted={camera && !participant.isMicrophoneEnabled}
-			onDoubleClick={onDoubleClick}
+			selected={selected}
+			onSelect={onSelect}
+			onExpand={onExpand}
 		>
 			{showing ? (
 				<VideoTrack

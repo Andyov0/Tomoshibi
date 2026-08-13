@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { Maximize2, Minimize2 } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
@@ -17,7 +18,9 @@ export function Tile({
 	muted,
 	children,
 	className,
-	onDoubleClick,
+	onSelect,
+	onExpand,
+	selected,
 }: {
 	label: string;
 	/** A signature only this person can produce, when they signed their name. */
@@ -28,11 +31,32 @@ export function Tile({
 	muted?: boolean;
 	children: ReactNode;
 	className?: string;
-	onDoubleClick?: () => void;
+	/** A single click, which puts this on the stage or takes it back off. */
+	onSelect?: () => void;
+	/** A double click, which fills the screen with it. */
+	onExpand?: () => void;
+	/** Already on the stage, so a click sends it back to the grid. */
+	selected?: boolean;
 }) {
+	const interactive = onSelect !== undefined || onExpand !== undefined;
+
 	return (
 		<div
-			onDoubleClick={onDoubleClick}
+			// A div rather than a button: a tile holds a video and its own
+			// controls, and a button may not contain either. The role and the
+			// key handler are what a button would have provided.
+			role={interactive ? "button" : undefined}
+			tabIndex={interactive ? 0 : undefined}
+			aria-pressed={interactive ? selected : undefined}
+			aria-label={interactive ? (selected ? `Show everybody` : `Show ${label} larger`) : undefined}
+			onClick={onSelect}
+			onDoubleClick={onExpand}
+			onKeyDown={(event) => {
+				if (event.key === "Enter" || event.key === " ") {
+					event.preventDefault();
+					onSelect?.();
+				}
+			}}
 			className={cn(
 				// `size-full` rather than relying on the parent to stretch it: a grid
 				// item stretches on its own, but the focus stage and the filmstrip are
@@ -41,10 +65,27 @@ export function Tile({
 				"group relative size-full overflow-hidden rounded-tile bg-surface",
 				"ring-2 transition-colors duration-150",
 				speaking ? "ring-speaking" : "ring-transparent",
+				// Something that can be clicked has to look like it can. The
+				// cursor says so on the way in, and the ring answers on hover, so
+				// the affordance is discovered by moving rather than by guessing.
+				interactive && "cursor-pointer outline-none",
+				interactive && !speaking && "hover:ring-border-hi focus-visible:ring-accent",
 				className,
 			)}
 		>
 			{children}
+
+			{/* Appears on hover, over the picture rather than beside it, so the
+			    grid does not reflow when the pointer moves across it. */}
+			{interactive && (
+				<div className="pointer-events-none absolute top-2 right-2 rounded-md bg-black/55 p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+					{selected ? (
+						<Minimize2 className="size-3.5 text-white" />
+					) : (
+						<Maximize2 className="size-3.5 text-white" />
+					)}
+				</div>
+			)}
 
 			<div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/70 to-transparent px-3 pt-8 pb-2">
 				<span className="truncate font-medium text-sm text-white drop-shadow">{label}</span>

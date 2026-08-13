@@ -2,7 +2,9 @@ import { ControlBar } from "@/components/room/ControlBar";
 import { FocusLayout } from "@/components/room/FocusLayout";
 import { GridLayout, TILES_PER_PAGE } from "@/components/room/GridLayout";
 import { ShareCard } from "@/components/room/ShareCard";
+import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
+import { useFullscreen } from "@/hooks/useFullscreen";
 import { usePagination } from "@/hooks/usePagination";
 import { usePin } from "@/hooks/usePin";
 import { useConnection, useRoster } from "@/hooks/useRoomState";
@@ -28,17 +30,16 @@ export function Room({ room, onLeave }: RoomProps) {
 function Stage({ room }: { room: LiveRoom }) {
 	const participants = useRoster(room);
 	const state = useConnection(room);
+	const screen = useFullscreen<HTMLDivElement>();
 
 	const all = surfaces(participants, room.localParticipant.identity);
+	const { pinned, toggle, pin } = usePin(all);
 
 	// Worked out here rather than inside a tile, because the question is about
 	// the room: whether anybody unsigned is wearing a name somebody else signed.
 	// A tile can only see itself.
 	const roster = participants.map((p) => ({ name: p.name ?? "", identity: p.identity }));
-	const suspect = new Set(
-		roster.filter((p) => impersonating(p, roster)).map((p) => p.identity),
-	);
-	const { pinned, toggle, pin } = usePin(all);
+	const suspect = new Set(roster.filter((p) => impersonating(p, roster)).map((p) => p.identity));
 
 	// Our own camera never pages away; everybody else shares the rest of the
 	// page. Losing sight of your own picture because the room got busy is
@@ -47,14 +48,16 @@ function Stage({ room }: { room: LiveRoom }) {
 	const others = all.filter((surface) => surface !== self);
 	const grid = usePagination(others, TILES_PER_PAGE - 1);
 
-	/**
-	 * Render one surface.
-	 *
-	 * A screen share only gets a real subscription on the stage; anywhere else it
-	 * is a card, which is both cheaper and more readable than an illegible
-	 * thumbnail of somebody's desktop.
-	 */
-	const render = (surface: Surface, onStage: boolean): ReactNode => {
+	// Somebody sharing their screen is two pictures. Whichever is not on the
+	// stage is what the switch on the stage offers, and finding it here is the
+	// only place that knows both the pin and the whole roster.
+	const counterpart = pinned
+		? all.find(
+				(surface) => surface.id !== pinned.id && owner(surface).identity === owner(pinned).identity,
+			)
+		: undefined;
+
+	const tile = (surface: Surface, onStage: boolean): ReactNode => {
 		if (surface.kind === "screen" && !onStage) {
 			return (
 				<ShareCard
@@ -71,7 +74,9 @@ function Stage({ room }: { room: LiveRoom }) {
 				surface={surface}
 				subscribed={onStage || surface.kind === "camera"}
 				unverified={suspect.has(owner(surface).identity)}
-				onDoubleClick={() => toggle(surface)}
+				selected={onStage}
+				onSelect={() => toggle(surface)}
+				onExpand={onStage ? screen.toggle : undefined}
 			/>
 		);
 	};
@@ -82,6 +87,7 @@ function Stage({ room }: { room: LiveRoom }) {
 					key={self.id}
 					surface={self}
 					unverified={suspect.has(owner(self).identity)}
+					onSelect={() => toggle(self)}
 				/>,
 			]
 		: [];
@@ -90,11 +96,19 @@ function Stage({ room }: { room: LiveRoom }) {
 		<main className="relative min-h-0 flex-1">
 			{pinned ? (
 				<FocusLayout
-					stage={render(pinned, true)}
-					strip={[
-						...mine,
-						...others.filter((s) => s.id !== pinned.id).map((s) => render(s, false)),
-					]}
+					stageRef={screen.ref}
+					fullscreen={screen.active}
+					stage={tile(pinned, true)}
+					controls={
+						<StageControls
+							other={counterpart}
+							onSwitch={pin}
+							fullscreen={screen.active}
+							onFullscreen={screen.toggle}
+							fullscreenSupported={screen.supported}
+						/>
+					}
+					strip={[...mine, ...others.filter((s) => s.id !== pinned.id).map((s) => tile(s, false))]}
 				/>
 			) : (
 				<GridLayout
@@ -103,7 +117,7 @@ function Stage({ room }: { room: LiveRoom }) {
 					onNext={grid.next}
 					onPrevious={grid.previous}
 				>
-					{[...mine, ...grid.items.map((s) => render(s, false))]}
+					{[...mine, ...grid.items.map((s) => tile(s, false))]}
 				</GridLayout>
 			)}
 

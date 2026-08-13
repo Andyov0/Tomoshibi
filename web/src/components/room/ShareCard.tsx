@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import { MonitorUp } from "lucide-react";
 import { Tile } from "./Tile";
 
@@ -7,18 +6,20 @@ import { Tile } from "./Tile";
  *
  * A 1080p desktop scaled into a grid cell is unreadable, so subscribing to it
  * would spend the bandwidth and deliver nothing. The card says who is sharing
- * and offers the one useful action, which is to make it big.
+ * and takes the click that makes it big.
+ *
+ * The whole card is the target rather than a button inside it. A button would
+ * sit on a surface that already responds to a click, so the two would fire
+ * together, and the smaller target is the worse one anyway.
  */
 export function ShareCard({ label, onOpen }: { label: string; onOpen: () => void }) {
 	return (
-		<Tile label={label} onDoubleClick={onOpen}>
+		<Tile label={label} onSelect={onOpen}>
 			<div className="absolute inset-0 grid place-items-center bg-surface-hi/40">
-				<div className="flex flex-col items-center gap-3 px-4 text-center">
+				<div className="flex flex-col items-center gap-2 px-4 text-center">
 					<MonitorUp className="size-8 text-fg-muted" />
 					<p className="text-fg-muted text-sm">{label} is sharing</p>
-					<Button size="sm" variant="secondary" onClick={onOpen}>
-						View
-					</Button>
+					<p className="text-fg-muted/70 text-xs">Click to watch</p>
 				</div>
 			</div>
 		</Tile>

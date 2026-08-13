@@ -1,4 +1,4 @@
-import type { ChatMessage, Participant, Room } from "livekit-client";
+import type { ChatMessage, Participant } from "livekit-client";
 
 /** One thing somebody said. */
 export interface Said {
@@ -21,12 +21,23 @@ export interface Said {
  */
 export const SAID_FOR = 6000;
 
-/** Send, using the media server's own chat rather than a protocol of our own. */
-export function say(room: Room, body: string): Promise<ChatMessage> {
-	return room.localParticipant.sendChatMessage(body.trim());
-}
+/**
+ * How many messages are kept.
+ *
+ * Nothing is persisted, but a long call still accumulates and every message
+ * stays mounted in the panel. Five hundred is past what anybody scrolls back
+ * through and small enough that the list never becomes the reason the interface
+ * feels slow.
+ */
+export const KEEP = 500;
 
-/** Turn an arriving message into something the interface can hold. */
+/**
+ * Turn an arriving message into something the interface can hold.
+ *
+ * The identity is kept as a plain key rather than the participant object, so a
+ * message can be matched against a tile without holding a reference to somebody
+ * who may already have left.
+ */
 export function received(
 	message: ChatMessage,
 	from: Participant | undefined,

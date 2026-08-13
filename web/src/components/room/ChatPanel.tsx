@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import type { Said } from "@/live/chat";
 import { cn } from "@/lib/utils";
 import { ArrowUp, MessageSquareOff, X } from "lucide-react";
+import { Linked } from "./Linked";
 import { useEffect, useRef, useState } from "react";
 
 /**
@@ -16,10 +17,16 @@ import { useEffect, useRef, useState } from "react";
 export function ChatPanel({
 	said,
 	onSay,
+	sending,
+	offline,
 	onClose,
 }: {
 	said: Said[];
-	onSay: (body: string) => void;
+	onSay: (body: string) => Promise<unknown>;
+	/** A message is in flight. */
+	sending?: boolean;
+	/** The connection is down, so nothing can leave. */
+	offline?: boolean;
 	onClose: () => void;
 }) {
 	const [draft, setDraft] = useState("");
@@ -36,10 +43,13 @@ export function ChatPanel({
 
 	const send = () => {
 		const body = draft.trim();
-		if (!body) return;
+		if (!body || sending || offline) return;
 
-		onSay(body);
+		// Cleared optimistically and put back if it did not leave. Losing what
+		// somebody typed is worse than showing it twice, and a send that failed
+		// silently looks exactly like one that worked.
 		setDraft("");
+		onSay(body).catch(() => setDraft(body));
 	};
 
 	return (
@@ -75,7 +85,9 @@ export function ChatPanel({
 										<span className="readout text-[9.5px] text-fg-muted">{clock(one.at)}</span>
 									</span>
 								)}
-								<span className="break-words text-[12.5px] leading-normal">{one.body}</span>
+								<span className="break-words text-[12.5px] leading-normal">
+									<Linked text={one.body} />
+								</span>
 							</div>
 						);
 					})}
@@ -87,7 +99,8 @@ export function ChatPanel({
 					ref={field}
 					rows={1}
 					value={draft}
-					placeholder="Say something"
+					disabled={offline}
+					placeholder={offline ? "Waiting for the connection" : "Say something"}
 					aria-label="Say something"
 					maxLength={2000}
 					onChange={(event) => {
@@ -113,7 +126,7 @@ export function ChatPanel({
 					size="icon"
 					className="size-6 shrink-0 rounded-md"
 					aria-label="Send"
-					disabled={!draft.trim()}
+					disabled={!draft.trim() || sending || offline}
 					onClick={send}
 				>
 					<ArrowUp className="size-3" />

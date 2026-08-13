@@ -1,6 +1,7 @@
 import type { Said } from "@/live/chat";
 import { cn } from "@/lib/utils";
 import { Avatar } from "./Avatar";
+import { Linked } from "./Linked";
 
 /**
  * What somebody just said, on their own picture.
@@ -14,6 +15,9 @@ export function SaidOnTile({ said, compact }: { said: Said[]; compact?: boolean 
 	if (said.length === 0) return null;
 
 	return (
+		// The container ignores the pointer so a bubble never blocks a click on
+		// the picture behind it; each bubble takes it back, because an address
+		// inside one has to be reachable.
 		<div className="pointer-events-none absolute inset-x-1.5 bottom-8 flex flex-col items-start gap-1">
 			{said.map((one) =>
 				compact ? (
@@ -24,14 +28,17 @@ export function SaidOnTile({ said, compact }: { said: Said[]; compact?: boolean 
 					<span
 						key={one.id}
 						className={cn(
-							"max-w-full rounded-md border border-white/5 bg-black/75 px-2 py-1",
+							"pointer-events-auto max-w-full rounded-md border border-white/5 bg-black/75 px-2 py-1",
 							"text-[11.5px] leading-snug text-fg backdrop-blur-sm",
 							// Two lines, then an ellipsis. Anything longer is a
 							// paragraph, and a paragraph belongs in the panel.
 							"line-clamp-2 animate-arrive",
 						)}
 					>
-						{one.body}
+						{/* Clickable here too. A bubble is where most people will
+						    see an address first, and making them open the panel to
+						    reach it would be a step for nothing. */}
+						<Linked text={one.body} />
 					</span>
 				),
 			)}
@@ -70,7 +77,9 @@ export function SaidInCorner({ said }: { said: Said[] }) {
 
 						<div className="flex min-w-0 flex-col">
 							{!run && <span className="text-[11px] text-fg-muted">{one.name}</span>}
-							<span className="break-words text-[12.5px] leading-snug text-fg">{one.body}</span>
+							<span className="break-words text-[12.5px] leading-snug text-fg">
+								<Linked text={one.body} />
+							</span>
 						</div>
 					</div>
 				);

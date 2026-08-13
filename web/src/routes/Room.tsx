@@ -14,7 +14,6 @@ import { usePagination } from "@/hooks/usePagination";
 import { usePin } from "@/hooks/usePin";
 import { useConnection, useRoster } from "@/hooks/useRoomState";
 import { useSpeakingOrder } from "@/hooks/useSpeakingOrder";
-import { say } from "@/live/chat";
 import { watch } from "@/live/notices";
 import { impersonating } from "@/live/name";
 import type { Said } from "@/live/chat";
@@ -210,7 +209,9 @@ function Stage({
 			{chatting && (
 				<ChatPanel
 					said={chat.all}
-					onSay={(body) => void say(room, body)}
+					onSay={chat.send}
+					sending={chat.sending}
+					offline={state !== ConnectionState.Connected}
 					onClose={onCloseChat}
 				/>
 			)}

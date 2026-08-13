@@ -167,6 +167,12 @@ message needs both. The panel that holds the whole conversation floats over the
 room rather than pushing it aside: pushing would move and resize every tile at
 once because one person wanted to type.
 
+Addresses in a message are clickable, in the bubble as well as the panel, since
+a link is the commonest thing anybody types during a call. Only complete `http`
+and `https` URLs are matched: guessing at bare hostnames turns an ordinary
+sentence into a link to somewhere nobody meant, and a false link is worse than a
+missed one because it is clickable and looks deliberate.
+
 Nothing is written down. Messages last as long as the call, which is the same
 rule the room follows, and the empty panel says so — whether that is true and
 whether it looks true are different things, and only the second stops somebody

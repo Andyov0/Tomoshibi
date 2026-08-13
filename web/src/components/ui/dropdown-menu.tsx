@@ -43,6 +43,30 @@ export function DropdownMenuSeparator({
 	return <Primitive.Separator className={cn("-mx-1 my-1 h-px bg-border", className)} {...props} />;
 }
 
+/**
+ * An item that does something, rather than one that records a state.
+ *
+ * No indicator column, because nothing here is ever ticked: the difference
+ * between this and the checkbox beside it is the difference between choosing and
+ * starting, and a row that reserves space for a tick it will never show reads as
+ * a setting somebody forgot to turn on.
+ */
+export function DropdownMenuItem({
+	className,
+	...props
+}: React.ComponentProps<typeof Primitive.Item>) {
+	return (
+		<Primitive.Item
+			className={cn(
+				"relative flex cursor-default select-none items-start gap-2 rounded-md px-2 py-1.5 text-sm outline-none",
+				"focus:bg-surface-hi data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				className,
+			)}
+			{...props}
+		/>
+	);
+}
+
 export function DropdownMenuCheckboxItem({
 	className,
 	children,

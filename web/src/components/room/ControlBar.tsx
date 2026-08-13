@@ -1,19 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { SHARE_FRAME_RATES, type ShareFrameRate, share } from "@/live/room";
+import { share } from "@/live/room";
 import type { Room } from "livekit-client";
-import {
-	MessageSquare,
-	Mic,
-	MicOff,
-	MonitorOff,
-	MonitorUp,
-	PhoneOff,
-	Video,
-	VideoOff,
-} from "lucide-react";
+import { MessageSquare, Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
 import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
+import { ShareButton } from "./ShareButton";
 import { useLocalState } from "@/hooks/useLocalState";
 import { deviceRefused } from "@/live/notices";
 
@@ -42,7 +34,6 @@ export function ControlBar({
 	onLeave: () => void;
 }) {
 	const local = useLocalState(room);
-	const [frameRate, setFrameRate] = useState<ShareFrameRate>(30);
 	const [busy, setBusy] = useState(false);
 
 	// Every toggle is awaited and guarded, because each one asks the browser for
@@ -108,15 +99,11 @@ export function ControlBar({
 				{local.camera ? <Video /> : <VideoOff />}
 			</Toggle>
 
-			<Toggle
-				on={local.screen}
-				onLabel="Stop sharing"
-				offLabel="Share your screen"
-				signal
-				onClick={guard(() => share(room, !local.screen, frameRate))}
-			>
-				{local.screen ? <MonitorOff /> : <MonitorUp />}
-			</Toggle>
+			<ShareButton
+				sharing={local.screen}
+				onStart={(frameRate) => void guard(() => share(room, true, frameRate))()}
+				onStop={() => void guard(() => share(room, false, 30))()}
+			/>
 
 			<Toggle
 				on={chatting}
@@ -132,8 +119,6 @@ export function ControlBar({
 					<span className="absolute top-0.5 right-0.5 size-2 rounded-full border-2 border-surface bg-tally" />
 				)}
 			</Toggle>
-
-			<FrameRate value={frameRate} onChange={setFrameRate} disabled={local.screen} />
 
 			<DeviceMenu room={room} />
 
@@ -154,9 +139,11 @@ export function ControlBar({
  * warning that is always on stops being a warning. A muted microphone is a
  * choice somebody made, not a fault.
  *
- * `signal` marks the controls where being on is itself worth announcing —
- * sharing a screen, an open panel with something unread in it — and those take
- * the one colour that means something is happening.
+ * `signal` marks a control where being on is itself worth announcing — an open
+ * panel with something unread in it — and it takes the one colour that means
+ * something is happening. Sharing takes that colour too, from a button of its
+ * own: it carries a choice as well as a state, and a switch cannot ask a
+ * question on its way on.
  */
 function Toggle({
 	on,
@@ -184,61 +171,5 @@ function Toggle({
 		>
 			{children}
 		</Button>
-	);
-}
-
-/**
- * What a screen is about to be shared for.
- *
- * Two numbers rather than two words, because the frame rate is what people scan
- * for and it is the honest headline: everything else the choice carries follows
- * from whether the picture moves. What those consequences are belongs in the
- * label, where somebody wondering which to pick will find it.
- *
- * Locked while sharing: the choice reaches the encoder at publication, so
- * changing it means republishing, and republishing a screen means the browser
- * asking again which window to share. Pick before you start.
- */
-const SHARE_INTENT: Record<ShareFrameRate, { label: string; describes: string }> = {
-	30: { label: "Sharper text", describes: "code, documents, slides" },
-	60: { label: "Smoother motion", describes: "video, animation, anything moving" },
-};
-
-function FrameRate({
-	value,
-	onChange,
-	disabled,
-}: {
-	value: ShareFrameRate;
-	onChange: (value: ShareFrameRate) => void;
-	disabled: boolean;
-}) {
-	return (
-		<div
-			className={cn(
-				// A capsule, so it belongs to the row of circles beside it rather
-				// than sitting in it as a rectangle.
-				"flex overflow-hidden rounded-full border border-border",
-				disabled && "pointer-events-none opacity-40",
-			)}
-			title={disabled ? "Stop sharing to change this" : "What the screen is for"}
-		>
-			{SHARE_FRAME_RATES.map((rate: ShareFrameRate) => (
-				<button
-					key={rate}
-					type="button"
-					aria-pressed={value === rate}
-					aria-label={`${SHARE_INTENT[rate].label} at ${rate} frames per second`}
-					title={`${SHARE_INTENT[rate].label} — ${SHARE_INTENT[rate].describes}`}
-					onClick={() => onChange(rate)}
-					className={cn(
-						"readout px-2.5 py-2 text-[11px] transition-colors",
-						value === rate ? "bg-surface-hi text-fg" : "text-fg-muted hover:bg-surface-hi/60",
-					)}
-				>
-					{rate}
-				</button>
-			))}
-		</div>
 	);
 }

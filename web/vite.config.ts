@@ -43,5 +43,6 @@ export default defineConfig({
 		// The hooks under test render, so they need a document. Node alone would
 		// fail on the first one with an error that says nothing about hooks.
 		environment: "jsdom",
+		setupFiles: ["./src/test-setup.ts"],
 	},
 });

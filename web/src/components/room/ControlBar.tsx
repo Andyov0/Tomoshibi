@@ -188,11 +188,22 @@ function Toggle({
 }
 
 /**
- * Frame rate for screen sharing.
+ * What a screen is about to be shared for.
  *
- * Locked while sharing: changing it restarts the capture, which would drop the
- * stream and prompt again for a surface to share. Pick before you start.
+ * Two numbers rather than two words, because the frame rate is what people scan
+ * for and it is the honest headline: everything else the choice carries follows
+ * from whether the picture moves. What those consequences are belongs in the
+ * label, where somebody wondering which to pick will find it.
+ *
+ * Locked while sharing: the choice reaches the encoder at publication, so
+ * changing it means republishing, and republishing a screen means the browser
+ * asking again which window to share. Pick before you start.
  */
+const SHARE_INTENT: Record<ShareFrameRate, { label: string; describes: string }> = {
+	30: { label: "Sharper text", describes: "code, documents, slides" },
+	60: { label: "Smoother motion", describes: "video, animation, anything moving" },
+};
+
 function FrameRate({
 	value,
 	onChange,
@@ -210,14 +221,15 @@ function FrameRate({
 				"flex overflow-hidden rounded-full border border-border",
 				disabled && "pointer-events-none opacity-40",
 			)}
-			title={disabled ? "Stop sharing to change the frame rate" : "Screen share frame rate"}
+			title={disabled ? "Stop sharing to change this" : "What the screen is for"}
 		>
 			{SHARE_FRAME_RATES.map((rate: ShareFrameRate) => (
 				<button
 					key={rate}
 					type="button"
 					aria-pressed={value === rate}
-					aria-label={`Share at ${rate} frames per second`}
+					aria-label={`${SHARE_INTENT[rate].label} at ${rate} frames per second`}
+					title={`${SHARE_INTENT[rate].label} — ${SHARE_INTENT[rate].describes}`}
 					onClick={() => onChange(rate)}
 					className={cn(
 						"readout px-2.5 py-2 text-[11px] transition-colors",

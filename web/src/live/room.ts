@@ -3,13 +3,74 @@ import {
 	type Participant,
 	Room,
 	RoomEvent,
+	type VideoCodec,
 	VideoPresets,
 } from "livekit-client";
 import type { Join } from "./api";
 
-/** Frame rates offered for screen sharing. */
+/**
+ * The two ways a screen can be shared.
+ *
+ * Labelled by frame rate because that is the number people look for, but the
+ * choice reaches much further than that. A share of a terminal and a share of a
+ * video want opposite answers to every question that follows from it: which
+ * encoder tools to use, and which of sharpness and smoothness to give up first
+ * when the network cannot carry both. Offering the frame rate alone and deciding
+ * the rest centrally would mean deciding it wrong for one of the two.
+ */
 export const SHARE_FRAME_RATES = [30, 60] as const;
 export type ShareFrameRate = (typeof SHARE_FRAME_RATES)[number];
+
+/** Everything that follows from what a share is for. */
+interface ShareProfile {
+	/** A ceiling, not a target. Congestion control decides the rest. */
+	maxBitrate: number;
+	/** What the picture is, told to the encoder in its own vocabulary. */
+	contentHint: "text" | "motion";
+	videoCodec: VideoCodec;
+	/** What to sacrifice when the two cannot both be had. */
+	degradationPreference: RTCDegradationPreference;
+}
+
+/**
+ * Neither profile uses VP9, though the camera does and it compresses better.
+ *
+ * The SDK rewrites a share published with an SVC codec: it pins the stream to a
+ * single spatial layer and overwrites `contentHint` with `motion`, working around
+ * what its own source calls an untested and buggy path in the browser. The hint
+ * below would therefore never reach the encoder, and the sharper of the two
+ * profiles is built entirely on that hint. A codec whose advantage is unreachable
+ * is not an advantage.
+ */
+const SHARE_PROFILES: Record<ShareFrameRate, ShareProfile> = {
+	// Text, and everything shaped like it: code, a document, slides. The hint is
+	// `text` rather than `detail` because the two differ exactly here — both ask
+	// for sharp frames over smooth ones, but only `text` lets an encoder reach
+	// for the tools it keeps for rendering type.
+	//
+	// VP8 rather than H.264: software encoding, which a mostly-still screen at
+	// thirty frames can afford, and it honours the hint rather than handing the
+	// picture to a hardware encoder tuned for faces, where small type is the
+	// first thing to go soft.
+	30: {
+		maxBitrate: 5_000_000,
+		contentHint: "text",
+		videoCodec: "vp8",
+		degradationPreference: "maintain-resolution",
+	},
+
+	// Anything that moves: a video, an animation, a demonstration of something
+	// being used. Sixty frames of it is more than software encoding should be
+	// asked to carry, so this one takes the codec with hardware encoding almost
+	// everywhere, and asks to keep the frame rate that was the whole reason for
+	// choosing it.
+	60: {
+		maxBitrate: 8_000_000,
+		contentHint: "motion",
+		videoCodec: "h264",
+		degradationPreference: "maintain-framerate",
+	},
+};
 
 /**
  * Build the room.
@@ -29,18 +90,16 @@ export function create(): Room {
 			resolution: VideoPresets.h720.resolution,
 		},
 		publishDefaults: {
-			// Three layers, so a tile in a nine-up grid can be served something
-			// sized for a nine-up grid rather than a full-size picture scaled
-			// down at the receiver.
-			simulcast: true,
+			// Layered, so a tile in a nine-up grid can be served something sized
+			// for a nine-up grid rather than a full-size picture scaled down at
+			// the receiver.
+			//
+			// The layering is SVC rather than simulcast, which the SDK arranges on
+			// its own for VP9: it publishes one stream carrying three spatial and
+			// three temporal layers instead of three separate encodes. Setting
+			// `simulcast` here would read as a choice and change nothing, since
+			// the two are alternatives and the codec has already picked.
 			videoCodec: "vp9",
-			// Screen content is mostly still, and its motion is scrolling rather
-			// than a face moving. Telling the encoder that spends the bitrate on
-			// legible text instead of temporal smoothness.
-			screenShareEncoding: {
-				maxBitrate: 4_000_000,
-				maxFramerate: 30,
-			},
 		},
 		// Speaking is worked out by the media server and pushed to everybody, so
 		// no client has to run an analyser of its own.
@@ -100,18 +159,39 @@ export async function share(
 	wanted: boolean,
 	frameRate: ShareFrameRate,
 ): Promise<LocalTrackPublication | undefined> {
-	const published = await room.localParticipant.setScreenShareEnabled(wanted, {
-		audio: true,
-		resolution: {
-			width: 1920,
-			height: 1080,
-			frameRate,
+	const profile = SHARE_PROFILES[frameRate];
+
+	const published = await room.localParticipant.setScreenShareEnabled(
+		wanted,
+		{
+			audio: true,
+			resolution: {
+				width: 1920,
+				height: 1080,
+				frameRate,
+			},
+			// The picker should not offer this tab, which would be a mirror tunnel.
+			selfBrowserSurface: "exclude",
+			surfaceSwitching: "include",
+			contentHint: profile.contentHint,
 		},
-		// The picker should not offer this tab, which would be a mirror tunnel.
-		selfBrowserSurface: "exclude",
-		surfaceSwitching: "include",
-		contentHint: frameRate >= 60 ? "motion" : "detail",
-	});
+		// Given per share rather than left to the room's defaults, which is what
+		// keeps the camera out of this: it goes on being sent the way it always
+		// was, and only the screen follows the choice made about the screen.
+		//
+		// This is also where the frame rate finally arrives. Asking the browser to
+		// capture sixty means nothing on its own — the encoder has a ceiling of
+		// its own, and while it stayed at thirty the second option cost a person
+		// twice the capture work to send exactly what the first one sent.
+		{
+			screenShareEncoding: {
+				maxBitrate: profile.maxBitrate,
+				maxFramerate: frameRate,
+			},
+			videoCodec: profile.videoCodec,
+			degradationPreference: profile.degradationPreference,
+		},
+	);
 
 	return published;
 }

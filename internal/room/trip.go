@@ -18,9 +18,23 @@ import (
 // which is the point of showing it at all.
 const TripLength = 10
 
-// signed prefixes an identity that carries a signature, so one can be told from
-// an unsigned identity at a glance and without parsing.
-const signed = "t"
+// Every identity carries a signature. What differs is where it came from, and
+// the prefix is what says which — read without parsing and, more importantly,
+// impossible for its bearer to choose, since the whole identity is signed into
+// the token.
+//
+// A signature nobody can tell apart from a proven one is worth nothing: an
+// impostor would simply point at their own and claim it. So the two are
+// different kinds rather than the same field with different provenance.
+const (
+	// proven: derived from a passphrase, so it is the same on every visit and
+	// only its holder can produce it.
+	proven = "t"
+
+	// issued: derived from nothing, fresh each time. It tells two people with
+	// one name apart for the length of a call and claims nothing beyond that.
+	issued = "g"
+)
 
 // tripAlphabet is lowercase base32 without padding.
 //
@@ -43,19 +57,50 @@ func Trip(key []byte, passphrase string) string {
 	return tripAlphabet.EncodeToString(mac.Sum(nil))[:TripLength]
 }
 
-// TripOf reads the signature out of an identity, if it carries one.
+// IssueTrip returns a mark for somebody who gave no passphrase.
+//
+// Drawn from the same alphabet and the same length as an earned one, so a
+// roster reads as one column rather than two, and so nobody has to know which
+// kind they are looking at to read it aloud. What separates them is the prefix
+// on the identity, which its bearer cannot choose.
+func IssueTrip() string {
+	raw := make([]byte, 8)
+	if _, err := rand.Read(raw); err != nil {
+		// crypto/rand does not fail on any platform this runs on, and a
+		// predictable mark is worse than not starting.
+		panic(fmt.Sprintf("read random bytes: %v", err))
+	}
+
+	return tripAlphabet.EncodeToString(raw)[:TripLength]
+}
+
+// Signature is the mark an identity carries.
+type Signature struct {
+	// Trip is the mark itself.
+	Trip string
+	// Proven says it came from a passphrase rather than from nothing, which is
+	// the difference between "this is the same person as last time" and "these
+	// two people in this room are not the same person".
+	Proven bool
+}
+
+// SignatureOf reads the mark out of an identity.
 //
 // Read from the identity rather than sent alongside it, because the identity is
 // signed into the token and the media server enforces it. Anything travelling
 // beside it would be a claim, and a claim is exactly what a signature exists to
 // replace.
-func TripOf(identity string) (string, bool) {
-	rest, ok := strings.CutPrefix(identity, signed)
-	if !ok || len(rest) < TripLength+1 || rest[TripLength] != '-' {
-		return "", false
+func SignatureOf(identity string) (Signature, bool) {
+	if len(identity) < 1+TripLength+1 || identity[1+TripLength] != '-' {
+		return Signature{}, false
 	}
 
-	return rest[:TripLength], true
+	kind := identity[:1]
+	if kind != proven && kind != issued {
+		return Signature{}, false
+	}
+
+	return Signature{Trip: identity[1 : 1+TripLength], Proven: kind == proven}, true
 }
 
 // LoadTripKey reads the signing key for tripcodes, creating one if absent.

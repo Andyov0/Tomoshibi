@@ -43,43 +43,59 @@ export function parseName(typed: string): Named {
 	};
 }
 
+/** The mark an identity carries, and where it came from. */
+export interface Signature {
+	trip: string;
+	/**
+	 * Derived from a passphrase rather than from nothing.
+	 *
+	 * The difference between "this is the same person as last time" and "these
+	 * two people in this room are not the same person". Both are useful; only
+	 * the first is a claim about anybody, and only the first may be drawn as
+	 * one.
+	 */
+	proven: boolean;
+}
+
 /**
- * The signature an identity carries, if it has one.
+ * The mark an identity carries.
  *
  * Read from the identity rather than from anything sent alongside it. The
  * identity is the one field about a participant that neither they nor anybody
- * else can change after the token was signed.
+ * else can change after the token was signed, which is what makes the mark
+ * worth anything at all.
  */
-export function tripOf(identity: string): string | undefined {
-	if (!identity.startsWith("t")) return undefined;
+export function signatureOf(identity: string): Signature | undefined {
+	const kind = identity[0];
+	if (kind !== "t" && kind !== "g") return undefined;
 
 	const trip = identity.slice(1, 1 + TRIP_LENGTH);
 	if (trip.length !== TRIP_LENGTH || identity[1 + TRIP_LENGTH] !== "-") return undefined;
 	if (!/^[a-z2-7]+$/.test(trip)) return undefined;
 
-	return trip;
+	return { trip, proven: kind === "t" };
 }
 
 /**
- * Whether an unsigned participant is wearing a name a signed one already holds.
+ * Whether somebody is wearing a name that another participant has proven.
  *
- * Only ever said about the unsigned one, and only when the collision is with
- * somebody who signed. Two people genuinely called Alex is ordinary and worth no
- * comment; somebody unsigned appearing as a name that was signed is the one
- * shape impersonation takes, since impersonating a name nobody recognises
- * achieves nothing.
+ * Only ever said about the one who cannot prove it, and only when the collision
+ * is with somebody who can. Two people genuinely called Alex is ordinary and
+ * worth no comment; somebody unproven appearing under a name that was proven is
+ * the one shape impersonation takes, since impersonating a name nobody
+ * recognises achieves nothing.
  */
 export function impersonating(
 	participant: { name: string; identity: string },
 	everybody: readonly { name: string; identity: string }[],
 ): boolean {
-	if (tripOf(participant.identity)) return false;
+	if (signatureOf(participant.identity)?.proven) return false;
 	if (!participant.name) return false;
 
 	return everybody.some(
 		(other) =>
 			other.identity !== participant.identity &&
 			other.name === participant.name &&
-			tripOf(other.identity) !== undefined,
+			signatureOf(other.identity)?.proven === true,
 	);
 }

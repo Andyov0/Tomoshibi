@@ -44,7 +44,11 @@ func TestMintedIdentityIsValid(t *testing.T) {
 }
 
 func TestIdentityWeDidNotMintIsRejected(t *testing.T) {
-	for _, identity := range []string{"", "alice", "g-short", "g-" + strings.Repeat("Z", 32)} {
+	for _, identity := range []string{
+		"", "alice", "g-short",
+		"g" + strings.Repeat("z", 10) + "-" + strings.Repeat("Z", 32),
+		"x" + strings.Repeat("z", 10) + "-" + strings.Repeat("a", 32),
+	} {
 		if ValidIdentity(identity) {
 			t.Errorf("ValidIdentity(%q) = true, want false", identity)
 		}

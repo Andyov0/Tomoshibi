@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generateRoomName, looksGenerated, normaliseRoomName, validRoomName } from "./names";
-import { impersonating, parseName, tripOf } from "./name";
+import { impersonating, parseName, signatureOf } from "./name";
 
 describe("generateRoomName", () => {
 	it("produces a name the server will accept", () => {
@@ -68,26 +68,30 @@ describe("parseName", () => {
 const TRIP = "k7m2q6x4rt";
 const HEX = "0123456789abcdef0123456789abcdef";
 
-describe("tripOf", () => {
-	it("reads a signature out of a signed identity", () => {
-		expect(tripOf(`t${TRIP}-${HEX}`)).toBe(TRIP);
+describe("signatureOf", () => {
+	it("reads a mark that was earned", () => {
+		expect(signatureOf(`t${TRIP}-${HEX}`)).toEqual({ trip: TRIP, proven: true });
 	});
 
-	it("finds nothing in an unsigned identity", () => {
-		expect(tripOf("g-0123456789abcdef0123456789abcdef")).toBeUndefined();
+	// Everybody carries one. What differs is whether it proves anything, and
+	// that difference is the whole mechanism: a mark nobody can tell apart from
+	// an earned one would let an impostor point at theirs and claim it.
+	it("reads a mark that was issued, and does not call it proven", () => {
+		expect(signatureOf(`g${TRIP}-${HEX}`)).toEqual({ trip: TRIP, proven: false });
 	});
 
 	it("rejects anything that is not shaped like one", () => {
-		expect(tripOf("t-short")).toBeUndefined();
-		expect(tripOf(`tABCDEFGHIJ-${HEX}`)).toBeUndefined();
-		expect(tripOf(`t${TRIP}x${HEX}`)).toBeUndefined();
+		expect(signatureOf("t-short")).toBeUndefined();
+		expect(signatureOf(`tABCDEFGHIJ-${HEX}`)).toBeUndefined();
+		expect(signatureOf(`t${TRIP}x${HEX}`)).toBeUndefined();
+		expect(signatureOf(`x${TRIP}-${HEX}`)).toBeUndefined();
 	});
 });
 
 describe("impersonating", () => {
 	const signed = { name: "Alice", identity: `t${TRIP}-${HEX}` };
-	const unsigned = { name: "Alice", identity: "g-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" };
-	const other = { name: "Bob", identity: "g-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" };
+	const unsigned = { name: "Alice", identity: `gaaaaaaaaaa-${HEX}` };
+	const other = { name: "Bob", identity: `gbbbbbbbbbb-${HEX}` };
 
 	it("marks an unsigned participant wearing a signed name", () => {
 		expect(impersonating(unsigned, [signed, unsigned, other])).toBe(true);
@@ -99,7 +103,7 @@ describe("impersonating", () => {
 
 	// Two people genuinely called Alex is ordinary and worth no comment.
 	it("says nothing about a collision between two unsigned names", () => {
-		const twin = { name: "Alice", identity: "g-cccccccccccccccccccccccccccccccc" };
+		const twin = { name: "Alice", identity: `gcccccccccc-${HEX}` };
 		expect(impersonating(unsigned, [unsigned, twin])).toBe(false);
 	});
 

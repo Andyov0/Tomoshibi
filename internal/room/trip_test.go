@@ -38,21 +38,61 @@ func TestSignatureTravelsInTheIdentity(t *testing.T) {
 	trip := Trip(tripKey, "secret")
 	identity := MintIdentity(trip)
 
-	read, ok := TripOf(identity)
+	mark, ok := SignatureOf(identity)
 	if !ok {
-		t.Fatalf("TripOf(%q) found no signature", identity)
+		t.Fatalf("SignatureOf(%q) found nothing", identity)
 	}
-	if read != trip {
-		t.Errorf("read %q, want %q", read, trip)
+	if mark.Trip != trip {
+		t.Errorf("read %q, want %q", mark.Trip, trip)
+	}
+	if !mark.Proven {
+		t.Error("a passphrase-derived mark did not report itself as proven")
 	}
 	if !ValidIdentity(identity) {
 		t.Errorf("ValidIdentity(%q) = false for one we minted", identity)
 	}
 }
 
-func TestAnUnsignedIdentityCarriesNoSignature(t *testing.T) {
-	if _, ok := TripOf(MintIdentity("")); ok {
-		t.Fatal("an unsigned identity reported a signature")
+// Everybody carries a mark. Without one, two people arriving under the same
+// name are indistinguishable and the roster cannot say which of them spoke.
+func TestSomebodyWithoutAPassphraseStillGetsAMark(t *testing.T) {
+	identity := MintIdentity("")
+
+	mark, ok := SignatureOf(identity)
+	if !ok {
+		t.Fatalf("SignatureOf(%q) found nothing", identity)
+	}
+	if len(mark.Trip) != TripLength {
+		t.Errorf("mark is %d characters, want %d", len(mark.Trip), TripLength)
+	}
+	if !ValidIdentity(identity) {
+		t.Errorf("ValidIdentity(%q) = false for one we minted", identity)
+	}
+}
+
+// The whole mechanism rests on this. A mark nobody can tell apart from an
+// earned one is worth nothing, because an impostor would point at theirs and
+// claim it.
+func TestAnIssuedMarkDoesNotPassForAnEarnedOne(t *testing.T) {
+	earned, _ := SignatureOf(MintIdentity(Trip(tripKey, "secret")))
+	given, _ := SignatureOf(MintIdentity(""))
+
+	if !earned.Proven {
+		t.Error("an earned mark is not marked proven")
+	}
+	if given.Proven {
+		t.Fatal("an issued mark passes for an earned one")
+	}
+}
+
+// An issued mark is fresh every time, so it says nothing about who somebody was
+// last time — which is exactly what it must not claim.
+func TestAnIssuedMarkIsDifferentEveryTime(t *testing.T) {
+	first, _ := SignatureOf(MintIdentity(""))
+	second, _ := SignatureOf(MintIdentity(""))
+
+	if first.Trip == second.Trip {
+		t.Fatal("two issued marks are the same, which would imply a persistent identity")
 	}
 }
 
@@ -74,11 +114,14 @@ func TestSigningEndToEnd(t *testing.T) {
 		t.Fatalf("Authorise: %v", err)
 	}
 
-	trip, ok := TripOf(grant.Identity)
+	mark, ok := SignatureOf(grant.Identity)
 	if !ok {
 		t.Fatalf("identity %q carries no signature", grant.Identity)
 	}
-	if trip != Trip(tripKey, "hunter2") {
+	if !mark.Proven {
+		t.Error("a passphrase produced a mark that does not report itself as proven")
+	}
+	if mark.Trip != Trip(tripKey, "hunter2") {
 		t.Error("the signature is not the one this passphrase produces")
 	}
 }
@@ -111,8 +154,8 @@ func TestChangingThePassphraseReplacesTheIdentity(t *testing.T) {
 		t.Fatalf("Authorise: %v", err)
 	}
 
-	if _, ok := TripOf(dropped.Identity); ok {
-		t.Error("dropping the passphrase left the signature behind")
+	if mark, _ := SignatureOf(dropped.Identity); mark.Proven {
+		t.Error("dropping the passphrase left the earned signature behind")
 	}
 }
 
@@ -151,8 +194,8 @@ func TestAClaimedSignatureIsDiscarded(t *testing.T) {
 	if grant.Identity == stolen {
 		t.Fatal("an identity carrying somebody else's signature was accepted")
 	}
-	if _, ok := TripOf(grant.Identity); ok {
-		t.Error("a caller with no passphrase was given a signature")
+	if mark, _ := SignatureOf(grant.Identity); mark.Proven {
+		t.Error("a caller with no passphrase was handed an earned signature")
 	}
 }
 

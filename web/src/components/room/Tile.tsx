@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import type { Signature } from "@/live/name";
 import { Maximize2, MicOff, Minimize2 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -29,8 +30,8 @@ export function Tile({
 	selected,
 }: {
 	label: string;
-	/** A signature only this person can produce, when they signed their name. */
-	signature?: string;
+	/** The mark this person carries, and whether they earned it. */
+	signature?: Signature;
 	/** Wearing a name somebody else signed, without one of their own. */
 	unverified?: boolean;
 	speaking?: boolean;
@@ -106,12 +107,28 @@ export function Tile({
 					{label}
 				</span>
 
+				{/*
+				  * Everybody carries a mark, so the two kinds have to look
+				  * different or the earned one means nothing: an impostor would
+				  * point at their own and claim it. An earned mark leads with a
+				  * dot and sits at reading weight; an issued one is dimmer and
+				  * has none, which reads as a serial number rather than as a
+				  * claim about who somebody is.
+				  */}
 				{signature && (
 					<span
-						title="A signature only this person can produce"
-						className="readout shrink-0 text-[10px] text-fg-muted"
+						title={
+							signature.proven
+								? "A signature only this person can produce"
+								: "Given for this call. It says nothing about who they are"
+						}
+						className={cn(
+							"readout shrink-0 text-[10px]",
+							signature.proven ? "text-fg-muted" : "text-fg-muted/45",
+						)}
 					>
-						·{signature}
+						{signature.proven ? "·" : ""}
+						{signature.trip}
 					</span>
 				)}
 

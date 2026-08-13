@@ -65,13 +65,24 @@ one of a few thousand rooms in use takes longer than anybody will spend. A name
 somebody typed instead is short and meaningful, which is exactly what makes it
 guessable, so the client says so about those and stays quiet about the rest.
 
-**A name can be signed.** Anybody can call themselves anything, so `Alice#secret`
-sends the passphrase with the join request and the server derives a short
-signature from it, keyed with a file of its own. The signature goes into the
-identity, which is signed into the token and enforced by the media server, so it
-is not a claim travelling beside the name but part of what the participant
-provably is. The same passphrase always signs the same, which is the whole point;
-a different one signs differently and takes effect on the next join.
+**Everybody carries a mark; not every mark proves anything.** Anybody can call
+themselves anything, so `Alice#secret` sends the passphrase with the join
+request and the server derives a short mark from it, keyed with a file of its
+own. Somebody who gives no passphrase is issued one instead, drawn from nothing
+and fresh each visit — without it, two people arriving under one name are
+indistinguishable and the roster cannot say which of them spoke.
+
+The two kinds must never look alike, or the earned one is worth nothing: an
+impostor would point at their own and claim it. So they wear different prefixes
+on the identity, which its bearer cannot choose, and the interface draws an
+earned mark at reading weight behind a leading dot while an issued one is
+dimmer and has none — a serial number rather than a claim about who somebody
+is. The same passphrase always earns the same mark, which is the whole point; a
+different one earns a different mark and takes effect on the next join.
+
+The mark goes into the identity, which is signed into the token and enforced by
+the media server, so it is not a claim travelling beside the name but part of
+what the participant provably is.
 
 Two things follow from where the key lives. It is separate from the API
 credentials because the two have opposite lifetimes: those should be rotated, and
@@ -80,9 +91,9 @@ signature cannot be attacked offline at all, which is the difference between thi
 and the tripcodes it borrows its syntax from: the only way to find a passphrase
 is to guess it through the join endpoint, where the rate limiter is waiting.
 
-Somebody unsigned wearing a name that somebody else signed is marked, and nothing
-else is. Two people genuinely called Alex is ordinary; impersonating a name
-nobody recognises achieves nothing.
+Somebody who cannot prove a name that another participant has proven is marked,
+and nothing else is. Two people genuinely called Alex is ordinary; impersonating
+a name nobody recognises achieves nothing.
 
 **Identity and display name are both signed in.** The identity comes back on the
 next join so that reloading a tab keeps the same one, which is why a refresh does

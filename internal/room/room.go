@@ -28,11 +28,6 @@ const MaxDisplayName = 40
 // stays something a person can repeat over the phone.
 const MaxName = 64
 
-// guest prefixes an unsigned identity this server minted, so one can be told
-// from a name a caller invented. A signed identity uses its own prefix; see
-// [Trip].
-const guest = "g-"
-
 // random is how many hex characters of randomness every identity carries.
 //
 // Present even on a signed identity, so that one person joining twice is two
@@ -71,20 +66,23 @@ func ValidName(name string) bool {
 // they get a working session instead of an error they cannot act on, and cannot
 // smuggle in an identity of their own choosing.
 func ValidIdentity(identity string) bool {
-	if trip, ok := TripOf(identity); ok {
-		return isTrip(trip) && isRandom(identity[len(signed)+TripLength+1:])
-	}
-
-	rest, ok := strings.CutPrefix(identity, guest)
-	return ok && isRandom(rest)
+	mark, ok := SignatureOf(identity)
+	return ok && isTrip(mark.Trip) && isRandom(identity[1+TripLength+1:])
 }
 
-// MintIdentity returns a fresh identity, carrying trip when there is one.
+// MintIdentity returns a fresh identity carrying trip, or an issued mark when
+// there is no passphrase behind one.
 //
-// The signature goes into the identity rather than beside it because the
-// identity is signed into the token and enforced by the media server: it is the
-// one field about a participant that nobody, including that participant, can
-// change after the fact. A signature sent any other way would be a claim.
+// Everybody gets a mark. Without one, two people who arrive under the same name
+// are indistinguishable, and the roster cannot say which of them said anything.
+// What an issued mark does not do is claim to be the same person as last time,
+// which is why it wears a different prefix and why the interface draws it
+// differently.
+//
+// The mark goes into the identity rather than beside it because the identity is
+// signed into the token and enforced by the media server: it is the one field
+// about a participant that nobody, including that participant, can change after
+// the fact. A mark sent any other way would be a claim.
 func MintIdentity(trip string) string {
 	var raw [random / 2]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -94,10 +92,10 @@ func MintIdentity(trip string) string {
 	}
 
 	if trip == "" {
-		return guest + hex.EncodeToString(raw[:])
+		return issued + IssueTrip() + "-" + hex.EncodeToString(raw[:])
 	}
 
-	return signed + trip + "-" + hex.EncodeToString(raw[:])
+	return proven + trip + "-" + hex.EncodeToString(raw[:])
 }
 
 func isRandom(hex string) bool {
@@ -184,7 +182,7 @@ func Authorise(key, secret string, req Request) (Grant, error) {
 	// takes effect immediately rather than being masked by the identity a client
 	// happens to be holding.
 	identity := req.Identity
-	if !ValidIdentity(identity) || tripOrEmpty(identity) != trip {
+	if !ValidIdentity(identity) || provenTrip(identity) != trip {
 		identity = MintIdentity(trip)
 	}
 
@@ -228,10 +226,18 @@ func display(wanted, identity string) string {
 	return trimmed
 }
 
-// tripOrEmpty is the signature an identity carries, or "" for an unsigned one.
-func tripOrEmpty(identity string) string {
-	trip, _ := TripOf(identity)
-	return trip
+// provenTrip is the passphrase-derived mark an identity carries, or "" when its
+// mark was issued rather than earned.
+//
+// Used to decide whether an identity a caller sent back still matches the
+// passphrase they sent with it. An issued mark never matches, which is what
+// makes a fresh one appear whenever somebody arrives without a passphrase.
+func provenTrip(identity string) string {
+	if mark, ok := SignatureOf(identity); ok && mark.Proven {
+		return mark.Trip
+	}
+
+	return ""
 }
 
 func ptr[T any](value T) *T {

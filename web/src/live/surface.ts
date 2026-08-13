@@ -1,4 +1,4 @@
-import { tripOf } from "@/live/name";
+import { type Signature, signatureOf } from "@/live/name";
 import type { TrackReferenceOrPlaceholder } from "@livekit/components-core";
 import { type Participant, Track } from "livekit-client";
 
@@ -38,13 +38,14 @@ export function label(surface: Surface): string {
 }
 
 /**
- * The signature this surface's owner carries, if they signed their name.
+ * The mark this surface's owner carries.
  *
- * Read out of the identity, which is signed into their token and enforced by the
- * media server, so it is a fact about them rather than something they told us.
+ * Read out of the identity, which is signed into their token and enforced by
+ * the media server, so it is a fact about them rather than something they told
+ * us.
  */
-export function signature(surface: Surface): string | undefined {
-	return tripOf(owner(surface).identity);
+export function signature(surface: Surface): Signature | undefined {
+	return signatureOf(owner(surface).identity);
 }
 
 /**

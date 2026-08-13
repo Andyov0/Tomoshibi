@@ -266,8 +266,10 @@ func listRooms(args []string) error {
 
 // announce prints where to open the client.
 //
-// Including the addresses of the outward-facing interface, because somebody
-// meaning to use this from another machine otherwise has to go looking for it.
+// The address on the network comes with a warning rather than on its own,
+// because over plain HTTP it is a link that loads and then cannot open a camera:
+// browsers withhold devices outside a secure context, and only localhost is
+// exempt. Printing it unqualified would be an invitation into that dead end.
 func announce(addr net.Addr) {
 	tcp, ok := addr.(*net.TCPAddr)
 	if !ok {
@@ -278,7 +280,11 @@ func announce(addr net.Addr) {
 	slog.Info("client", "url", fmt.Sprintf("http://localhost:%d/", tcp.Port))
 
 	for _, ip := range outward() {
-		slog.Info("client on the network", "url", fmt.Sprintf("http://%s:%d/", ip, tcp.Port))
+		slog.Warn(
+			"reachable on the network, but cameras need a secure page: put this behind HTTPS "+
+				"before using it from another machine",
+			"url", fmt.Sprintf("http://%s:%d/", ip, tcp.Port),
+		)
 	}
 }
 

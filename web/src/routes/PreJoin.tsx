@@ -1,6 +1,8 @@
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { devicesAvailable, insecureReason } from "@/live/context";
+import { ShieldAlert } from "lucide-react";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { Mic, MicOff, Video, VideoOff } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -23,6 +25,16 @@ export interface Choices {
  * joining late or from somewhere they would rather not show.
  */
 export function PreJoin({ onJoin }: { onJoin: (choices: Choices) => void }) {
+	// Checked before anything reaches for a device, so the page explains why it
+	// cannot rather than failing on a property that is simply not there.
+	if (!devicesAvailable()) {
+		return <Unavailable reason={insecureReason()} />;
+	}
+
+	return <Form onJoin={onJoin} />;
+}
+
+function Form({ onJoin }: { onJoin: (choices: Choices) => void }) {
 	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
 	const [devices, setDevices] = useState(remembered);
 	const [track, setTrack] = useState<LocalVideoTrack>();
@@ -128,6 +140,24 @@ export function PreJoin({ onJoin }: { onJoin: (choices: Choices) => void }) {
 						{joining ? "Joining…" : "Join"}
 					</Button>
 				</form>
+			</div>
+		</main>
+	);
+}
+
+/**
+ * Why this page cannot open a camera.
+ *
+ * A dead end rather than a warning, because there is nothing to try: the page
+ * has to be loaded from somewhere else before any of this works.
+ */
+function Unavailable({ reason }: { reason: string }) {
+	return (
+		<main className="grid min-h-full place-items-center p-6">
+			<div className="w-full max-w-md space-y-4 text-center">
+				<ShieldAlert className="mx-auto size-10 text-fg-muted" />
+				<h1 className="font-semibold text-2xl tracking-tight">Cannot reach your devices</h1>
+				<p className="text-fg-muted text-sm">{reason}</p>
 			</div>
 		</main>
 	);

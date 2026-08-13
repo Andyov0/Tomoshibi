@@ -129,4 +129,8 @@ yet is not counted twice.
   wired up.
 - **Accounts.** Everybody is a guest, and an identity lasts as long as the tab.
 - **TLS.** Put a proxy in front for the web port; the UDP port needs none, since
-  media is encrypted end to end regardless.
+  media is encrypted end to end regardless. Until that is done the server is
+  only usable from the machine it runs on: browsers withhold cameras and
+  microphones outside a secure context, and only localhost is exempt. The client
+  says so rather than failing, and the startup log qualifies the network address
+  for the same reason.

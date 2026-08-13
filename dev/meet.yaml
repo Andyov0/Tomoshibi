@@ -1,0 +1,38 @@
+# One document describing the whole process: the media server's own tables, plus
+# the `meet` section this server reads. They cannot be unmarshalled together, so
+# the section is lifted out first and the rest is handed over untouched.
+
+# The media server's HTTP listener, kept on loopback. Browsers never reach it
+# directly: signalling arrives at the port below and is forwarded here, so one
+# port faces the network and it is ours.
+port: 7880
+bind_addresses: ["127.0.0.1"]
+
+rtc:
+  # A single UDP port rather than a range. Every track, screen shares included,
+  # is multiplexed onto it, so a firewall needs one hole instead of ten
+  # thousand. This is the one port that must be reachable besides the web one.
+  udp_port: 7882
+  # TCP fallback, for networks that drop UDP outright.
+  tcp_port: 7881
+  # False because everything here is local. Set it on a server with a public
+  # address, or participants will be handed an address only the host can reach.
+  use_external_ip: false
+
+keys:
+  # Development credentials. The media server verifies with these and this
+  # server signs with them, so they are one secret rather than two. Generate a
+  # real pair with `meet-live keygen` for anything reachable.
+  APIdevelopment: development-secret-not-for-anything-reachable
+
+logging:
+  level: info
+
+meet:
+  listen: ":8080"
+  database: "meet.db"
+
+  # Served from disk while working on the client, so a rebuild shows up on
+  # reload rather than needing the server recompiled. Unset in a deployment,
+  # where the client inside the binary is used.
+  web_root: "../web/dist"

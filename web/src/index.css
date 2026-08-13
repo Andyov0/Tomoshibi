@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+/*
+ * Dark-first, because a call UI is looked at for an hour at a time and the video
+ * is the only thing that should be bright. Light mode exists so the lobby does
+ * not ambush someone at a desk, but the room itself stays dark either way (see
+ * `.room-surface`).
+ */
+@theme {
+	--color-bg: oklch(0.16 0.006 265);
+	--color-surface: oklch(0.21 0.008 265);
+	--color-surface-hi: oklch(0.26 0.01 265);
+	--color-border: oklch(0.32 0.012 265);
+	--color-fg: oklch(0.97 0.002 265);
+	--color-fg-muted: oklch(0.72 0.012 265);
+
+	--color-accent: oklch(0.72 0.15 235);
+	--color-accent-fg: oklch(0.18 0.02 235);
+
+	/* Speaking ring. Green reads as "live" without competing with the accent. */
+	--color-speaking: oklch(0.78 0.17 152);
+
+	--color-danger: oklch(0.63 0.21 22);
+	--color-danger-fg: oklch(0.98 0.01 22);
+
+	--radius-tile: 0.85rem;
+}
+
+@layer base {
+	* {
+		border-color: var(--color-border);
+	}
+
+	html,
+	body,
+	#root {
+		height: 100%;
+	}
+
+	body {
+		background-color: var(--color-bg);
+		color: var(--color-fg);
+		-webkit-font-smoothing: antialiased;
+		font-family:
+			ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+			"Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+	}
+
+	/* A canvas has no intrinsic aspect ratio until the first frame lands, so
+	 * without this every tile is 300x150 for a beat and the grid jumps. */
+	canvas {
+		display: block;
+	}
+}

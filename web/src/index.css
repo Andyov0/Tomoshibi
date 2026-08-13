@@ -115,8 +115,14 @@
 
 	/*
 	 * The tally. A line along the bottom edge of a picture rather than a halo
-	 * around it, opening from the centre and closing back to it, so starting
-	 * and stopping are the same gesture in reverse.
+	 * around it, on the model of the light that marks the live camera in a
+	 * studio.
+	 *
+	 * It does not animate. Speech is not a state that turns on and off once —
+	 * the server re-ranks speakers whenever the ordering changes, so a pause
+	 * between two sentences flips the flag — and a line that slides open and
+	 * shut on every one of those reads as a flicker rather than as a signal.
+	 * A tally light does not fade in either.
 	 */
 	.tally-line::after {
 		content: "";
@@ -125,17 +131,10 @@
 		height: 2px;
 		background: var(--color-tally);
 		box-shadow: 0 0 14px color-mix(in oklch, var(--color-tally) 55%, transparent);
-		transform: scaleX(0);
-		transition: transform 260ms var(--ease-settle);
+		opacity: 0;
 	}
 
 	.tally-line.is-live::after {
-		transform: scaleX(1);
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.tally-line::after {
-			transition-duration: 1ms;
-		}
+		opacity: 1;
 	}
 }

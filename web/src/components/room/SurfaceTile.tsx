@@ -1,3 +1,4 @@
+import { useSteady } from "@/hooks/useSteady";
 import { type Surface, label, owner, signature } from "@/live/surface";
 import type { TrackReference } from "@livekit/components-core";
 import { VideoTrack } from "@livekit/components-react";
@@ -34,6 +35,10 @@ export function SurfaceTile({
 }) {
 	const participant = owner(surface);
 	const camera = surface.kind === "camera";
+
+	// Held briefly past the last word, so a pause mid-sentence does not put the
+	// tally out and light it again.
+	const speaking = useSteady(participant.isSpeaking && camera);
 	// A placeholder reference is a camera that is off, which is a picture there
 	// is nothing to render for. Narrowing here rather than asserting below keeps
 	// the two conditions from drifting apart.
@@ -58,7 +63,7 @@ export function SurfaceTile({
 			signature={camera ? signature(surface) : undefined}
 			unverified={camera && unverified}
 			overlay={overlay}
-			speaking={participant.isSpeaking && camera}
+			speaking={speaking}
 			muted={camera && !participant.isMicrophoneEnabled}
 			selected={selected}
 			onSelect={onSelect}

@@ -1,5 +1,6 @@
 import { ChatPanel } from "@/components/room/ChatPanel";
 import { ControlBar } from "@/components/room/ControlBar";
+import { Notices } from "@/components/room/Notices";
 import { FocusLayout } from "@/components/room/FocusLayout";
 import { GridLayout, TILES_PER_PAGE } from "@/components/room/GridLayout";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
@@ -14,11 +15,12 @@ import { usePin } from "@/hooks/usePin";
 import { useConnection, useRoster } from "@/hooks/useRoomState";
 import { useSpeakingOrder } from "@/hooks/useSpeakingOrder";
 import { say } from "@/live/chat";
+import { watch } from "@/live/notices";
 import { impersonating } from "@/live/name";
 import type { Said } from "@/live/chat";
 import { type Surface, owner, surfaces } from "@/live/surface";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 
 export interface RoomProps {
 	room: LiveRoom;
@@ -29,6 +31,9 @@ export function Room({ room, onLeave }: RoomProps) {
 	const [chatting, setChatting] = useState(false);
 	const chat = useChat(room, chatting);
 	const screen = useFullscreen<HTMLDivElement>();
+
+	// Arrivals, departures, and somebody taking the stage with a share.
+	useEffect(() => watch(room), [room]);
 
 	const openChat = useCallback(() => {
 		setChatting(true);
@@ -52,6 +57,7 @@ export function Room({ room, onLeave }: RoomProps) {
 				onChat={() => (chatting ? setChatting(false) : openChat())}
 				onLeave={onLeave}
 			/>
+			<Notices />
 		</div>
 	);
 }

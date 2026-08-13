@@ -23,6 +23,10 @@ const buttonVariants = cva(
 				sm: "h-8 px-3 text-xs",
 				lg: "h-12 px-6 text-base",
 				icon: "size-10",
+				// Round, for the controls on the island. A rounded square inside
+				// a capsule reads as a button that was placed there; a circle
+				// reads as part of it.
+				round: "size-10 rounded-full",
 			},
 		},
 		defaultVariants: { variant: "default", size: "default" },

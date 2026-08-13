@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
 import { useLocalState } from "@/hooks/useLocalState";
+import { deviceRefused } from "@/live/notices";
 
 /**
  * The call controls.
@@ -47,19 +48,27 @@ export function ControlBar({
 	// Every toggle is awaited and guarded, because each one asks the browser for
 	// a device and a second click while that prompt is open leaves the button
 	// and the device disagreeing about what is on.
-	const guard = (action: () => Promise<unknown>) => async () => {
-		if (busy) return;
-		setBusy(true);
-		try {
-			await action();
-		} catch (err) {
-			// A refused permission or a cancelled picker is an answer, not a
-			// fault. The button falls back to what the device actually did.
-			console.debug("device toggle declined", err);
-		} finally {
-			setBusy(false);
-		}
-	};
+	const guard =
+		(action: () => Promise<unknown>, kind: "camera" | "microphone" = "camera") =>
+		async () => {
+			if (busy) return;
+			setBusy(true);
+
+			try {
+				await action();
+			} catch (err) {
+				// A cancelled picker is an answer and needs no comment. A refused
+				// permission is something somebody has to go and undo, so it says
+				// so, and stays until they have.
+				if (err instanceof DOMException && err.name === "NotAllowedError") {
+					deviceRefused(kind);
+				} else {
+					console.debug("device toggle declined", err);
+				}
+			} finally {
+				setBusy(false);
+			}
+		};
 
 	return (
 		<footer
@@ -82,7 +91,10 @@ export function ControlBar({
 				on={local.microphone}
 				onLabel="Mute microphone"
 				offLabel="Unmute microphone"
-				onClick={guard(() => room.localParticipant.setMicrophoneEnabled(!local.microphone))}
+				onClick={guard(
+					() => room.localParticipant.setMicrophoneEnabled(!local.microphone),
+					"microphone",
+				)}
 			>
 				{local.microphone ? <Mic /> : <MicOff />}
 			</Toggle>
@@ -127,7 +139,7 @@ export function ControlBar({
 
 			<span className="mx-1 h-5 w-px bg-border" />
 
-			<Button variant="danger" size="icon" aria-label="Leave" onClick={onLeave}>
+			<Button variant="danger" size="round" aria-label="Leave" onClick={onLeave}>
 				<PhoneOff />
 			</Button>
 		</footer>
@@ -164,7 +176,7 @@ function Toggle({
 	return (
 		<Button
 			variant={on && signal ? "default" : "secondary"}
-			size="icon"
+			size="round"
 			aria-label={on ? onLabel : offLabel}
 			aria-pressed={on}
 			onClick={onClick}
@@ -193,7 +205,9 @@ function FrameRate({
 	return (
 		<div
 			className={cn(
-				"ml-1 flex overflow-hidden rounded-lg border border-border",
+				// A capsule, so it belongs to the row of circles beside it rather
+				// than sitting in it as a rectangle.
+				"flex overflow-hidden rounded-full border border-border",
 				disabled && "pointer-events-none opacity-40",
 			)}
 			title={disabled ? "Stop sharing to change the frame rate" : "Screen share frame rate"}
@@ -206,7 +220,7 @@ function FrameRate({
 					aria-label={`Share at ${rate} frames per second`}
 					onClick={() => onChange(rate)}
 					className={cn(
-						"px-2.5 py-2 text-xs transition-colors",
+						"readout px-2.5 py-2 text-[11px] transition-colors",
 						value === rate ? "bg-surface-hi text-fg" : "text-fg-muted hover:bg-surface-hi/60",
 					)}
 				>

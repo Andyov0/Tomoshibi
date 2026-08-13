@@ -24,7 +24,7 @@ export function DeviceMenu({ room }: { room: Room }) {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="icon" aria-label="Devices">
+				<Button variant="ghost" size="round" aria-label="Devices">
 					<ChevronUp />
 				</Button>
 			</DropdownMenuTrigger>

@@ -141,6 +141,13 @@ between people that a grid of dark tiles is still a grid of individuals. Its
 palette is muted on purpose — an avatar is content, standing in for video, but
 it must never out-shout the tally.
 
+**Notices say the four things worth interrupting for.** Somebody arriving,
+somebody leaving, somebody else taking the stage with a share, and the two
+failures a person can act on. A button somebody pressed is not reported back to
+the person who pressed it, a copied link answers on the button itself, and a
+connection that is down is a standing condition that belongs in the banner over
+the stage rather than in something that fades.
+
 **Messages arrive on the speaker's own picture.** A message is something a
 person said, and the tile is already labelled with who they are, so the bubble
 carries neither face nor name. Anybody with no tile to borrow — on another page,

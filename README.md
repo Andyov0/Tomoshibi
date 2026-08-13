@@ -94,7 +94,24 @@ first roster update and nobody can rename themselves to somebody else mid-call.
 while their camera is on contributes two, which is why `Surface` exists and why
 every layout takes surfaces. A share auto-pins itself to the stage and releases
 it when it stops, but only if the pin was automatic: a manual pin outranks the
-automation in both directions.
+automation in both directions. The stage offers a switch to that person's other
+picture, so reaching their face during a share is one click rather than a hunt
+through the filmstrip.
+
+**The grid is chosen, not divided.** Splitting the container into equal cells is
+what CSS does for free, and it gives two people on a wide screen a pair of tall
+thin cells that crop a 16:9 picture down to a strip. Instead every column count
+is tried and the one giving each person the most area wins, with the tiles
+keeping their shape and the slack becoming space around them. Empty cells count
+against an arrangement, so four people are never spread over six, and a ceiling
+on height stops one participant filling the window edge to edge.
+
+Clicking a tile puts it on the stage and clicking it again takes it back;
+double-clicking fills the screen. Once there are more people than fit on a page,
+whoever spoke most recently comes forward, since somebody talking from the second
+page is somebody nobody can see. Below that threshold the order holds still,
+because a grid that rearranges itself mid-sentence is worse than one that does
+not.
 
 **Subscription follows rendering.** A tile that is not on screen is not on the
 wire either, and the layer that is sent matches the size of the element it is

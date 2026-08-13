@@ -1,6 +1,7 @@
 import { ControlBar } from "@/components/room/ControlBar";
 import { FocusLayout } from "@/components/room/FocusLayout";
 import { GridLayout, TILES_PER_PAGE } from "@/components/room/GridLayout";
+import { EmptyRoom } from "@/components/room/EmptyRoom";
 import { ShareCard } from "@/components/room/ShareCard";
 import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
@@ -8,6 +9,7 @@ import { useFullscreen } from "@/hooks/useFullscreen";
 import { usePagination } from "@/hooks/usePagination";
 import { usePin } from "@/hooks/usePin";
 import { useConnection, useRoster } from "@/hooks/useRoomState";
+import { useSpeakingOrder } from "@/hooks/useSpeakingOrder";
 import { impersonating } from "@/live/name";
 import { type Surface, owner, surfaces } from "@/live/surface";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
@@ -32,7 +34,14 @@ function Stage({ room }: { room: LiveRoom }) {
 	const state = useConnection(room);
 	const screen = useFullscreen<HTMLDivElement>();
 
-	const all = surfaces(participants, room.localParticipant.identity);
+	// Whoever has spoken recently comes forward, but only once there are more
+	// people than fit on a page. Below that the order holds still, since a grid
+	// that rearranges itself when somebody speaks is worse than one that does
+	// not.
+	const crowded = participants.length > TILES_PER_PAGE;
+	const ordered = useSpeakingOrder(participants, crowded);
+
+	const all = surfaces(ordered, room.localParticipant.identity);
 	const { pinned, toggle, pin } = usePin(all);
 
 	// Worked out here rather than inside a tile, because the question is about
@@ -119,6 +128,16 @@ function Stage({ room }: { room: LiveRoom }) {
 				>
 					{[...mine, ...grid.items.map((s) => tile(s, false))]}
 				</GridLayout>
+			)}
+
+			{/* Placed over the grid rather than instead of it, so the self view
+			    stays where it will be when somebody arrives. */}
+			{others.length === 0 && state === ConnectionState.Connected && (
+				<div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
+					<div className="pointer-events-auto">
+						<EmptyRoom />
+					</div>
+				</div>
 			)}
 
 			{state !== ConnectionState.Connected && (

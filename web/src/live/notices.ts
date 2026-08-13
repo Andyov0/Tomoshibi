@@ -64,3 +64,25 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
 		duration: Number.POSITIVE_INFINITY,
 	});
 }
+
+/**
+ * Sound the browser refused to start on its own.
+ *
+ * The same category as a refused device, and shown the same way: it stays until
+ * it is dealt with, because a call where nobody can be heard is not a condition
+ * that should be allowed to fade away unnoticed. The difference is that this one
+ * can be fixed from the notice itself — the click it asks for is the very thing
+ * the browser was waiting for.
+ *
+ * Returns a function that takes the notice back down, for when playback starts
+ * some other way.
+ */
+export function audioBlocked(resume: () => void): () => void {
+	const id = toast("Nobody can be heard yet", {
+		description: "This browser waits for a click before it will play sound.",
+		duration: Number.POSITIVE_INFINITY,
+		action: { label: "Turn on sound", onClick: resume },
+	});
+
+	return () => toast.dismiss(id);
+}

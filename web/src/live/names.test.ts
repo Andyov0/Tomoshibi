@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generateRoomName, looksGenerated, normaliseRoomName, validRoomName } from "./names";
-import { impersonating, parseName, signatureOf } from "./name";
+import { impersonating, parseName, signatureOf, passphraseOf } from "./name";
 
 describe("generateRoomName", () => {
 	it("produces a name the server will accept", () => {
@@ -109,5 +109,51 @@ describe("impersonating", () => {
 
 	it("says nothing when nobody else is called that", () => {
 		expect(impersonating(unsigned, [unsigned, other])).toBe(false);
+	});
+});
+
+/*
+ * One shape, two fields.
+ *
+ * The pre-join reads `Alice#secret` and everybody who uses this has learnt it
+ * there. The management sign-in takes a passphrase alone, and used to compute
+ * the signature of whatever arrived — so the form people knew was refused, with
+ * a sentence saying the passphrase was not an administrator's, at the one
+ * moment when the passphrase was right and only the name had come with it.
+ */
+describe("passphraseOf", () => {
+	it("keeps the half parseName throws away", () => {
+		const typed = "Alice#secret";
+
+		expect(passphraseOf(typed)).toBe(parseName(typed).passphrase);
+	});
+
+	it("takes a bare passphrase whole", () => {
+		// Where parseName would call this a name and leave the passphrase
+		// empty, which is right for the field it serves and wrong for this one.
+		expect(passphraseOf("djoff-bv2j6")).toBe("djoff-bv2j6");
+		expect(parseName("djoff-bv2j6").passphrase).toBe("");
+	});
+
+	it("cuts at the first separator only", () => {
+		// A passphrase may contain them, and does whenever somebody chose one
+		// with punctuation in it.
+		expect(passphraseOf("Alice#one#two")).toBe("one#two");
+	});
+
+	it("agrees with the pre-join on everything it is given", () => {
+		// The two fields have to reach the same passphrase from the same
+		// keystrokes, or an administrator's signature in a room is not the
+		// signature that opens the pages about it.
+		for (const typed of ["Alice#secret", "  Bo #x y z", "Cy#a#b", "#leading", "Dee#"]) {
+			expect(passphraseOf(typed), typed).toBe(parseName(typed).passphrase);
+		}
+	});
+
+	it("leaves the passphrase exactly as it was typed", () => {
+		// Trimming belongs to the server, which does it for both fields. Doing
+		// it here as well would be a second opinion about what somebody's
+		// passphrase is.
+		expect(passphraseOf("Alice# padded ")).toBe(" padded ");
 	});
 });

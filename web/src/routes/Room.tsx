@@ -2,15 +2,15 @@ import { Audible } from "@/components/room/Audible";
 import { ChatPanel } from "@/components/room/ChatPanel";
 import { ControlBar } from "@/components/room/ControlBar";
 import { Notices } from "@/components/room/Notices";
-import { FocusLayout } from "@/components/room/FocusLayout";
-import { GridLayout, TILES_PER_PAGE } from "@/components/room/GridLayout";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
+import { Plane } from "@/components/room/Plane";
 import { ShareCard } from "@/components/room/ShareCard";
 import { SaidInCorner, SaidOnTile } from "@/components/room/Said";
 import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
 import { useChat } from "@/hooks/useChat";
 import { useFullscreen } from "@/hooks/useFullscreen";
+import { useMeasure } from "@/hooks/useMeasure";
 import { usePagination } from "@/hooks/usePagination";
 import { usePin } from "@/hooks/usePin";
 import { useConnection, useRoster } from "@/hooks/useRoomState";
@@ -18,9 +18,10 @@ import { useSpeakingOrder } from "@/hooks/useSpeakingOrder";
 import { watch } from "@/live/notices";
 import { impersonating } from "@/live/name";
 import type { Said } from "@/live/chat";
+import { TILES_PER_PAGE, planFocus, planGrid, stripCapacity } from "@/live/plan";
 import { type Surface, owner, surfaces } from "@/live/surface";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export interface RoomProps {
 	room: LiveRoom;
@@ -80,6 +81,7 @@ function Stage({
 }) {
 	const participants = useRoster(room);
 	const state = useConnection(room);
+	const [measure, size] = useMeasure();
 
 	// Whoever has spoken recently comes forward, but only once there are more
 	// people than fit on a page. Below that the order holds still, since a grid
@@ -91,18 +93,39 @@ function Stage({
 	const all = surfaces(ordered, room.localParticipant.identity);
 	const { pinned, toggle, pin } = usePin(all);
 
+	// Taking the last picture off the stage leaves nothing to fill the screen
+	// with. The element holding it is the same one in either arrangement now, so
+	// it no longer leaves on its own when the stage empties — and a screen still
+	// filled by a grid nobody asked to see is one somebody has to press Escape to
+	// get out of.
+	const { exit } = screen;
+	useEffect(() => {
+		if (!pinned) exit();
+	}, [pinned, exit]);
+
 	// Worked out here rather than inside a tile, because the question is about
 	// the room: whether anybody unsigned is wearing a name somebody else signed.
 	// A tile can only see itself.
 	const roster = participants.map((p) => ({ name: p.name ?? "", identity: p.identity }));
 	const suspect = new Set(roster.filter((p) => impersonating(p, roster)).map((p) => p.identity));
 
-	// Our own camera never pages away; everybody else shares the rest of the
-	// page. Losing sight of your own picture because the room got busy is
-	// disorienting, and it costs nothing since it renders from the local capture.
+	// Our own camera never pages away. Losing sight of your own picture because
+	// the room got busy is disorienting, and it costs nothing since it renders
+	// from the local capture.
 	const self = all.find((surface) => surface.local && surface.kind === "camera");
-	const others = all.filter((surface) => surface !== self);
-	const grid = usePagination(others, TILES_PER_PAGE - 1);
+	const mine = self && self.id !== pinned?.id ? [self] : [];
+	const rest = all.filter((surface) => surface !== self && surface.id !== pinned?.id);
+
+	// The filmstrip holds what the width allows; the grid holds a fixed nine.
+	// Either way our own picture takes one of the places rather than being added
+	// beyond them.
+	const capacity = pinned ? stripCapacity(size) : TILES_PER_PAGE;
+	const paged = usePagination(rest, Math.max(1, capacity - mine.length));
+	const shown = [...mine, ...paged.items].map((surface) => surface.id);
+
+	const plan = pinned
+		? planFocus(size, pinned.id, screen.active ? [] : shown, { fullscreen: screen.active })
+		: planGrid(size, shown);
 
 	// Somebody sharing their screen is two pictures. Whichever is not on the
 	// stage is what the switch on the stage offers, and finding it here is the
@@ -113,96 +136,87 @@ function Stage({
 			)
 		: undefined;
 
-	/**
-	 * Render one surface, wrapped so the grid can recognise it.
-	 *
-	 * `data-flip` is what lets the layout tell a tile that moved from a tile
-	 * that arrived: the first is animated from where it used to be, the second
-	 * is left to its own entrance.
-	 */
 	// Whoever is on screen carries their own words. Anybody who is not — on
 	// another page, or hidden behind a share — falls back to the corner, which
 	// is the only place a message needs a face and a name of its own.
-	const visible = new Set<string>();
-	const saidBy = (surface: Surface): Said[] => {
-		const identity = owner(surface).identity;
-		visible.add(identity);
-		return chat.showing.get(identity) ?? [];
-	};
+	//
+	// Read from the plan rather than counted while rendering: every picture is
+	// rendered now, including the ones nobody can see, so being rendered no
+	// longer means being visible.
+	const seen = new Set(
+		all.filter((surface) => plan.has(surface.id)).map((surface) => owner(surface).identity),
+	);
+	const saidOn = (surface: Surface): Said[] =>
+		plan.has(surface.id) ? (chat.showing.get(owner(surface).identity) ?? []) : [];
 
-	const inStrip = pinned !== undefined;
+	/**
+	 * One picture, in whichever of its two forms suits where it is.
+	 *
+	 * Built for every surface in the room, not only the ones on screen: the plan
+	 * decides where each goes, and a picture that is nowhere is simply moved out
+	 * of sight. Rendering only what is visible is what used to make putting
+	 * somebody on the stage cost a black screen.
+	 */
+	const tile = (surface: Surface) => {
+		const onStage = surface.id === pinned?.id;
 
-	const tile = (surface: Surface, onStage: boolean): ReactNode => {
-		const inner =
-			surface.kind === "screen" && !onStage ? (
+		if (surface.kind === "screen" && !onStage) {
+			return (
 				<ShareCard
 					label={owner(surface).name || owner(surface).identity}
 					onOpen={() => pin(surface)}
 				/>
-			) : (
-				<SurfaceTile
-					surface={surface}
-					subscribed={onStage || surface.kind === "camera"}
-					unverified={suspect.has(owner(surface).identity)}
-					selected={onStage}
-					overlay={<SaidOnTile said={saidBy(surface)} compact={!onStage && inStrip} />}
-					onSelect={() => toggle(surface)}
-					onExpand={onStage ? screen.toggle : undefined}
-				/>
 			);
+		}
 
 		return (
-			<div key={surface.id} data-flip={surface.id} className="size-full animate-arrive">
-				{inner}
-			</div>
+			<SurfaceTile
+				surface={surface}
+				unverified={suspect.has(owner(surface).identity)}
+				selected={onStage}
+				overlay={
+					<>
+						<SaidOnTile said={saidOn(surface)} compact={!onStage && pinned !== undefined} />
+						{onStage && (
+							<StageControls
+								other={counterpart}
+								onSwitch={pin}
+								fullscreen={screen.active}
+								onFullscreen={screen.toggle}
+								fullscreenSupported={screen.supported}
+							/>
+						)}
+					</>
+				}
+				onSelect={() => toggle(surface)}
+				onExpand={onStage ? screen.toggle : undefined}
+			/>
 		);
 	};
 
-	const mine = self
-		? [
-				<div key={self.id} data-flip={self.id} className="size-full animate-arrive">
-					<SurfaceTile
-						surface={self}
-						unverified={suspect.has(owner(self).identity)}
-						overlay={<SaidOnTile said={saidBy(self)} />}
-						onSelect={() => toggle(self)}
-					/>
-				</div>,
-			]
-		: [];
-
 	return (
 		<main className="relative h-full">
-			{pinned ? (
-				<FocusLayout
-					stageRef={screen.ref}
-					fullscreen={screen.active}
-					stage={tile(pinned, true)}
-					controls={
-						<StageControls
-							other={counterpart}
-							onSwitch={pin}
-							fullscreen={screen.active}
-							onFullscreen={screen.toggle}
-							fullscreenSupported={screen.supported}
-						/>
-					}
-					strip={[...mine, ...others.filter((s) => s.id !== pinned.id).map((s) => tile(s, false))]}
+			{/* The element that fills the screen. It holds the pictures and nothing
+			    else, so a fullscreen stage is a stage rather than a room with its
+			    chrome still attached. */}
+			<div ref={screen.ref} className="h-full w-full bg-bg">
+				<Plane
+					measure={measure}
+					plan={plan}
+					page={paged.page}
+					pages={paged.pages}
+					onNext={paged.next}
+					onPrevious={paged.previous}
+					tiles={all.map((surface) => ({
+						id: surface.id,
+						node: <div className="size-full animate-arrive">{tile(surface)}</div>,
+					}))}
 				/>
-			) : (
-				<GridLayout
-					page={grid.page}
-					pages={grid.pages}
-					onNext={grid.next}
-					onPrevious={grid.previous}
-				>
-					{[...mine, ...grid.items.map((s) => tile(s, false))]}
-				</GridLayout>
-			)}
+			</div>
 
 			{/* Placed over the grid rather than instead of it, so the self view
 			    stays where it will be when somebody arrives. */}
-			{others.length === 0 && state === ConnectionState.Connected && (
+			{rest.length === 0 && !pinned && state === ConnectionState.Connected && (
 				<div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
 					<div className="pointer-events-auto">
 						<EmptyRoom />
@@ -223,7 +237,7 @@ function Stage({
 			{/* Only for people with no tile to borrow. */}
 			<SaidInCorner
 				said={[...chat.showing.entries()]
-					.filter(([identity]) => !visible.has(identity))
+					.filter(([identity]) => !seen.has(identity))
 					.flatMap(([, said]) => said)}
 			/>
 

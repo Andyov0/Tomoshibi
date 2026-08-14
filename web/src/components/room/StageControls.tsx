@@ -25,7 +25,10 @@ export function StageControls({
 	fullscreenSupported: boolean;
 }) {
 	return (
-		<div className="absolute top-3 right-3 flex gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover/stage:opacity-100">
+		// Revealed by hovering the picture these controls belong to. They used to
+		// answer to a stage that owned them, and the stage is gone: a picture on
+		// the stage is now the same tile it was in the grid, put somewhere else.
+		<div className="absolute top-3 right-3 flex gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
 			{/* Somebody sharing their screen is two pictures, and reaching the
 			    other one otherwise means hunting for a thumbnail in the strip.
 			    Only shown when there is somewhere to switch to. */}

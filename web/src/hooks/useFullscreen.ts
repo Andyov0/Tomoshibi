@@ -36,5 +36,25 @@ export function useFullscreen<T extends HTMLElement>() {
 		void ref.current?.requestFullscreen?.().catch(() => {});
 	}, []);
 
-	return { ref, active, toggle, supported: typeof document !== "undefined" && document.fullscreenEnabled };
+	/**
+	 * Leave, if this is what is filling the screen.
+	 *
+	 * Needed because the element outlives the reason it was made fullscreen. It
+	 * holds every picture in the room and simply arranges them differently, so
+	 * emptying the stage no longer takes it out of the document — and a screen
+	 * still filled by something nobody put there is a room somebody has to press
+	 * Escape to get out of.
+	 */
+	const exit = useCallback(() => {
+		if (document.fullscreenElement !== ref.current) return;
+		void document.exitFullscreen().catch(() => {});
+	}, []);
+
+	return {
+		ref,
+		active,
+		toggle,
+		exit,
+		supported: typeof document !== "undefined" && document.fullscreenEnabled,
+	};
 }

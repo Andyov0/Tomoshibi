@@ -84,7 +84,20 @@ const SHARE_PROFILES: Record<ShareFrameRate, ShareProfile> = {
  */
 export function create(): Room {
 	return new Room({
-		adaptiveStream: true,
+		// Measured against the screen's own pixels rather than the layout's.
+		//
+		// The quality a tile asks for is its size multiplied by a pixel density,
+		// and left unset that density is one on any display denser than the
+		// layout but not by more than double — which is every ordinary retina
+		// laptop. A stage twelve hundred points wide would therefore ask for
+		// twelve hundred pixels and be sent a layer built for it, then paint it
+		// across twenty-four hundred. The picture was never sharp because the
+		// sharp one was never requested: a shared screen at full resolution
+		// needed a stage wider than most people's entire display.
+		//
+		// The cost is bandwidth, and it buys back the thing the bandwidth was
+		// being spent on in the first place.
+		adaptiveStream: { pixelDensity: "screen" },
 		dynacast: true,
 		videoCaptureDefaults: {
 			resolution: VideoPresets.h720.resolution,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GAP, ISLAND, planFocus, planGrid, stripCapacity } from "./plan";
+import { GAP, ISLAND, planClose, planFocus, planGrid, stripCapacity } from "./plan";
 
 const WINDOW = { width: 1600, height: 900 };
 
@@ -151,8 +151,10 @@ describe("planFocus", () => {
 
 describe("stripCapacity", () => {
 	it("fits what the width allows", () => {
+		// Both landscape, or this compares two different tile shapes rather
+		// than two widths.
 		expect(stripCapacity({ width: 1600, height: 900 })).toBeGreaterThan(
-			stripCapacity({ width: 800, height: 900 }),
+			stripCapacity({ width: 900, height: 600 }),
 		);
 	});
 
@@ -172,5 +174,98 @@ describe("stripCapacity", () => {
 			expect(spot.x).toBeGreaterThanOrEqual(GAP - 0.5);
 			expect(spot.x + spot.width).toBeLessThanOrEqual(width - GAP + 0.5);
 		}
+	});
+});
+
+/*
+ * Upright.
+ *
+ * Held in a hand the layout was answering a question it had not been written
+ * for: one other person took twenty-eight per cent of the screen and the face
+ * inside that band was cropped from a camera filming the other way round. What
+ * follows fixes the two figures that showed it.
+ */
+
+const PHONE = { width: 393, height: 852 };
+
+/** The share of usable height the pictures actually occupy. */
+function occupancy(plan: ReturnType<typeof planGrid>, container: typeof PHONE) {
+	const used = [...plan.values()].reduce((total, spot) => total + spot.width * spot.height, 0);
+	return used / (container.width * (container.height - ISLAND));
+}
+
+describe("planGrid, upright", () => {
+	it("fills a phone rather than banding it", () => {
+		// Measured at 0.28 before this: a letterbox in an empty screen. The
+		// bar is set from what upright tiles can actually reach on this screen
+		// rather than from a round number — three of them cannot pass about a
+		// half, and asking for more would only be asking for a squarer tile
+		// than a phone films in.
+		for (const count of [3, 4, 6]) {
+			const share = occupancy(planGrid(PHONE, ids(count)), PHONE);
+			expect(share, `${count} people`).toBeGreaterThan(0.45);
+		}
+	});
+
+	it("gives upright pictures an upright shape", () => {
+		const spot = [...planGrid(PHONE, ids(4)).values()][0];
+		if (!spot) throw new Error("nobody was placed");
+
+		// Taller than wide, because that is the shape a phone films in. A
+		// sixteen-by-nine tile here crops a standing person to their eyes.
+		expect(spot.height).toBeGreaterThan(spot.width);
+	});
+
+	it("keeps landscape shapes on a landscape screen", () => {
+		const spot = [...planGrid({ width: 1440, height: 900 }, ids(4)).values()][0];
+		if (!spot) throw new Error("nobody was placed");
+
+		expect(spot.width).toBeGreaterThan(spot.height);
+	});
+
+	it("still lets nobody overlap", () => {
+		for (const count of [2, 3, 4, 5, 6, 9]) {
+			const placed = [...planGrid(PHONE, ids(count)).values()];
+			for (let i = 0; i < placed.length; i++) {
+				for (let j = i + 1; j < placed.length; j++) {
+					expect(overlaps(placed[i]!, placed[j]!), `${count} people`).toBe(false);
+				}
+			}
+		}
+	});
+});
+
+describe("planClose", () => {
+	it("gives the whole screen to the one being looked at", () => {
+		const plan = planClose(PHONE, "them", ["me"]);
+		const them = plan.get("them");
+
+		expect(them).toEqual({ x: 0, y: 0, ...PHONE });
+	});
+
+	it("puts the other one in a corner, clear of the controls", () => {
+		const plan = planClose(PHONE, "them", ["me"]);
+		const me = plan.get("me");
+		if (!me) throw new Error("the card was not placed");
+
+		expect(me.x + me.width).toBeLessThanOrEqual(PHONE.width);
+		expect(me.y + me.height).toBeLessThanOrEqual(PHONE.height - ISLAND);
+		// Small enough to be a card rather than a second picture.
+		expect(me.width).toBeLessThan(PHONE.width / 2);
+	});
+
+	it("drops a card that would not fit rather than stacking it under the controls", () => {
+		const many = Array.from({ length: 12 }, (_, i) => `c${i}`);
+		const plan = planClose(PHONE, "them", many);
+
+		for (const id of many) {
+			const spot = plan.get(id);
+			if (!spot) continue;
+			expect(spot.y + spot.height).toBeLessThanOrEqual(PHONE.height - ISLAND);
+		}
+	});
+
+	it("plans nothing for an unmeasured container", () => {
+		expect(planClose({ width: 0, height: 0 }, "them", ["me"]).size).toBe(0);
 	});
 });

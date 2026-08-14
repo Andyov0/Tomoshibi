@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ChevronLeft } from "lucide-react";
 import { useCallback, useState } from "react";
 import { type Participant, type Track, api } from "./api";
 import { usePoll } from "./poll";
@@ -53,8 +54,16 @@ export function RoomsPanel({
 	);
 
 	return (
-		<div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[20rem_1fr]">
-			<div className="flex flex-col gap-4">
+		<div
+			className={cn(
+				"mx-auto grid max-w-6xl gap-3 sm:gap-4 lg:grid-cols-[20rem_1fr]",
+				// A drill-down while narrow: the list, then the room, with a way
+				// back. Stacked, the list would push the detail below the fold and
+				// every tap would become a scroll back up.
+				open && "max-lg:block",
+			)}
+		>
+			<div className={cn("flex flex-col gap-3 sm:gap-4", open && "max-lg:hidden")}>
 				<Card title="In progress" note={`${live.length}`}>
 					{error && <Failed>{error}</Failed>}
 
@@ -108,6 +117,7 @@ export function RoomsPanel({
 			{open ? (
 				<People
 					room={open}
+					onBack={() => setSelected(undefined)}
 					canModerate={canModerate}
 					acting={acting}
 					failure={failure}
@@ -127,6 +137,7 @@ export function RoomsPanel({
 
 function People({
 	room,
+	onBack,
 	canModerate,
 	acting,
 	failure,
@@ -136,6 +147,7 @@ function People({
 	onMute,
 }: {
 	room: string;
+	onBack: () => void;
 	canModerate: boolean;
 	acting: boolean;
 	failure?: string;
@@ -154,6 +166,14 @@ function People({
 			title={room}
 			note={`${people.length} ${people.length === 1 ? "person" : "people"}`}
 			className="self-start"
+			actions={
+				// The way back, carrying nothing but its own arrow: the room's
+				// name is already the title beside it.
+				<Button variant="ghost" size="sm" onClick={onBack} className="gap-1 lg:hidden">
+					<ChevronLeft className="size-3.5" />
+					Rooms
+				</Button>
+			}
 		>
 			{error && <Failed>{error}</Failed>}
 			{failure && <Failed>{failure}</Failed>}
@@ -268,37 +288,39 @@ function TrackRow({
 	const codec = track.mime.replace(/^(video|audio)\//i, "").toLowerCase();
 
 	return (
-		<li className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-md bg-surface-hi/50 px-2.5 py-1.5 text-xs">
-			<span className="w-24 shrink-0 text-fg-muted">{source(track.source)}</span>
+		// Two lines rather than one. What it is and how it is encoded is one
+		// thought; the layers underneath are another, and together they wanted
+		// four hundred and thirty points on a screen with three hundred.
+		<li className="rounded-md bg-surface-hi/50 px-2.5 py-1.5">
+			<div className="flex items-baseline gap-x-3 text-xs">
+				<span className="shrink-0 text-fg-muted">{source(track.source)}</span>
+				<span className="readout text-[11px]">{codec || "—"}</span>
 
-			<span className="readout text-[11px]">{codec || "—"}</span>
+				{track.width > 0 && (
+					<span className="readout text-[11px] tabular-nums">
+						{track.width}×{track.height}
+					</span>
+				)}
 
-			{track.width > 0 && (
-				<span className="readout text-[11px] tabular-nums">
-					{track.width}×{track.height}
-				</span>
-			)}
+				{track.muted && <span className="text-fg-muted text-[11px]">muted</span>}
 
-			{track.muted && <span className="text-fg-muted">muted</span>}
+				{canModerate && !track.muted && (
+					<Button
+						variant="ghost"
+						size="sm"
+						disabled={acting}
+						onClick={onMute}
+						className="ml-auto h-6 shrink-0 px-2 text-[11px]"
+					>
+						Mute
+					</Button>
+				)}
+			</div>
 
 			{track.layers.length > 0 && (
-				<span className="readout text-[11px] text-fg-muted tabular-nums">
-					{track.layers
-						.map((layer) => `${layer.height}p ${bitrate(layer.bitrate)}`)
-						.join("  ·  ")}
-				</span>
-			)}
-
-			{canModerate && !track.muted && (
-				<Button
-					variant="ghost"
-					size="sm"
-					disabled={acting}
-					onClick={onMute}
-					className="ml-auto h-6 px-2 text-[11px]"
-				>
-					Mute
-				</Button>
+				<p className="readout mt-0.5 text-[11px] text-fg-muted tabular-nums">
+					{track.layers.map((layer) => `${layer.height}p ${bitrate(layer.bitrate)}`).join("  ·  ")}
+				</p>
 			)}
 		</li>
 	);

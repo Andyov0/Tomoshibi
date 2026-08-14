@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"meet-live/internal/config"
-	"meet-live/internal/room"
+	"tomoshibi/internal/config"
+	"tomoshibi/internal/room"
 )
 
 // How long a session lasts without being renewed.

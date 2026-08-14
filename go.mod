@@ -1,4 +1,4 @@
-module meet-live
+module tomoshibi
 
 go 1.26
 

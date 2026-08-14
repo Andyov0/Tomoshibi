@@ -125,7 +125,7 @@ func (c *Control) call(
 	in, out proto.Message,
 ) error {
 	token, err := auth.NewAccessToken(c.key, c.secret).
-		SetIdentity("meet-live").
+		SetIdentity("tomoshibi").
 		SetVideoGrant(grant).
 		SetValidFor(time.Minute).
 		ToJWT()

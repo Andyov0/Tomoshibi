@@ -39,27 +39,32 @@ export function AuditPanel({ onSignedOut }: { onSignedOut: () => void }) {
 								// person refused twice in the same second.
 								// biome-ignore lint/suspicious/noArrayIndexKey: entries are positional
 								key={index}
-								className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-border border-b px-4 py-2 text-xs last:border-0"
+								className="flex flex-col gap-0.5 border-border border-b px-3 py-2 last:border-0 sm:px-4"
 							>
-								<time className="readout w-16 shrink-0 text-fg-muted tabular-nums">
-									{clock(entry.at)}
-								</time>
+								{/* Two lines rather than five columns. Fixed widths came
+								    to five hundred points, which is half again what a
+								    phone has to give them. When and what is one thought;
+								    who and where is another. */}
+								<div className="flex items-baseline gap-2 text-xs">
+									<time className="readout shrink-0 text-fg-muted tabular-nums">
+										{clock(entry.at)}
+									</time>
+									<span className={cn("truncate", entry.failed && "text-danger")}>
+										{entry.action}
+									</span>
+									<span className="ml-auto shrink-0 text-fg-muted/60 text-[11px]">
+										{day(entry.at)}
+									</span>
+								</div>
 
-								<span className={cn("w-40 shrink-0", entry.failed && "text-danger")}>
-									{entry.action}
-								</span>
-
-								<span className="readout w-28 shrink-0 text-fg-muted text-[11px]">
-									{entry.trip}
-								</span>
-
-								{entry.room && <span className="text-fg-muted">{entry.room}</span>}
-								{entry.target && (
-									<span className="readout text-[11px] text-fg-muted">{entry.target}</span>
-								)}
-								{entry.reason && <span className="text-danger">{entry.reason}</span>}
-
-								<span className="ml-auto shrink-0 text-fg-muted/60">{day(entry.at)}</span>
+								<div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-[11px]">
+									<span className="readout text-fg-muted">{entry.trip}</span>
+									{entry.room && <span className="text-fg-muted">{entry.room}</span>}
+									{entry.target && (
+										<span className="readout truncate text-fg-muted/70">{entry.target}</span>
+									)}
+									{entry.reason && <span className="text-danger">{entry.reason}</span>}
+								</div>
 							</li>
 						))}
 					</ul>

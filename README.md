@@ -1,4 +1,4 @@
-# meet-live
+# tomoshibi
 
 A video meeting server in one binary: the media server, the join endpoint, and
 the client, compiled together.
@@ -20,8 +20,8 @@ dev/         Configuration for running it locally.
 
 ```bash
 cd web && bun install && bun run build
-go build -o meet-live .
-cd dev && ../meet-live meet.yaml
+go build -o tomoshibi .
+cd dev && ../tomoshibi meet.yaml
 ```
 
 Open the printed URL and pick a room with `#/room-name`. Two tabs in different
@@ -199,9 +199,9 @@ request.
 ## Commands
 
 ```bash
-meet-live [serve] [config.yaml]   Serve the client, the API, and the media
-meet-live keygen                  Print a fresh API key and secret
-meet-live rooms <database>        List the rooms a store has seen
+tomoshibi [serve] [config.yaml]   Serve the client, the API, and the media
+tomoshibi keygen                  Print a fresh API key and secret
+tomoshibi rooms <database>        List the rooms a store has seen
 ```
 
 `rooms` needs the server stopped: the store admits one process at a time. Live

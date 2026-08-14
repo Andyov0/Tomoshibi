@@ -199,7 +199,7 @@ func checkAdmins(admins []Admin) error {
 
 		switch {
 		case admin.Trip == "":
-			return fmt.Errorf("%s has no trip. Run `meet-live admin new` to make one", where)
+			return fmt.Errorf("%s has no trip. Run `tomoshibi admin new` to make one", where)
 
 		case len(admin.Trip) != tripLength:
 			return fmt.Errorf(
@@ -298,7 +298,7 @@ func credentials(lk *livekit.Config) (string, string, error) {
 	case 0:
 		return "", "", fmt.Errorf(
 			"no API key: add one under `keys` in the configuration, " +
-				"or run `meet-live keygen` to generate a pair",
+				"or run `tomoshibi keygen` to generate a pair",
 		)
 	case 1:
 		for key, secret := range lk.Keys {

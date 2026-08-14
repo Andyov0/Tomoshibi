@@ -11,6 +11,15 @@ import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { Mic, MicOff, Video, VideoOff } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
+/*
+ * The keys below still say the name this was called before.
+ *
+ * Deliberate, and not an oversight to tidy. They are what a browser already has
+ * written down: a display name, a device choice, a language, an identity that
+ * keeps somebody the same person across a reload. Renaming them renames nothing
+ * — it abandons all of it, and everybody using this finds themselves nameless
+ * and back in English on the morning after a deployment.
+ */
 const NAME_KEY = "meet-live.name";
 const DEVICES_KEY = "meet-live.devices";
 

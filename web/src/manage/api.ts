@@ -19,9 +19,18 @@ export interface Now {
 	rooms: number;
 	clients: number;
 	tracks: { in: number; out: number };
-	bytes: { in: number; out: number; inPerSec: number; outPerSec: number };
+	bytes: { in: number; out: number; inPerSec: number; outPerSec: number; window: number };
 	packets: { nackTotal: number; nackPerSec: number };
 	cpu: { count: number; load: number };
+}
+
+export interface Sample {
+	at: string;
+	in: number;
+	out: number;
+	rooms: number;
+	clients: number;
+	nack: number;
 }
 
 export interface LiveRoom {
@@ -154,6 +163,7 @@ export const api = {
 	signOut: () => call<void>("/session", { method: "DELETE" }),
 
 	now: () => call<Now>("/now"),
+	history: () => call<Sample[]>("/history"),
 	rooms: () => call<{ live: LiveRoom[]; known: KnownRoom[] | null }>("/rooms"),
 	participants: (room: string) =>
 		call<Participant[]>(`/rooms/${encodeURIComponent(room)}/participants`),

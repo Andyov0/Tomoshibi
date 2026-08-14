@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"meet-live/internal/config"
-	"meet-live/internal/room"
+	"tomoshibi/internal/config"
+	"tomoshibi/internal/room"
 )
 
 /*
@@ -203,7 +203,7 @@ func TestGuessingIsBoundedEvenFromManyAddresses(t *testing.T) {
 	// to be, and a thousand hosts is a thousand budgets. The ceiling on the
 	// endpoint as a whole is what has no give in it.
 	for i := 0; i < overall; i++ {
-		caller := string(rune('a' + i%26)) + string(rune('a'+i/26))
+		caller := string(rune('a'+i%26)) + string(rune('a'+i/26))
 		limit.Failed(caller)
 	}
 

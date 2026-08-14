@@ -6,7 +6,7 @@
 // service to deploy and no shared secret to distribute.
 //
 // Its own HTTP listener is kept on the loopback interface. Everything a browser
-// talks to arrives at [meet-live/internal/app], which forwards the signalling
+// talks to arrives at [tomoshibi/internal/app], which forwards the signalling
 // paths here. That leaves one port facing the network for TCP, and it is ours.
 package rtc
 
@@ -94,17 +94,49 @@ func Start(conf *config.Config) (*Server, error) {
 
 // Stats is what the media server knows about its own load.
 //
-// Refreshed on the way out rather than read from whatever the last background
-// sweep left behind, because the caller is a page somebody is watching and a
-// figure two minutes stale is worse than no figure: it reads as current.
+// Read, and only read. Asking the node to refresh on the way out looks like the
+// careful thing and is the opposite: refreshing appends to a ring of samples the
+// server keeps for working out rates, and a rate is only emitted when that ring
+// still holds something ten seconds old. The ring has five places. Filled at the
+// server's own pace that is exactly ten seconds; with a page polling as well,
+// the oldest sample is never old enough and no rate is ever produced.
 //
-// The counters are a running total since this process started, and the rates
-// are a recent sample. Good for a trend and for how near the ceiling is;
-// useless for an account of a month, and the difference matters enough to say
-// wherever they are shown.
+// So a management page watching the throughput was, by watching it, the reason
+// there was none.
+//
+// What is returned is therefore up to two seconds stale, which is the interval
+// the server refreshes on and far inside what anybody can perceive on a figure
+// that moves this slowly.
 func (s *Server) Stats() *livekit.NodeStats {
-	s.node.UpdateNodeStats()
 	return s.node.Clone().GetStats()
+}
+
+// Throughput is what is going in and out, per second.
+//
+// Not `BytesInPerSec`, which is what it looks like it should be: that field is
+// marked deprecated in the protocol and is assigned nowhere in the media
+// server, so it reads zero however much is flowing. The rates live in a list
+// with one entry per configured measurement window.
+//
+// The shortest window is taken, because this is drawn on a page somebody is
+// watching and the newest answer is the one they mean. Its length is returned
+// alongside: ten seconds of mean is not an instantaneous reading, and a figure
+// that does not say which it is will be read as the wrong one.
+func (s *Server) Throughput() (in, out float64, window time.Duration) {
+	rates := s.Stats().GetRates()
+	if len(rates) == 0 {
+		return 0, 0, 0
+	}
+
+	best := rates[0]
+	for _, rate := range rates[1:] {
+		if rate.GetDuration() > 0 && rate.GetDuration() < best.GetDuration() {
+			best = rate
+		}
+	}
+
+	return float64(best.GetBytesIn()), float64(best.GetBytesOut()),
+		time.Duration(best.GetDuration()) * time.Second
 }
 
 // Node identifies this server, for a page that has to say which one it is

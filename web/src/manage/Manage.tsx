@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { type Who, api } from "./api";
+import { usePoll } from "./poll";
 import { AuditPanel } from "./AuditPanel";
 import { HealthPanel } from "./HealthPanel";
 import { NowPanel } from "./NowPanel";
@@ -20,6 +21,12 @@ export function Manage() {
 	const [who, setWho] = useState<Who>();
 	const [asking, setAsking] = useState(true);
 	const [panel, setPanel] = useState<Panel>(() => remembered());
+
+	// Polled here rather than inside the panel that shows it, because the
+	// reading has to survive leaving that panel: it sits in the rail and in the
+	// crown, which are on screen whichever page is. Polling it in one place also
+	// means one request rather than two when the panel is open.
+	const { value: load } = usePoll(api.now, { every: 5000, onSignedOut: () => setWho(undefined) });
 
 	const identify = useCallback(async () => {
 		try {
@@ -56,8 +63,20 @@ export function Manage() {
 	if (!who) return <SignIn onIn={identify} />;
 
 	return (
-		<Shell who={who} panel={panel} onPanel={choose} onSignOut={signOut}>
-			{panel === "Now" && <NowPanel onSignedOut={signedOut} />}
+		<Shell
+			who={who}
+			panel={panel}
+			onPanel={choose}
+			onSignOut={signOut}
+			load={
+				load && {
+					out: load.bytes.outPerSec,
+					rooms: load.rooms,
+					clients: load.clients,
+				}
+			}
+		>
+			{panel === "Now" && <NowPanel now={load} onSignedOut={signedOut} />}
 			{panel === "Rooms" && (
 				<RoomsPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
 			)}

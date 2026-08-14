@@ -1,5 +1,5 @@
 {
-  "name": "meet-live-web",
+  "name": "tomoshibi-web",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,7 +22,8 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.9.6",
     "sonner": "^2.0.8",
-    "tailwind-merge": "^3.4.1"
+    "tailwind-merge": "^3.4.1",
+    "uplot": "^1.6.32"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.2",

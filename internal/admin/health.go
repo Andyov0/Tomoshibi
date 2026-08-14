@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"meet-live/internal/config"
+	"tomoshibi/internal/config"
 )
 
 // Checks are the things that have gone quietly wrong before.

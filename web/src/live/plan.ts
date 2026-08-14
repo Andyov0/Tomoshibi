@@ -44,8 +44,49 @@ export const ISLAND = 68;
 /** How tall a picture is in the filmstrip. */
 const STRIP = 112;
 
-/** The shape every picture keeps. */
-const ASPECT = 16 / 9;
+/**
+ * The shape a picture keeps, which is not one shape.
+ *
+ * A phone films in the shape it is held in, and a layout that only knows
+ * sixteen by nine crops a face standing upright down to a band across its eyes.
+ * The same arrangement upright wastes most of the screen: measured, one other
+ * person on a phone took twenty-eight per cent of it and left the rest black.
+ *
+ * So the tile follows the viewport. Three by four upright rather than the full
+ * nine by sixteen, because a tile as narrow as the camera would leave two
+ * columns impossible and the grid is worth more than the last of the crop.
+ */
+const LANDSCAPE = 16 / 9;
+const UPRIGHT = 3 / 4;
+
+/**
+ * Whether this is a screen held upright, rather than a window that happens to
+ * be tall.
+ *
+ * A fifth taller than it is wide, not merely taller. Flipping at exactly square
+ * makes the whole arrangement change shape as a window is dragged through that
+ * point, and a layout that reshapes itself under the pointer is worse than one
+ * that is slightly wrong. A phone held upright is past two to one and never
+ * near the boundary.
+ */
+export function upright(container: Size): boolean {
+	return container.height > container.width * 1.2;
+}
+
+function aspectFor(container: Size): number {
+	return upright(container) ? UPRIGHT : LANDSCAPE;
+}
+
+/**
+ * How many pictures share the screen before one of them is given the whole of
+ * it.
+ *
+ * Two people is not a grid of two. It is one person being looked at and one
+ * being checked on, and every telephone made since video calling existed draws
+ * it that way: the other person fills the screen and you are a card in the
+ * corner. The grid begins at three.
+ */
+export const ALONE_TOGETHER = 2;
 
 /** Somewhere for one picture to be. */
 export interface Spot {
@@ -89,6 +130,7 @@ export function planGrid(container: Size, ids: string[]): Plan {
 		{ width: container.width, height: Math.max(0, container.height - ISLAND) },
 		ids.length,
 		GAP,
+		aspectFor(container),
 	);
 	if (!layout) return plan;
 
@@ -151,7 +193,7 @@ export function planFocus(
 
 	if (!showStrip) return plan;
 
-	const width = STRIP * ASPECT;
+	const width = STRIP * aspectFor(container);
 	const total = strip.length * width + (strip.length - 1) * GAP;
 	const left = (container.width - total) / 2;
 
@@ -174,8 +216,58 @@ export function planFocus(
  * ever showing anything.
  */
 export function stripCapacity(container: Size): number {
-	const width = STRIP * ASPECT;
+	const width = STRIP * aspectFor(container);
 	const usable = container.width - 2 * GAP + GAP;
 
 	return Math.max(1, Math.floor(usable / (width + GAP)));
 }
+
+/**
+ * One picture filling the screen, with the rest as cards over it.
+ *
+ * The arrangement two people deserve and the one every telephone uses: the
+ * other person takes the whole screen and you are a card in the corner. A grid
+ * of two on a phone measured fifty-six per cent of the screen and read as two
+ * strangers rather than a conversation.
+ *
+ * The cards sit over the picture rather than beside it, so nothing is taken
+ * from the person being looked at. They are placed from the top down the
+ * trailing edge, clear of the controls at the foot and of the room's name at
+ * the head.
+ */
+export function planClose(container: Size, filling: string, cards: string[]): Plan {
+	const plan: Plan = new Map();
+	if (container.width <= 0 || container.height <= 0) return plan;
+
+	plan.set(filling, { x: 0, y: 0, width: container.width, height: container.height });
+
+	// A quarter of the width upright, a fifth across, and never past what the
+	// space beside the controls can hold.
+	const width = Math.min(
+		container.width * (upright(container) ? 0.26 : 0.18),
+		(container.height - ISLAND - 2 * GAP) / 2,
+	);
+	const height = width / aspectFor(container);
+
+	cards.forEach((id, index) => {
+		const top = HEADROOM + index * (height + GAP);
+		if (top + height > container.height - ISLAND) return;
+
+		plan.set(id, {
+			x: container.width - width - GAP,
+			y: top,
+			width,
+			height,
+		});
+	});
+
+	return plan;
+}
+
+/**
+ * Room left at the head for whatever is drawn over the picture.
+ *
+ * The room's name sits there, and on a phone so does the notch. Cards begin
+ * below it rather than under either.
+ */
+const HEADROOM = 56;

@@ -1,4 +1,4 @@
-// Command meet-live is a video meeting server: the media server, the join
+// Command tomoshibi is a video meeting server: the media server, the join
 // endpoint, and the client, in one binary.
 //
 // The media server is embedded rather than run alongside. Folding the two
@@ -24,11 +24,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"meet-live/internal/app"
-	"meet-live/internal/config"
-	"meet-live/internal/room"
-	"meet-live/internal/rtc"
-	"meet-live/internal/store"
+	"tomoshibi/internal/app"
+	"tomoshibi/internal/config"
+	"tomoshibi/internal/room"
+	"tomoshibi/internal/rtc"
+	"tomoshibi/internal/store"
 )
 
 // The built client.
@@ -94,19 +94,19 @@ func split(args []string) (string, []string) {
 		return args[0], args[1:]
 	default:
 		// Anything else is taken as the configuration file, so
-		// `meet-live meet.yaml` works without the ceremony.
+		// `tomoshibi meet.yaml` works without the ceremony.
 		return "serve", args
 	}
 }
 
 func usage(w *os.File) {
-	fmt.Fprint(w, `meet-live: a video meeting server in one binary
+	fmt.Fprint(w, `tomoshibi: a video meeting server in one binary
 
-  meet-live [serve] [config.yaml]   Serve the client, the API, and the media
-  meet-live keygen                  Print a fresh API key and secret
-  meet-live rooms <database>        List the rooms a store has seen
-  meet-live admin new [config.yaml] Make an administrator's passphrase and trip
-  meet-live admin trip [config.yaml] <passphrase>
+  tomoshibi [serve] [config.yaml]   Serve the client, the API, and the media
+  tomoshibi keygen                  Print a fresh API key and secret
+  tomoshibi rooms <database>        List the rooms a store has seen
+  tomoshibi admin new [config.yaml] Make an administrator's passphrase and trip
+  tomoshibi admin trip [config.yaml] <passphrase>
                                     Work out the trip an existing passphrase gives
 
 Running with no arguments serves with built-in defaults.

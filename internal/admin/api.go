@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"meet-live/internal/config"
-	"meet-live/internal/room"
-	"meet-live/internal/rtc"
-	"meet-live/internal/store"
+	"tomoshibi/internal/config"
+	"tomoshibi/internal/room"
+	"tomoshibi/internal/rtc"
+	"tomoshibi/internal/store"
 
 	"github.com/livekit/protocol/livekit"
 )
@@ -25,17 +25,47 @@ type API struct {
 	media    *rtc.Server
 	store    *store.Store
 	log      *Log
+	history  *History
+	stop     chan struct{}
 }
 
 // New assembles it.
 func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte) *API {
-	return &API{
+	api := &API{
 		conf:     conf,
 		sessions: NewSessions(conf.Meet.Admins, tripKey),
 		control:  media.Manage(conf.Key, conf.Secret),
 		media:    media,
 		store:    st,
 		log:      NewLog(),
+		history:  NewHistory(),
+		stop:     make(chan struct{}),
+	}
+
+	// Sampled on its own schedule rather than when a page asks. A trend with a
+	// gap wherever nobody was looking is not a trend, and the first thing
+	// anybody does with one is read the gap as quiet.
+	if api.Configured() {
+		go api.history.Watch(api.stop, api.sample)
+	}
+
+	return api
+}
+
+// Close stops sampling.
+func (a *API) Close() {
+	close(a.stop)
+}
+
+// sample reads one moment for the history.
+func (a *API) sample() Sample {
+	stats := a.media.Stats()
+	in, out, _ := a.media.Throughput()
+
+	return Sample{
+		At: time.Now().UTC(), In: in, Out: out,
+		Rooms: stats.GetNumRooms(), Clients: stats.GetNumClients(),
+		Nack: stats.GetNackPerSec(),
 	}
 }
 
@@ -59,6 +89,7 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/session", a.whoami)
 
 	mux.HandleFunc("GET /api/admin/now", a.observe(a.now))
+	mux.HandleFunc("GET /api/admin/history", a.observe(a.trend))
 	mux.HandleFunc("GET /api/admin/rooms", a.observe(a.rooms))
 	mux.HandleFunc("GET /api/admin/rooms/{room}/participants", a.observe(a.participants))
 	mux.HandleFunc("GET /api/admin/health", a.observe(a.health))
@@ -176,8 +207,13 @@ func (a *API) gate(
 }
 
 // now is the one screen that answers "how is it going".
+func (a *API) trend(_ Session, w http.ResponseWriter, _ *http.Request) {
+	respond(w, a.history.Since())
+}
+
 func (a *API) now(_ Session, w http.ResponseWriter, _ *http.Request) {
 	stats := a.media.Stats()
+	in, out, window := a.media.Throughput()
 	id, ip := a.media.Node()
 
 	respond(w, map[string]any{
@@ -188,7 +224,12 @@ func (a *API) now(_ Session, w http.ResponseWriter, _ *http.Request) {
 		"tracks":  map[string]int32{"in": stats.GetNumTracksIn(), "out": stats.GetNumTracksOut()},
 		"bytes": map[string]any{
 			"in": stats.GetBytesIn(), "out": stats.GetBytesOut(),
-			"inPerSec": stats.GetBytesInPerSec(), "outPerSec": stats.GetBytesOutPerSec(),
+			// From the list of measured rates rather than the flat field beside
+			// them, which the protocol marks deprecated and the media server
+			// never assigns. The window is sent with them: ten seconds of mean
+			// is not an instantaneous reading, and a figure that does not say
+			// which it is gets read as the wrong one.
+			"inPerSec": in, "outPerSec": out, "window": window.Seconds(),
 		},
 		"packets": map[string]any{
 			"nackTotal": stats.GetNackTotal(), "nackPerSec": stats.GetNackPerSec(),

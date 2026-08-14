@@ -48,11 +48,16 @@ function Rows({ values }: { values?: Record<string, unknown> }) {
 	if (!values) return <p className="px-4 py-3 text-fg-muted text-xs">—</p>;
 
 	return (
-		<dl className="grid grid-cols-[minmax(9rem,auto)_1fr] gap-x-4">
+		// Name above value while narrow, beside it once there is room. A label
+		// column of nine rems leaves under two hundred points for a value on a
+		// phone, and the values here are addresses and lists.
+		<dl className="grid gap-x-4 sm:grid-cols-[minmax(9rem,auto)_1fr]">
 			{Object.entries(values).map(([name, value]) => (
 				<div key={name} className="contents">
-					<dt className="border-border border-b px-4 py-2 text-fg-muted text-xs">{name}</dt>
-					<dd className="readout border-border border-b px-4 py-2 text-[12px] tabular-nums">
+					<dt className="px-3 pt-2 text-fg-muted text-xs sm:border-border sm:border-b sm:px-4 sm:py-2">
+						{name}
+					</dt>
+					<dd className="readout border-border border-b px-3 pt-0.5 pb-2 text-[12px] tabular-nums sm:px-4 sm:py-2">
 						{show(value)}
 					</dd>
 				</div>

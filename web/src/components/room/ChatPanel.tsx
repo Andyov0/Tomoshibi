@@ -58,9 +58,17 @@ export function ChatPanel({
 	return (
 		<aside
 			className={cn(
-				"absolute right-3 bottom-3 z-20 flex w-66 flex-col overflow-hidden",
-				"max-h-[min(26rem,calc(100%-5.5rem))] rounded-xl border border-border",
+				"absolute z-20 flex flex-col overflow-hidden border border-border",
 				"bg-surface/95 shadow-2xl backdrop-blur-md",
+				// A sheet up the bottom edge while narrow. As a card it is
+				// sixteen and a half rems wide, which is two thirds of a phone,
+				// and it is anchored lower than the controls — so it covers them.
+				// Nothing about it is wrong on a laptop; it was never asked this.
+				"inset-x-0 bottom-0 h-[55%] rounded-t-2xl",
+				"pb-[env(safe-area-inset-bottom)]",
+				// A card again once there is room beside the pictures.
+				"sm:inset-x-auto sm:right-3 sm:bottom-3 sm:h-auto sm:w-66 sm:rounded-xl sm:pb-0",
+				"sm:max-h-[min(26rem,calc(100%-5.5rem))]",
 			)}
 		>
 			<header className="flex items-center justify-between border-border border-b px-3 py-2">

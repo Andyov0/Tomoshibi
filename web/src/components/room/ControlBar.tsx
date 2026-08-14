@@ -8,6 +8,7 @@ import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
 import { ShareButton } from "./ShareButton";
 import { useLocalState } from "@/hooks/useLocalState";
+import { canShareScreen } from "@/live/context";
 import { deviceRefused } from "@/live/notices";
 
 /**
@@ -72,7 +73,12 @@ export function ControlBar({
 				// happening in it. Floating gives the pictures the whole window
 				// and puts the controls on the same layer as everything else
 				// that appears over them: the panel, the notices, the bubbles.
-				"-translate-x-1/2 absolute bottom-5 left-1/2 z-20 flex items-center gap-1.5",
+				"-translate-x-1/2 absolute left-1/2 z-20 flex items-center gap-1.5",
+				// Clear of the home indicator, which the document asks to draw
+				// under and nothing here was reading. Twenty points from the
+				// bottom of the screen is underneath it on every phone that has
+				// one.
+				"bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))]",
 				"rounded-full border border-border bg-surface/90 p-1.5 shadow-2xl backdrop-blur-md",
 				// Steps aside when the stage takes the screen: somebody who asked
 				// for the whole screen asked for the whole screen.
@@ -101,11 +107,13 @@ export function ControlBar({
 				{local.camera ? <Video /> : <VideoOff />}
 			</Toggle>
 
-			<ShareButton
-				sharing={local.screen}
-				onStart={(frameRate) => void guard(() => share(room, true, frameRate))()}
-				onStop={() => void guard(() => share(room, false, 30))()}
-			/>
+			{canShareScreen() && (
+				<ShareButton
+					sharing={local.screen}
+					onStart={(frameRate) => void guard(() => share(room, true, frameRate))()}
+					onStop={() => void guard(() => share(room, false, 30))()}
+				/>
+			)}
 
 			<Toggle
 				on={chatting}

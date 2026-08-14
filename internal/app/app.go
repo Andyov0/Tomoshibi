@@ -13,12 +13,12 @@ import (
 	"net/http"
 	"strings"
 
-	"meet-live/internal/admin"
-	"meet-live/internal/config"
-	"meet-live/internal/limit"
-	"meet-live/internal/room"
-	"meet-live/internal/rtc"
-	"meet-live/internal/store"
+	"tomoshibi/internal/admin"
+	"tomoshibi/internal/config"
+	"tomoshibi/internal/limit"
+	"tomoshibi/internal/room"
+	"tomoshibi/internal/rtc"
+	"tomoshibi/internal/store"
 )
 
 // App holds what the handlers need.

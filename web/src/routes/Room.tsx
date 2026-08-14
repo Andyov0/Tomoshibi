@@ -19,7 +19,14 @@ import { useT } from "@/hooks/useT";
 import { watch } from "@/live/notices";
 import { impersonating } from "@/live/name";
 import type { Said } from "@/live/chat";
-import { TILES_PER_PAGE, planFocus, planGrid, stripCapacity } from "@/live/plan";
+import {
+	ALONE_TOGETHER,
+	TILES_PER_PAGE,
+	planClose,
+	planFocus,
+	planGrid,
+	stripCapacity,
+} from "@/live/plan";
 import { type Surface, owner, surfaces } from "@/live/surface";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useCallback, useEffect, useState } from "react";
@@ -125,9 +132,16 @@ function Stage({
 	const paged = usePagination(rest, Math.max(1, capacity - mine.length));
 	const shown = [...mine, ...paged.items].map((surface) => surface.id);
 
+	// Two people is not a grid of two, and on a phone the grid of two was
+	// measured at fifty-six per cent of the screen. One person fills it and the
+	// other is a card, which is what a telephone has always done.
+	const close = !pinned && all.length <= ALONE_TOGETHER && rest.length > 0;
+
 	const plan = pinned
 		? planFocus(size, pinned.id, screen.active ? [] : shown, { fullscreen: screen.active })
-		: planGrid(size, shown);
+		: close
+			? planClose(size, rest[0]!.id, self ? [self.id] : [])
+			: planGrid(size, shown);
 
 	// Somebody sharing their screen is two pictures. Whichever is not on the
 	// stage is what the switch on the stage offers, and finding it here is the

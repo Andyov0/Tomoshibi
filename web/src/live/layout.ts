@@ -12,8 +12,14 @@
  * and the one giving each person the most space wins.
  */
 
-/** The shape every picture keeps. */
-const ASPECT = 16 / 9;
+/**
+ * The shape a picture keeps, given by the caller.
+ *
+ * Not a constant any more. A phone films in the shape it is held in, and an
+ * arrangement that only knows sixteen by nine crops a face standing upright to
+ * a band across its eyes — while leaving most of the screen black around it.
+ */
+const DEFAULT_ASPECT = 16 / 9;
 
 /**
  * How much of the container's height an arrangement may occupy.
@@ -46,6 +52,7 @@ export function arrange(
 	container: { width: number; height: number },
 	count: number,
 	gap = 8,
+	aspect = DEFAULT_ASPECT,
 ): Arrangement | undefined {
 	const { width, height } = container;
 	if (count <= 0 || width <= 0 || height <= 0) return undefined;
@@ -62,13 +69,19 @@ export function arrange(
 
 		// Whichever dimension runs out first decides the size; the other keeps
 		// the aspect ratio, and the slack becomes the space around the tiles.
-		let tileWidth = Math.min(cellWidth, cellHeight * ASPECT);
-		let tileHeight = tileWidth / ASPECT;
+		let tileWidth = Math.min(cellWidth, cellHeight * aspect);
+		let tileHeight = tileWidth / aspect;
 
-		const ceiling = (height * FILL - (rows - 1) * gap) / rows;
+		// The ceiling exists to stop one person filling a wide window edge to
+		// edge, which reads as a wall rather than a picture. Upright there is no
+		// such danger — the screen is narrow and the picture is bounded by the
+		// width long before it is by the height — and applying it there throws
+		// away the height the arrangement was reshaped to use.
+		const fill = container.height > container.width * 1.2 ? 1 : FILL;
+		const ceiling = (height * fill - (rows - 1) * gap) / rows;
 		if (tileHeight > ceiling) {
 			tileHeight = ceiling;
-			tileWidth = tileHeight * ASPECT;
+			tileWidth = tileHeight * aspect;
 		}
 
 		// Empty cells hold space without showing anybody, so what is compared is

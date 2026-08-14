@@ -74,6 +74,42 @@ func IssueTrip() string {
 	return tripAlphabet.EncodeToString(raw)[:TripLength]
 }
 
+// NewPassphrase makes one nobody will guess.
+//
+// Generated rather than chosen, and that distinction is the whole of the
+// difference between a signature worth trusting and one that is not. A
+// signature cannot be attacked offline without this deployment's key, so the
+// only way at it is through the join endpoint — where the rate limiter stands.
+// But the limiter counts per address, and an attacker with a thousand of them
+// has a thousand budgets. Against fifty bits that is still nothing; against a
+// passphrase somebody thought of, it is about a quarter of an hour.
+//
+// Ten words from the alphabet below is fifty bits, matched to the signature they
+// produce: making the passphrase stronger than its own output would be effort
+// spent past the point where anything improves.
+func NewPassphrase() string {
+	// Seven bytes encode to twelve characters; the first ten are the fifty bits
+	// wanted, and the remainder is discarded rather than rounded into.
+	raw := make([]byte, 7)
+	if _, err := rand.Read(raw); err != nil {
+		panic(fmt.Sprintf("read random bytes: %v", err))
+	}
+
+	letters := tripAlphabet.EncodeToString(raw)[:TripLength]
+
+	// Grouped, because this is read off one screen and typed into another, and
+	// an unbroken run of ten characters is where a person loses their place.
+	var out strings.Builder
+	for i := 0; i < len(letters); i += 5 {
+		if i > 0 {
+			out.WriteByte('-')
+		}
+		out.WriteString(letters[i : i+5])
+	}
+
+	return out.String()
+}
+
 // Signature is the mark an identity carries.
 type Signature struct {
 	// Trip is the mark itself.

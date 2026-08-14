@@ -21,6 +21,7 @@ import (
 	"github.com/livekit/livekit-server/pkg/routing"
 	"github.com/livekit/livekit-server/pkg/service"
 	"github.com/livekit/livekit-server/pkg/telemetry/prometheus"
+	"github.com/livekit/protocol/livekit"
 )
 
 // Paths the media server owns. Everything else belongs to the application.
@@ -34,6 +35,10 @@ var Paths = []string{"/rtc", "/rtc/", "/twirp/"}
 type Server struct {
 	inner *service.LivekitServer
 	proxy *httputil.ReverseProxy
+	node  routing.LocalNode
+	// upstream is where this process reaches the media server's own HTTP,
+	// which is loopback and nowhere else.
+	upstream string
 }
 
 // Start builds and starts the media server, returning once it is accepting
@@ -72,12 +77,40 @@ func Start(conf *config.Config) (*Server, error) {
 		return nil, err
 	}
 
-	upstream, err := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", inner.HTTPPort()))
+	address := fmt.Sprintf("http://127.0.0.1:%d", inner.HTTPPort())
+
+	upstream, err := url.Parse(address)
 	if err != nil {
 		return nil, fmt.Errorf("address the media server: %w", err)
 	}
 
-	return &Server{inner: inner, proxy: httputil.NewSingleHostReverseProxy(upstream)}, nil
+	return &Server{
+		inner:    inner,
+		proxy:    httputil.NewSingleHostReverseProxy(upstream),
+		node:     node,
+		upstream: address,
+	}, nil
+}
+
+// Stats is what the media server knows about its own load.
+//
+// Refreshed on the way out rather than read from whatever the last background
+// sweep left behind, because the caller is a page somebody is watching and a
+// figure two minutes stale is worse than no figure: it reads as current.
+//
+// The counters are a running total since this process started, and the rates
+// are a recent sample. Good for a trend and for how near the ceiling is;
+// useless for an account of a month, and the difference matters enough to say
+// wherever they are shown.
+func (s *Server) Stats() *livekit.NodeStats {
+	s.node.UpdateNodeStats()
+	return s.node.Clone().GetStats()
+}
+
+// Node identifies this server, for a page that has to say which one it is
+// looking at.
+func (s *Server) Node() (id string, ip string) {
+	return string(s.node.NodeID()), s.node.NodeIP()
 }
 
 // await blocks until the server is running, it fails, or patience runs out.

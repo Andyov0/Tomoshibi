@@ -15,6 +15,20 @@ export default defineConfig({
 			"@": resolve("./src"),
 		},
 	},
+	build: {
+		rollupOptions: {
+			// Two pages rather than one with a route in it. The management code
+			// then never reaches a participant: it is not in their bundle, not
+			// in a chunk their bundle knows the name of, and on a deployment
+			// with no administrator configured the server does not serve this
+			// document at all — which a route inside the client could not be,
+			// since both would be the same file.
+			input: {
+				index: resolve("./index.html"),
+				admin: resolve("./admin.html"),
+			},
+		},
+	},
 	server: {
 		port: 5173,
 

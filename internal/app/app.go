@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strings"
 
+	"meet-live/internal/admin"
 	"meet-live/internal/config"
 	"meet-live/internal/limit"
 	"meet-live/internal/room"
@@ -28,6 +29,7 @@ type App struct {
 	media   *rtc.Server
 	web     http.Handler
 	tripKey []byte
+	admin   *admin.API
 }
 
 // New assembles the application.
@@ -39,6 +41,7 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 		media:   media,
 		web:     web,
 		tripKey: tripKey,
+		admin:   admin.New(conf, media, st, tripKey),
 	}
 }
 
@@ -50,6 +53,11 @@ func (a *App) Handler() http.Handler {
 		mux.Handle(path, a.media.Handler())
 	}
 
+	// Registered before the client's fallback, and only where somebody
+	// configured an administrator. Absent that, these paths are not refused —
+	// they do not exist, and answer like any other address nobody claimed.
+	a.admin.Mount(mux)
+
 	mux.HandleFunc("POST /api/rooms/{room}/join", a.join)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -58,6 +66,21 @@ func (a *App) Handler() http.Handler {
 	// Registered without a method, because a route that matched fewer methods
 	// than the wildcards above would be an ambiguity the router refuses to
 	// resolve. Anything not claimed by a route above is the client.
+	// Anything under /api that no route above claimed. Without this it reaches
+	// the client's fallback and comes back as the document with a 200, which
+	// tells a caller that a misspelled endpoint worked and hands a script an
+	// HTML page where it expected JSON.
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, _ *http.Request) {
+		fail(w, http.StatusNotFound, reasonNoSuchEndpoint)
+	})
+
+	// The management document, served only where somebody configured an
+	// administrator. Not refused when they have not: it is not there, and the
+	// address answers exactly like any other nobody claimed. A sign-in page on
+	// a deployment with nobody to sign in would be a door fitted to a wall.
+	mux.HandleFunc("GET /admin", a.manage)
+	mux.HandleFunc("GET /admin/", a.manage)
+
 	mux.Handle("/", a.web)
 
 	return mux
@@ -92,6 +115,21 @@ type joinResponse struct {
 // The client may send back the identity it was given before, so that reloading a
 // tab keeps the same one. Without that, a refresh looks to everybody else like a
 // second participant arriving while the first is still being cleaned up.
+// manage serves the management document.
+func (a *App) manage(w http.ResponseWriter, r *http.Request) {
+	if !a.admin.Configured() {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Rewritten rather than redirected, so that the address stays where
+	// somebody typed it and a reload lands in the same place.
+	r = r.Clone(r.Context())
+	r.URL.Path = "/admin.html"
+
+	a.web.ServeHTTP(w, r)
+}
+
 func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// Charged first, so a refused caller costs a header lookup rather than a
 	// signature.
@@ -199,9 +237,10 @@ func respond(w http.ResponseWriter, body any) {
 //
 // So the client owns every word it shows, and this owns only what happened.
 const (
-	reasonRateLimited = "rate_limited"
-	reasonBadRoom     = "invalid_room"
-	reasonServerError = "server_error"
+	reasonRateLimited    = "rate_limited"
+	reasonBadRoom        = "invalid_room"
+	reasonServerError    = "server_error"
+	reasonNoSuchEndpoint = "no_such_endpoint"
 )
 
 func fail(w http.ResponseWriter, status int, reason string) {

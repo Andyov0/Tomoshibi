@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -67,6 +68,8 @@ func run(args []string) error {
 		return keygen()
 	case "rooms":
 		return listRooms(rest)
+	case "admin":
+		return adminCommand(rest)
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 		return nil
@@ -87,7 +90,7 @@ func split(args []string) (string, []string) {
 	}
 
 	switch args[0] {
-	case "serve", "keygen", "rooms", "help", "-h", "--help":
+	case "serve", "keygen", "rooms", "admin", "help", "-h", "--help":
 		return args[0], args[1:]
 	default:
 		// Anything else is taken as the configuration file, so
@@ -102,9 +105,71 @@ func usage(w *os.File) {
   meet-live [serve] [config.yaml]   Serve the client, the API, and the media
   meet-live keygen                  Print a fresh API key and secret
   meet-live rooms <database>        List the rooms a store has seen
+  meet-live admin new [config.yaml] Make an administrator's passphrase and trip
+  meet-live admin trip [config.yaml] <passphrase>
+                                    Work out the trip an existing passphrase gives
 
 Running with no arguments serves with built-in defaults.
 `)
+}
+
+// adminCommand turns a passphrase into the signature a configuration file
+// lists, in both directions.
+//
+// It needs the configuration because a signature is only meaningful against one
+// deployment's key: the same passphrase on two servers produces two different
+// marks, which is what stops one deployment's signatures being worth anything on
+// another.
+func adminCommand(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("admin needs `new` or `trip`")
+	}
+
+	action, rest := args[0], args[1:]
+
+	path := ""
+	if len(rest) > 0 && strings.HasSuffix(rest[0], ".yaml") {
+		path, rest = rest[0], rest[1:]
+	}
+
+	conf, err := config.Load(path)
+	if err != nil {
+		return err
+	}
+
+	key, err := room.LoadTripKey(conf.Meet.TripcodeKey)
+	if err != nil {
+		return err
+	}
+
+	switch action {
+	case "new":
+		// Generated, never chosen. A signature cannot be attacked offline
+		// without this deployment's key, so the only way at one is through the
+		// join endpoint — where the limiter stands. But the limiter counts per
+		// address and an attacker picks how many addresses to be, and against a
+		// passphrase somebody thought of that is about a quarter of an hour.
+		passphrase := room.NewPassphrase()
+
+		fmt.Printf("passphrase  %s\n", passphrase)
+		fmt.Printf("trip        %s\n\n", room.Trip(key, passphrase))
+		fmt.Print("Put the trip in the configuration and the passphrase in a password manager.\n" +
+			"The passphrase is not stored here and cannot be recovered; the trip is public and\n" +
+			"is printed beside its owner's name in every room they join.\n")
+
+		return nil
+
+	case "trip":
+		if len(rest) == 0 {
+			return fmt.Errorf("admin trip needs a passphrase")
+		}
+
+		fmt.Println(room.Trip(key, strings.TrimSpace(strings.Join(rest, " "))))
+		return nil
+
+	default:
+		return fmt.Errorf("admin has no %q; the two are `new` and `trip`", action)
+	}
 }
 
 func serve(args []string) error {

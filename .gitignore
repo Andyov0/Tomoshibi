@@ -1,5 +1,8 @@
-# The binary.
+# The binary, and anything built for another machine. Fifty megabytes of build
+# output has no business in a history: it is reproducible from the source beside
+# it, and the recipe for reproducing it is in the README.
 /meet-live
+/dist/
 
 # Built client. The marker file is tracked on purpose: the embed directive needs
 # this directory to exist at compile time, so without it a fresh clone cannot

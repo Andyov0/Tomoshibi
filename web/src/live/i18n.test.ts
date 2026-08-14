@@ -67,12 +67,19 @@ describe("the vocabulary", () => {
 		const root = join(import.meta.dirname, "..");
 		const suspicious: string[] = [];
 
+		// The management pages are English and stay English, so their labels are
+		// written where they are read. Their audience is whoever runs the
+		// deployment — the same person the startup log is for — and most of what
+		// they say is technical nouns, which a half-translated page renders
+		// worse than an untranslated one.
+		const untranslated = "manage";
+
 		const walk = (directory: string) => {
 			for (const entry of readdirSync(directory, { withFileTypes: true })) {
 				const path = join(directory, entry.name);
 
 				if (entry.isDirectory()) {
-					walk(path);
+					if (entry.name !== untranslated) walk(path);
 					continue;
 				}
 				if (!entry.name.endsWith(".tsx") || entry.name.includes(".test.")) continue;

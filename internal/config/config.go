@@ -60,6 +60,61 @@ type Meet struct {
 	// caller typed, and believing them would let anyone claim a fresh rate-limit
 	// budget per request.
 	TrustProxy bool `yaml:"trust_proxy"`
+
+	// Admins may open the management pages. Empty, which is the default, means
+	// there are none and those pages do not exist.
+	Admins []Admin `yaml:"admins"`
+}
+
+// What an administrator is allowed to do.
+//
+// Two levels rather than one, because the two halves of this differ by more
+// than degree. Watching costs nothing and answers the question anybody debugging
+// a call actually has; removing somebody from a room changes what another person
+// is experiencing, at once and without warning. Bound together, the choice
+// becomes give everybody the dangerous half or give nobody the useful one.
+const (
+	// Observe reads: what is happening now, which rooms exist, who is in them
+	// and what they are sending, whether the server is healthy.
+	Observe = "observe"
+
+	// Moderate acts: remove a participant, mute a track, close a room.
+	Moderate = "moderate"
+)
+
+// Admin is somebody who may open the management pages.
+//
+// Identified by the signature their passphrase produces rather than by the
+// passphrase itself. A passphrase in a configuration file is a credential lying
+// in plain sight — on disk, in every backup, and in whatever holds the
+// deployment's history. A signature is public: it is printed beside its owner's
+// name in every room they join, and knowing it grants nothing.
+type Admin struct {
+	// Trip is the signature, without the kind prefix the identity carries.
+	Trip string `yaml:"trip"`
+
+	// Name appears in the audit log. Not used for anything else, because
+	// nothing here is authorised by a name.
+	Name string `yaml:"name"`
+
+	// Can lists what this administrator may do. Empty means Observe alone,
+	// which is the safe reading of an entry somebody wrote in a hurry.
+	Can []string `yaml:"can"`
+}
+
+// Allows reports whether this administrator holds a capability.
+func (a Admin) Allows(capability string) bool {
+	if capability == Observe {
+		return true
+	}
+
+	for _, held := range a.Can {
+		if held == capability {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Config is both halves, resolved.
@@ -120,7 +175,73 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	if err := checkAdmins(meet.Admins); err != nil {
+		return nil, err
+	}
+
 	return &Config{Meet: meet, LiveKit: lk, Key: key, Secret: secret}, nil
+}
+
+// checkAdmins refuses an administrator entry that cannot mean what it says.
+//
+// At startup rather than at the moment somebody tries to sign in, because the
+// two failures look nothing alike from the outside: a mistyped signature is a
+// door that opens for nobody, and whoever finds that out is standing at it
+// wondering whether they have forgotten their own passphrase.
+func checkAdmins(admins []Admin) error {
+	seen := make(map[string]bool, len(admins))
+
+	for i, admin := range admins {
+		where := fmt.Sprintf("admins[%d]", i)
+		if admin.Name != "" {
+			where = fmt.Sprintf("%s (%s)", where, admin.Name)
+		}
+
+		switch {
+		case admin.Trip == "":
+			return fmt.Errorf("%s has no trip. Run `meet-live admin new` to make one", where)
+
+		case len(admin.Trip) != tripLength:
+			return fmt.Errorf(
+				"%s: a trip is %d characters, and this one is %d. The kind prefix and "+
+					"the dash that follow it in an identity are not part of it",
+				where, tripLength, len(admin.Trip))
+
+		case !tripCharacters(admin.Trip):
+			return fmt.Errorf(
+				"%s: a trip is lowercase letters and the digits 2 to 7. This one holds "+
+					"something else", where)
+
+		case seen[admin.Trip]:
+			return fmt.Errorf("%s: this trip is listed twice, which can only be a mistake", where)
+		}
+
+		for _, capability := range admin.Can {
+			if capability != Observe && capability != Moderate {
+				return fmt.Errorf(
+					"%s: %q is not something an administrator can be allowed. The two are %q and %q",
+					where, capability, Observe, Moderate)
+			}
+		}
+
+		seen[admin.Trip] = true
+	}
+
+	return nil
+}
+
+// tripLength and tripCharacters describe a signature without importing the
+// package that makes them, which imports this one.
+const tripLength = 10
+
+func tripCharacters(trip string) bool {
+	for _, r := range trip {
+		if (r < 'a' || r > 'z') && (r < '2' || r > '7') {
+			return false
+		}
+	}
+
+	return true
 }
 
 // split separates the `meet` section from the rest of the document.

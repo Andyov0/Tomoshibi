@@ -12,10 +12,8 @@
  */
 const en = {
 	// Joining.
-	"Ready to join?": "Ready to join?",
-	"Check your camera and microphone first.": "Check your camera and microphone first.",
 	"Your name": "Your name",
-	"Passphrase (optional)": "Passphrase (optional)",
+	"Passphrase": "Passphrase",
 	"Stops anyone else using your name.":
 		"Stops anyone else using your name.",
 	"Anyone who guesses this name can join.":

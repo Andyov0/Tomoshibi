@@ -7,10 +7,8 @@ import type { Dictionary } from "../i18n";
  * 影片與视频、訊息與消息、裝置與设备，都是各自習慣的說法，機器換字換不出來。
  */
 const zhHant: Dictionary = {
-	"Ready to join?": "準備好了嗎？",
-	"Check your camera and microphone first.": "先檢查一下攝影機和麥克風。",
 	"Your name": "你的名字",
-	"Passphrase (optional)": "密語（選填）",
+	"Passphrase": "密語",
 	"Stops anyone else using your name.": "別人就無法用你的名字。",
 	"Anyone who guesses this name can join.": "猜到這個名字的人都能進來。",
 	"Only administrators can start new rooms. Enter the name you were given.": "只有管理員能開新房間。請填入別人給你的房間名。",

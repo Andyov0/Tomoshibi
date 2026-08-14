@@ -112,7 +112,7 @@ describe("t", () => {
 	it("falls back to a whole sentence rather than a key", () => {
 		// English is the key, so an untranslated phrase reads as English rather
 		// than as a dotted path somebody has to go and look up.
-		expect(t("Ready to join?")).toBe("Ready to join?");
+		expect(t("Nobody else is here.")).toBe("Nobody else is here.");
 	});
 
 	it("puts values where the phrase asks for them", () => {

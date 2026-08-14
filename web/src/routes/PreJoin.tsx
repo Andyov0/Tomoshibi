@@ -1,16 +1,15 @@
+import { Identity } from "@/components/room/Identity";
 import { LanguagePicker } from "@/components/room/LanguagePicker";
-import { deployment } from "@/live/api";
+import { RoomTitle } from "@/components/room/RoomTitle";
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { RoomBar } from "@/components/room/RoomBar";
+import { useT } from "@/hooks/useT";
+import { deployment } from "@/live/api";
 import { devicesAvailable, insecureReason } from "@/live/context";
-import { Phrased, useT } from "@/hooks/useT";
 import { parseName } from "@/live/name";
 import { remember } from "@/live/remember";
-import { KeyRound, ShieldAlert } from "lucide-react";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
-import { Mic, MicOff, Video, VideoOff } from "lucide-react";
+import { Mic, MicOff, ShieldAlert, Video, VideoOff } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 /*
@@ -58,19 +57,33 @@ export function PreJoin({ room, onRoomChange, onJoin }: PreJoinProps) {
 }
 
 /**
- * The page before a call, whichever of its two states it is in.
+ * The frame both states of this screen sit in.
  *
- * The language picker sits above both. It is needed most on the state that
- * cannot be joined from: somebody who lands on the dead end in a language they
- * do not read has no way to find out why, and no button that would tell them.
+ * One row above everything saying what this is and in what language, the state
+ * itself in the middle, and the licence at the foot. The language picker is
+ * needed most on the state that cannot be joined from: somebody who lands on the
+ * dead end in a language they do not read has no way to find out why.
  */
 function Page({ children }: { children: ReactNode }) {
 	return (
-		<main className="relative grid min-h-full place-items-center p-6">
-			<div className="absolute top-4 right-4">
+		<main className="flex min-h-full flex-col gap-6 p-5 sm:p-6">
+			<header className="flex items-center justify-between gap-4">
+				<div className="flex items-center gap-2">
+					{/*
+					 * The mark this deployment already serves, rather than a second
+					 * copy of it kept in a component. One file draws it, and the tab
+					 * and the screen cannot come to disagree about what it looks
+					 * like.
+					 */}
+					<img src="/favicon.svg" alt="" className="size-5 rounded-[5px]" />
+					<span className="font-semibold text-[13px] tracking-tight">Tomoshibi</span>
+				</div>
+
 				<LanguagePicker />
-			</div>
-			{children}
+			</header>
+
+			<div className="flex flex-1 items-center justify-center">{children}</div>
+
 			<Source />
 		</main>
 	);
@@ -202,84 +215,78 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 
 	return (
 		<Page>
-			<div className="w-full max-w-md space-y-6">
-				<header className="space-y-1 text-center">
-					<h1 className="font-semibold text-2xl tracking-tight">{t("Ready to join?")}</h1>
-					<p className="text-fg-muted text-sm">{t("Check your camera and microphone first.")}</p>
-				</header>
+			{/*
+			 * Two columns where the screen is wider than it is tall and there is
+			 * room for both, one column otherwise, the picture always first.
+			 *
+			 * Keyed to the shape of the viewport and not only its width, because
+			 * the arrangement this replaces is worst on a screen that is wide and
+			 * short — a phone turned on its side, or a window dragged flat. There
+			 * a stacked picture is taller than the screen it is on, and the reader
+			 * scrolls past their own face to reach the button.
+			 */}
+			<div className="flex w-full max-w-6xl flex-col gap-6 md:landscape:flex-row md:landscape:items-stretch md:landscape:gap-8">
+				<div className="md:landscape:flex-[1.35]">
+					<SelfView track={track}>
+						{/*
+						 * The same island the call puts these two switches in, in
+						 * the same place, so this screen is a rehearsal of the room
+						 * rather than a different room.
+						 */}
+						<div className="-translate-x-1/2 absolute bottom-3 left-1/2 flex items-center gap-1.5 rounded-full border border-border bg-surface/90 p-1.5 shadow-2xl backdrop-blur-md">
+							<Button
+								variant={devices.microphone ? "secondary" : "danger"}
+								size="round"
+								className="size-9"
+								aria-label={devices.microphone ? t("Mute microphone") : t("Unmute microphone")}
+								aria-pressed={devices.microphone}
+								onClick={() => setDevices((held) => ({ ...held, microphone: !held.microphone }))}
+							>
+								{devices.microphone ? <Mic /> : <MicOff />}
+							</Button>
 
-				<RoomBar room={room} onChange={onRoomChange} />
-
-				<SelfView track={track} />
-
-				<div className="flex justify-center gap-2">
-					<Button
-						variant={devices.microphone ? "secondary" : "danger"}
-						size="icon"
-						aria-label={devices.microphone ? t("Mute microphone") : t("Unmute microphone")}
-						aria-pressed={devices.microphone}
-						onClick={() => setDevices((held) => ({ ...held, microphone: !held.microphone }))}
-					>
-						{devices.microphone ? <Mic /> : <MicOff />}
-					</Button>
-					<Button
-						variant={devices.camera ? "secondary" : "danger"}
-						size="icon"
-						aria-label={devices.camera ? t("Turn camera off") : t("Turn camera on")}
-						aria-pressed={devices.camera}
-						onClick={() => setDevices((held) => ({ ...held, camera: !held.camera }))}
-					>
-						{devices.camera ? <Video /> : <VideoOff />}
-					</Button>
+							<Button
+								variant={devices.camera ? "secondary" : "danger"}
+								size="round"
+								className="size-9"
+								aria-label={devices.camera ? t("Turn camera off") : t("Turn camera on")}
+								aria-pressed={devices.camera}
+								onClick={() => setDevices((held) => ({ ...held, camera: !held.camera }))}
+							>
+								{devices.camera ? <Video /> : <VideoOff />}
+							</Button>
+						</div>
+					</SelfView>
 				</div>
 
 				<form
-					className="space-y-3"
+					className="flex flex-col justify-center gap-5 md:landscape:min-w-[17rem] md:landscape:flex-1"
 					onSubmit={(event) => {
 						event.preventDefault();
 						submit();
 					}}
 				>
-					<Input
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-						placeholder={t("Your name")}
-						aria-label={t("Your name")}
-						// Named for the manager rather than for this form. It is
-						// what a stored credential is filed under, and what makes
-						// the field below fill itself alongside it.
-						autoComplete="username"
-						autoFocus
-						maxLength={80}
-					/>
+					<RoomTitle room={room} onChange={onRoomChange} />
 
-					<Input
-						type="password"
-						value={secret}
-						onChange={(event) => setSecret(event.target.value)}
-						placeholder={t("Passphrase (optional)")}
-						aria-label={t("Passphrase (optional)")}
-						autoComplete="current-password"
-						maxLength={200}
-					/>
+					<div className="flex flex-col gap-2">
+						<Identity
+							name={name}
+							passphrase={secret}
+							onName={setName}
+							onPassphrase={setSecret}
+						/>
 
-					{passphrase ? (
-						<p className="flex items-center justify-center gap-1.5 text-fg-muted text-xs">
-							<KeyRound className="size-3" />
-							<Phrased
-								phrase="Only you can join as {name}"
-								values={{
-									name: <strong className="text-fg">{display || "?"}</strong>,
-								}}
-							/>
+						{/* One line, which changes rather than doubling: what a
+						    passphrase is for until there is one, and what it did
+						    once there is. */}
+						<p className="text-fg-muted text-xs leading-snug">
+							{passphrase
+								? t("Only you can join as {name}", { name: display || "?" })
+								: t("Stops anyone else using your name.")}
 						</p>
-					) : (
-						<p className="text-center text-fg-muted text-xs">
-							{t("Stops anyone else using your name.")}
-						</p>
-					)}
+					</div>
 
-					<Button type="submit" size="lg" className="w-full" disabled={!display || joining}>
+					<Button type="submit" variant="primary" size="lg" className="w-full" disabled={!display || joining}>
 						{joining ? t("Joining…") : t("Join")}
 					</Button>
 				</form>

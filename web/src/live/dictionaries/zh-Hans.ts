@@ -7,10 +7,8 @@ import type { Dictionary } from "../i18n";
  * 接下来能做什么,而不是道歉——"找不到你的摄像头"胜过"摄像头打开失败!"。
  */
 const zhHans: Dictionary = {
-	"Ready to join?": "准备好了吗？",
-	"Check your camera and microphone first.": "先检查一下摄像头和麦克风。",
 	"Your name": "你的名字",
-	"Passphrase (optional)": "口令（可选）",
+	"Passphrase": "口令",
 	"Stops anyone else using your name.": "别人就无法用你的名字。",
 	"Anyone who guesses this name can join.": "猜到这个名字的人都能进来。",
 	"Only administrators can start new rooms. Enter the name you were given.": "只有管理员能开新房间。请填入别人给你的房间名。",

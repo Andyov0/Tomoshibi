@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { generateRoomName } from "@/live/names";
-import { RoomBar } from "./RoomBar";
+import { RoomTitle } from "./RoomTitle";
 
 /*
  * What the screen before a call says about the name in it.
@@ -31,14 +31,14 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe("RoomBar", () => {
+describe("RoomTitle", () => {
 	it("says nothing about a generated name where anybody may open a room", async () => {
 		serverSays({ openedBy: "anyone" });
 
 		// Made by the generator rather than written out, so that a change to
 		// the shape of a generated name cannot leave this test quietly asserting
 		// the behaviour for a chosen one.
-		render(<RoomBar room={generateRoomName()} onChange={vi.fn()} />);
+		render(<RoomTitle room={generateRoomName()} onChange={vi.fn()} />);
 
 		// Waited for rather than asserted at once: the point is that the answer
 		// arriving does not add a line, which is only observable after it has.
@@ -51,7 +51,7 @@ describe("RoomBar", () => {
 	it("warns about a name somebody chose", async () => {
 		serverSays({ openedBy: "anyone" });
 
-		render(<RoomBar room="standup" onChange={vi.fn()} />);
+		render(<RoomTitle room="standup" onChange={vi.fn()} />);
 
 		await waitFor(() => expect(screen.getByText(/anyone who guesses/i)).toBeDefined());
 	});
@@ -60,7 +60,7 @@ describe("RoomBar", () => {
 	it("says who may open a room where not everybody may", async () => {
 		serverSays({ openedBy: "admins" });
 
-		render(<RoomBar room="standup" onChange={vi.fn()} />);
+		render(<RoomTitle room="standup" onChange={vi.fn()} />);
 
 		await waitFor(() => expect(screen.getByText(/only administrators/i)).toBeDefined());
 		expect(screen.queryByText(/anyone who guesses/i)).toBeNull();
@@ -82,7 +82,7 @@ describe("RoomBar", () => {
 			}),
 		);
 
-		render(<RoomBar room="standup" onChange={vi.fn()} />);
+		render(<RoomTitle room="standup" onChange={vi.fn()} />);
 
 		await waitFor(() => expect(screen.getByText(/anyone who guesses/i)).toBeDefined());
 		expect(screen.queryByText(/only administrators/i)).toBeNull();

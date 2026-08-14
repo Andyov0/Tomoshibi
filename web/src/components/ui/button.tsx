@@ -13,6 +13,14 @@ const buttonVariants = cva(
 		variants: {
 			variant: {
 				default: "bg-tally text-tally-fg hover:bg-tally/90",
+				// The one action on a screen, drawn in the foreground colour
+				// rather than the signal one. By the same rule as the focus ring
+				// above: the palette has a single hue that means something is
+				// happening, and a button somebody has not pressed yet is not it.
+				// On the screen before a call it would also be the second amber
+				// thing there, beside a key that lights when a name is proven —
+				// and two of them is none.
+				primary: "bg-fg text-bg hover:bg-fg/90",
 				secondary: "bg-surface-hi text-fg hover:bg-surface-hi/80",
 				outline: "border border-border bg-transparent text-fg hover:bg-surface-hi",
 				ghost: "text-fg hover:bg-surface-hi",

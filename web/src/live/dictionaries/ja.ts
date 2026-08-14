@@ -7,10 +7,8 @@ import type { Dictionary } from "../i18n";
  * 書かれている——謝らず、驚かず、起きたことと次にできることだけを言う。
  */
 const ja: Dictionary = {
-	"Ready to join?": "参加の準備はできましたか",
-	"Check your camera and microphone first.": "先にカメラとマイクを確認してください。",
 	"Your name": "名前",
-	"Passphrase (optional)": "合言葉（任意）",
+	"Passphrase": "合言葉",
 	"Stops anyone else using your name.": "ほかの人がこの名前を使えなくなります。",
 	"Anyone who guesses this name can join.": "この名前を言い当てた人は誰でも入れます。",
 	"Only administrators can start new rooms. Enter the name you were given.": "新しいルームを開けるのは管理者だけです。教わったルーム名を入力してください。",

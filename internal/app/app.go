@@ -45,6 +45,16 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 	}
 }
 
+// Close stops what the application started.
+//
+// Only the management sampler, which runs on a ticker of its own so that the
+// trend it fills has no gaps where nobody happened to be looking. Left running
+// it would go on asking a media server that is shutting down for figures nobody
+// will read.
+func (a *App) Close() {
+	a.admin.Close()
+}
+
 // Handler builds the router.
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()

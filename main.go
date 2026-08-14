@@ -206,9 +206,12 @@ func serve(args []string) error {
 		return err
 	}
 
+	application := app.New(conf, st, media, web, tripKey)
+	defer application.Close()
+
 	server := &http.Server{
 		Addr:    conf.Meet.Listen,
-		Handler: app.New(conf, st, media, web, tripKey).Handler(),
+		Handler: application.Handler(),
 		// Absent on purpose: a signalling WebSocket is meant to stay open for
 		// the length of a meeting, and a write timeout would cut it. Read
 		// headers are still bounded, which is what protects against a client

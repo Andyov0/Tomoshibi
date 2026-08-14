@@ -133,12 +133,16 @@ function Stage({
 	// Two people is not a grid of two, and on a phone the grid of two was
 	// measured at fifty-six per cent of the screen. One person fills it and the
 	// other is a card, which is what a telephone has always done.
-	const close = !pinned && all.length <= ALONE_TOGETHER && rest.length > 0;
+	//
+	// Named rather than asserted: the condition below and the picture it needs
+	// are then one thing a reader can see is true, instead of two that have to
+	// be checked against each other.
+	const alone = all.length <= ALONE_TOGETHER ? rest[0] : undefined;
 
 	const plan = pinned
 		? planFocus(size, pinned.id, screen.active ? [] : shown, { fullscreen: screen.active })
-		: close
-			? planClose(size, rest[0]!.id, self ? [self.id] : [])
+		: alone
+			? planClose(size, alone.id, self ? [self.id] : [])
 			: planGrid(size, shown);
 
 	// Somebody sharing their screen is two pictures. Whichever is not on the

@@ -1,12 +1,14 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"tomoshibi/internal/config"
@@ -17,16 +19,38 @@ import (
 	"github.com/livekit/protocol/livekit"
 )
 
+// Media is what these pages need to know about the server they run beside.
+//
+// An interface rather than the server itself, and not for the sake of one: the
+// gates in front of every endpoint below could not be exercised without a
+// running media server, so they were not — the whole of this file sat at nothing
+// while the rules it enforces were tested somewhere they were never asked.
+type Media interface {
+	Stats() *livekit.NodeStats
+	Throughput() (in, out float64, window time.Duration)
+	Node() (id string, ip string)
+}
+
+// Control is what they need to ask of rooms, and occasionally do to them.
+type Control interface {
+	Rooms(ctx context.Context) ([]*livekit.Room, error)
+	Participants(ctx context.Context, room string) ([]*livekit.ParticipantInfo, error)
+	Remove(ctx context.Context, room, identity string) error
+	Mute(ctx context.Context, room, identity, track string) error
+	Close(ctx context.Context, room string) error
+}
+
 // API is the management surface.
 type API struct {
 	conf     *config.Config
 	sessions *Sessions
-	control  *rtc.Control
-	media    *rtc.Server
+	control  Control
+	media    Media
 	store    *store.Store
 	log      *Log
 	history  *History
 	stop     chan struct{}
+	closing  sync.Once
 }
 
 // New assembles it.
@@ -53,8 +77,12 @@ func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte
 }
 
 // Close stops sampling.
+//
+// Guarded, because a server can be shut down from more than one direction — a
+// signal and a failed listener both arrive here — and closing a channel twice
+// is a panic during the one moment nobody is watching the logs.
 func (a *API) Close() {
-	close(a.stop)
+	a.closing.Do(func() { close(a.stop) })
 }
 
 // sample reads one moment for the history.

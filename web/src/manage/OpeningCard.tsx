@@ -84,6 +84,7 @@ export function OpeningCard({
 						: "Anybody who asks for a name nobody has used opens it, which is what an anonymous meeting link means."}
 				</p>
 
+				{value && <WhereItLives policy={value} />}
 				{value && <Caveats policy={value} canModerate={canModerate} />}
 			</div>
 		</Card>
@@ -120,13 +121,40 @@ function Choice({
 }
 
 /**
- * The three ways this setting is not what somebody thinks it is.
+ * Where this setting lives, said whether or not anything is wrong.
  *
- * Each of them is silent by nature: a switch drawn from what is stored looks
- * identical whether or not the server is obeying it, whether or not the
- * configuration file agrees, and whether or not the person looking at it is
- * allowed to move it. All three have to be said, or the page is confidently
- * wrong in exactly the situations somebody came here to understand.
+ * The one rule about it that catches people, and it catches them precisely
+ * when nothing looks wrong: the file is read once, on the first run of a fresh
+ * store, and never again. Somebody who sets this here and later edits the file
+ * to match — or edits the file expecting it to take — gets no error, no
+ * warning, and a server doing something the file does not say.
+ *
+ * It used to be said only when the two disagreed, which is the moment it is
+ * already too late to be told. The explanation was also in the other panel,
+ * next to the readings rather than next to the switch, and nobody reading a
+ * switch goes looking in a second place for what it does.
+ */
+function WhereItLives({ policy }: { policy: Policy }) {
+	const agrees = policy.configured === policy.chosen;
+
+	return (
+		<p className="border-border border-l-2 pl-2.5 text-fg-muted text-xs leading-relaxed">
+			Held in the store rather than the configuration file, because these pages have no file to
+			edit. <Value>meet.rooms.opened_by</Value> says <Value>{words(policy.configured)}</Value>,
+			and is read once — when a fresh store first runs.{" "}
+			{agrees
+				? "Editing it afterwards changes nothing here."
+				: "This was changed from here since, and what is set here is what the server does."}
+		</p>
+	);
+}
+
+/**
+ * The two ways this setting is not what somebody thinks it is.
+ *
+ * Both are silent by nature: a switch drawn from what is stored looks identical
+ * whether or not the server is obeying it, and whether or not the person
+ * looking at it is allowed to move it.
  */
 function Caveats({ policy, canModerate }: { policy: Policy; canModerate: boolean }) {
 	return (
@@ -135,13 +163,6 @@ function Caveats({ policy, canModerate }: { policy: Policy; canModerate: boolean
 				<Note kind="warn">
 					Nobody is configured as an administrator, so nothing could satisfy this and anybody
 					may open a room. List one in the configuration file to put it into effect.
-				</Note>
-			)}
-
-			{policy.configured !== policy.chosen && (
-				<Note kind="quiet">
-					The configuration file says <Value>{words(policy.configured)}</Value>. It is the
-					starting value only, and this was changed from here afterwards.
 				</Note>
 			)}
 

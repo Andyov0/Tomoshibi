@@ -52,13 +52,23 @@ export function Shell({
 	children: ReactNode;
 }) {
 	return (
-		<div className="flex min-h-full flex-col bg-bg text-fg lg:flex-row">
+		// The page is the height of the window and the panel scrolls inside it,
+		// rather than the whole document scrolling. A rail is a flex item, and a
+		// flex item stretches: left to itself it grew to the height of whatever
+		// Runtime happened to be showing, which put its own foot — the uplink,
+		// the signature, the way out — somewhere below the fold of a page nobody
+		// was scrolling to read.
+		<div className="flex h-dvh flex-col overflow-hidden bg-bg text-fg lg:flex-row">
 			{/* Pinned across the top on a phone, where the foot is taken. */}
 			<Crown load={load} onSignOut={onSignOut} />
 
 			<nav
 				className={cn(
 					"hidden shrink-0 flex-col gap-1 border-border border-r p-3 lg:flex lg:w-48",
+					// Its own height, and its own scroll if the list ever outgrows
+					// it. Whatever the panel beside it is doing, the rail is the
+					// same rail.
+					"lg:h-dvh lg:overflow-y-auto",
 				)}
 			>
 				<span className="px-2 pt-1 pb-3 font-semibold text-sm">Management</span>
@@ -81,7 +91,8 @@ export function Shell({
 				</div>
 			</nav>
 
-			<main className="min-w-0 flex-1 p-3 pb-20 sm:p-5 lg:pb-5">{children}</main>
+			{/* The one thing that scrolls. */}
+			<main className="min-w-0 flex-1 overflow-y-auto p-3 pb-20 sm:p-5 lg:pb-5">{children}</main>
 
 			{/* The rail, moved to the one edge a thumb reaches without the hand
 			    changing grip. Five is what a row of tabs holds before the labels
@@ -165,7 +176,7 @@ function Crown({
 	return (
 		<header
 			className={cn(
-				"sticky top-0 z-20 flex items-baseline gap-2 border-border border-b bg-surface px-3 py-2 lg:hidden",
+				"z-20 flex shrink-0 items-baseline gap-2 border-border border-b bg-surface px-3 py-2 lg:hidden",
 				"pt-[max(0.5rem,env(safe-area-inset-top))]",
 			)}
 		>

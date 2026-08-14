@@ -104,6 +104,18 @@ const en = {
 	"Cannot reach your microphone": "Cannot reach your microphone",
 	"Allow it from the icon in the address bar, then try again.":
 		"Allow it from the icon in the address bar, then try again.",
+	// Sound, which is one person's own decision about everybody else.
+	Sound: "Sound",
+	"Show sound": "Show sound",
+	"Hide sound": "Hide sound",
+	"Close sound": "Close sound",
+	"There is nobody else to hear.": "There is nobody else to hear.",
+	"microphone off": "microphone off",
+	"How loud {name} is": "How loud {name} is",
+	"Stop hearing {name}": "Stop hearing {name}",
+	"Hear {name} again": "Hear {name} again",
+	"You have stopped hearing this": "You have stopped hearing this",
+	off: "off",
 	"Nobody can be heard yet": "Nobody can be heard yet",
 	"This browser waits for a click before it will play sound.":
 		"This browser waits for a click before it will play sound.",

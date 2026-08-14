@@ -4,11 +4,13 @@ import { ControlBar } from "@/components/room/ControlBar";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
 import { Plane } from "@/components/room/Plane";
 import { ShareCard } from "@/components/room/ShareCard";
+import { SoundPanel } from "@/components/room/SoundPanel";
 import { SaidInCorner, SaidOnTile } from "@/components/room/Said";
 import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
 import { useChat } from "@/hooks/useChat";
 import { useFullscreen } from "@/hooks/useFullscreen";
+import { useHearing } from "@/hooks/useHearing";
 import { useMeasure } from "@/hooks/useMeasure";
 import { usePagination } from "@/hooks/usePagination";
 import { usePin } from "@/hooks/usePin";
@@ -26,6 +28,7 @@ import {
 	planGrid,
 	stripCapacity,
 } from "@/live/plan";
+import { silenced, soundOf } from "@/live/hearing";
 import { type Surface, owner, surfaces } from "@/live/surface";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useCallback, useEffect, useState } from "react";
@@ -36,15 +39,20 @@ export interface RoomProps {
 }
 
 export function Room({ room, onLeave }: RoomProps) {
-	const [chatting, setChatting] = useState(false);
-	const chat = useChat(room, chatting);
+	// One at a time, because both float over the same corner and the second
+	// would simply be drawn on top of the first.
+	const [panel, setPanel] = useState<"messages" | "sound">();
+	const chat = useChat(room, panel === "messages");
 	const screen = useFullscreen<HTMLDivElement>();
+
+	const chatting = panel === "messages";
+	const listening = panel === "sound";
 
 	// Arrivals, departures, and somebody taking the stage with a share.
 	useEffect(() => watch(room), [room]);
 
 	const openChat = useCallback(() => {
-		setChatting(true);
+		setPanel("messages");
 		chat.markRead();
 	}, [chat.markRead]);
 
@@ -54,15 +62,18 @@ export function Room({ room, onLeave }: RoomProps) {
 				room={room}
 				chat={chat}
 				chatting={chatting}
+				listening={listening}
 				screen={screen}
-				onCloseChat={() => setChatting(false)}
+				onClosePanel={() => setPanel(undefined)}
 			/>
 			<ControlBar
 				room={room}
 				chatting={chatting}
 				unread={chat.unread}
+				listening={listening}
 				hidden={screen.active}
-				onChat={() => (chatting ? setChatting(false) : openChat())}
+				onChat={() => (chatting ? setPanel(undefined) : openChat())}
+				onListen={() => setPanel(listening ? undefined : "sound")}
 				onLeave={onLeave}
 			/>
 			{/* Outside the stage on purpose: what people can hear must not depend
@@ -76,16 +87,19 @@ function Stage({
 	room,
 	chat,
 	chatting,
+	listening,
 	screen,
-	onCloseChat,
+	onClosePanel,
 }: {
 	room: LiveRoom;
 	chat: ReturnType<typeof useChat>;
 	chatting: boolean;
+	listening: boolean;
 	screen: ReturnType<typeof useFullscreen<HTMLDivElement>>;
-	onCloseChat: () => void;
+	onClosePanel: () => void;
 }) {
 	const t = useT();
+	const heard = useHearing();
 	const participants = useRoster(room);
 	const state = useConnection(room);
 	const [measure, size] = useMeasure();
@@ -178,10 +192,16 @@ function Stage({
 	const tile = (surface: Surface) => {
 		const onStage = surface.id === pinned?.id;
 
+		// Our own pictures are never marked: nobody hears themselves, so there
+		// is no setting behind the mark and it would be a symbol with no cause.
+		const quiet =
+			!surface.local && silenced(heard(owner(surface).identity, soundOf(surface.kind)));
+
 		if (surface.kind === "screen" && !onStage) {
 			return (
 				<ShareCard
 					label={owner(surface).name || owner(surface).identity}
+					silenced={quiet}
 					onOpen={() => pin(surface)}
 				/>
 			);
@@ -191,6 +211,7 @@ function Stage({
 			<SurfaceTile
 				surface={surface}
 				unverified={suspect.has(owner(surface).identity)}
+				silenced={quiet}
 				selected={onStage}
 				overlay={
 					<>
@@ -248,9 +269,11 @@ function Stage({
 					onSay={chat.send}
 					sending={chat.sending}
 					offline={state !== ConnectionState.Connected}
-					onClose={onCloseChat}
+					onClose={onClosePanel}
 				/>
 			)}
+
+			{listening && <SoundPanel room={room} onClose={onClosePanel} />}
 
 			{/* Only for people with no tile to borrow. */}
 			<SaidInCorner

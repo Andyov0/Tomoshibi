@@ -101,6 +101,26 @@ not look like somebody leaving and a stranger arriving. The display name travels
 with the request rather than being set after connecting, so it is there in the
 first roster update and nobody can rename themselves to somebody else mid-call.
 
+**How loud everybody is is one person's own decision.** A sound panel lists what
+can be heard rather than who can be seen — sound is rendered outside the stage on
+purpose, so the person who is too loud is as likely as not to be on the second
+page — with a row per thing there is to hear: somebody's voice, and separately the
+sound of a screen they are sharing, because those were always two tracks.
+Stopping one asks the media server to stop sending it rather than turning it down
+here, which is the difference between hearing nothing and paying for it anyway.
+
+Neither of the media library's own places for this remembers. A volume lives on
+the remote participant and a block on the publication, and a full reconnect
+rebuilds every participant while a restarted share is a new publication — so the
+setting is kept here and put back whenever the room changes underneath. It is
+also what a mark is for: a setting is written down only against a proven
+signature, which is the same string next week, while a guest's lasts the call
+because there is no persistent them to remember.
+
+A picture whose sound has been silenced says so, and that mark outranks the one
+saying its owner muted themselves. Both mean no sound; only one of them is
+something the person looking can undo.
+
 **The layout unit is a picture, not a person.** Somebody sharing their screen
 while their camera is on contributes two, which is why `Surface` exists and why
 every layout takes surfaces. A share auto-pins itself to the stage and releases

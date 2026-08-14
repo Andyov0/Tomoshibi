@@ -90,6 +90,17 @@ const zhHant: Dictionary = {
 	"Cannot reach your microphone": "找不到你的麥克風",
 	"Allow it from the icon in the address bar, then try again.":
 		"在網址列的圖示裡允許它，然後再試一次。",
+	Sound: "聲音",
+	"Show sound": "打開聲音面板",
+	"Hide sound": "收起聲音面板",
+	"Close sound": "關閉聲音面板",
+	"There is nobody else to hear.": "現在沒有別人可聽。",
+	"microphone off": "麥克風已關",
+	"How loud {name} is": "{name} 的音量",
+	"Stop hearing {name}": "不再聽 {name}",
+	"Hear {name} again": "重新聽 {name}",
+	"You have stopped hearing this": "你已經不聽這一路聲音了",
+	off: "已關",
 	"Nobody can be heard yet": "還聽不到任何人",
 	"This browser waits for a click before it will play sound.":
 		"這個瀏覽器要先有一次點擊才會播放聲音。",

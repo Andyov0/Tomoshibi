@@ -1,7 +1,7 @@
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import type { Signature } from "@/live/name";
-import { Maximize2, MicOff, Minimize2 } from "lucide-react";
+import { Maximize2, MicOff, Minimize2, VolumeX } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
@@ -23,6 +23,7 @@ export function Tile({
 	unverified,
 	speaking,
 	muted,
+	silenced,
 	children,
 	overlay,
 	className,
@@ -37,6 +38,8 @@ export function Tile({
 	unverified?: boolean;
 	speaking?: boolean;
 	muted?: boolean;
+	/** Turned all the way down, or stopped at the server, by whoever is looking. */
+	silenced?: boolean;
 	children: ReactNode;
 	/** Anything drawn over the picture, such as what this person just said. */
 	overlay?: ReactNode;
@@ -149,7 +152,24 @@ export function Tile({
 					</span>
 				)}
 
-				{muted && <MicOff className="size-3 shrink-0 text-fg-muted" />}
+				{/*
+			  * One mark, and the reader's own doing wins it.
+			  *
+			  * Both say the same thing — there is no sound from here — and the
+			  * pill has room for one. Whose decision it was is the difference
+			  * that matters: a microphone somebody else turned off is nothing to
+			  * act on, while a person visibly talking into silence is a question
+			  * that has cost people ten minutes before now. The answer belongs on
+			  * the picture they are looking at.
+			  */}
+			{silenced ? (
+				<VolumeX
+					className="size-3 shrink-0 text-danger"
+					aria-label={t("You have stopped hearing this")}
+				/>
+			) : (
+				muted && <MicOff className="size-3 shrink-0 text-fg-muted" />
+			)}
 			</div>
 		</div>
 	);

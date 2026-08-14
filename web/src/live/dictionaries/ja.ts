@@ -90,6 +90,17 @@ const ja: Dictionary = {
 	"Cannot reach your microphone": "マイクに接続できません",
 	"Allow it from the icon in the address bar, then try again.":
 		"アドレスバーのアイコンから許可して、もう一度お試しください。",
+	Sound: "音声",
+	"Show sound": "音声パネルを開く",
+	"Hide sound": "音声パネルを閉じる",
+	"Close sound": "音声パネルを閉じる",
+	"There is nobody else to hear.": "いま聞こえる相手はいません。",
+	"microphone off": "マイクオフ",
+	"How loud {name} is": "{name} の音量",
+	"Stop hearing {name}": "{name} を聞かない",
+	"Hear {name} again": "{name} をもう一度聞く",
+	"You have stopped hearing this": "この音声は聞かない設定です",
+	off: "オフ",
 	"Nobody can be heard yet": "まだ誰の声も聞こえません",
 	"This browser waits for a click before it will play sound.":
 		"このブラウザは、一度クリックするまで音を再生しません。",

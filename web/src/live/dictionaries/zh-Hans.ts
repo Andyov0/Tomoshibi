@@ -90,6 +90,17 @@ const zhHans: Dictionary = {
 	"Cannot reach your microphone": "找不到你的麦克风",
 	"Allow it from the icon in the address bar, then try again.":
 		"在地址栏的图标里允许它，然后再试一次。",
+	Sound: "声音",
+	"Show sound": "打开声音面板",
+	"Hide sound": "收起声音面板",
+	"Close sound": "关闭声音面板",
+	"There is nobody else to hear.": "现在没有别人可听。",
+	"microphone off": "麦克风已关",
+	"How loud {name} is": "{name} 的音量",
+	"Stop hearing {name}": "不再听 {name}",
+	"Hear {name} again": "重新听 {name}",
+	"You have stopped hearing this": "你已经不听这一路声音了",
+	off: "已关",
 	"Nobody can be heard yet": "还听不到任何人",
 	"This browser waits for a click before it will play sound.":
 		"这个浏览器要先有一次点击才会播放声音。",

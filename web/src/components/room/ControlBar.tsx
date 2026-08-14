@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/useT";
 import { share } from "@/live/room";
 import type { Room } from "livekit-client";
-import { MessageSquare, Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
+import { MessageSquare, Mic, MicOff, PhoneOff, Video, VideoOff, Volume2 } from "lucide-react";
 import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
 import { ShareButton } from "./ShareButton";
@@ -22,17 +22,22 @@ export function ControlBar({
 	room,
 	chatting,
 	unread,
+	listening,
 	hidden,
 	onChat,
+	onListen,
 	onLeave,
 }: {
 	room: Room;
 	chatting: boolean;
 	/** Something was said while the panel was closed. */
 	unread: boolean;
+	/** The sound panel is open. */
+	listening: boolean;
 	/** Out of the way, because the stage is filling the screen. */
 	hidden?: boolean;
 	onChat: () => void;
+	onListen: () => void;
 	onLeave: () => void;
 }) {
 	const t = useT();
@@ -128,6 +133,18 @@ export function ControlBar({
 				{unread && !chatting && (
 					<span className="absolute top-0.5 right-0.5 size-2 rounded-full border-2 border-surface bg-tally" />
 				)}
+			</Toggle>
+
+			{/* What can be heard, beside what can be said. Not in the device
+			    menu above, which is about the microphone and camera somebody
+			    speaks into — this is about everybody else. */}
+			<Toggle
+				on={listening}
+				onLabel={t("Hide sound")}
+				offLabel={t("Show sound")}
+				onClick={onListen}
+			>
+				<Volume2 />
 			</Toggle>
 
 			<DeviceMenu room={room} />

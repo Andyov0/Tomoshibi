@@ -20,6 +20,7 @@ export function SurfaceTile({
 	surface,
 	subscribed = true,
 	unverified = false,
+	silenced = false,
 	selected,
 	overlay,
 	onSelect,
@@ -28,6 +29,8 @@ export function SurfaceTile({
 	surface: Surface;
 	subscribed?: boolean;
 	unverified?: boolean;
+	/** Whoever is looking has decided not to hear this picture's sound. */
+	silenced?: boolean;
 	selected?: boolean;
 	/** Drawn over the picture, such as what this person just said. */
 	overlay?: ReactNode;
@@ -67,6 +70,7 @@ export function SurfaceTile({
 			overlay={overlay}
 			speaking={speaking}
 			muted={camera && !participant.isMicrophoneEnabled}
+			silenced={silenced}
 			selected={selected}
 			onSelect={onSelect}
 			onExpand={onExpand}

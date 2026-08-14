@@ -13,10 +13,26 @@ import { Tile } from "./Tile";
  * sit on a surface that already responds to a click, so the two would fire
  * together, and the smaller target is the worse one anyway.
  */
-export function ShareCard({ label, onOpen }: { label: string; onOpen: () => void }) {
+export function ShareCard({
+	label,
+	silenced,
+	onOpen,
+}: {
+	label: string;
+	/**
+	 * The sound is silenced, though the card is not what silenced it.
+	 *
+	 * Worth the mark here more than anywhere: a share that is not on the stage
+	 * is a card rather than a picture, and its sound has been playing all along
+	 * regardless — so this is the one place somebody can be looking straight at
+	 * a share and hear nothing with no idea why.
+	 */
+	silenced?: boolean;
+	onOpen: () => void;
+}) {
 	const t = useT();
 	return (
-		<Tile label={label} onSelect={onOpen}>
+		<Tile label={label} silenced={silenced} onSelect={onOpen}>
 			<div className="absolute inset-0 grid place-items-center bg-surface-hi/40">
 				<div className="flex flex-col items-center gap-2 px-4 text-center">
 					<MonitorUp className="size-8 text-fg-muted" />

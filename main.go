@@ -196,6 +196,10 @@ func serve(args []string) error {
 	}
 	defer st.Close()
 
+	if err := adoptOpening(st, conf); err != nil {
+		return err
+	}
+
 	tripKey, err := room.LoadTripKey(conf.Meet.TripcodeKey)
 	if err != nil {
 		return err
@@ -344,6 +348,44 @@ func listRooms(args []string) error {
 // because over plain HTTP it is a link that loads and then cannot open a camera:
 // browsers withhold devices outside a secure context, and only localhost is
 // exempt. Printing it unqualified would be an invitation into that dead end.
+// adoptOpening settles who may open a room, and says so.
+//
+// The configuration file is the starting value and only that: it is written into
+// the store the first time this runs, and after that the management pages are
+// what change it. Said out loud on every start because there is no other way to
+// find out — a file that no longer matches is the likeliest reason somebody is
+// standing in front of this wondering why a room will not open.
+func adoptOpening(st *store.Store, conf *config.Config) error {
+	chosen, err := st.AdoptOpening(conf.Meet.Rooms.OpenedBy)
+	if err != nil {
+		return err
+	}
+
+	admins := len(conf.Meet.Admins)
+
+	if opening := chosen.InEffect(admins); opening != chosen {
+		slog.Warn(
+			"rooms are set to be opened by an administrator, and nobody is configured as one. "+
+				"Nothing could satisfy that, so anybody may open one until somebody is listed",
+			"chosen", chosen, "in effect", opening)
+
+		return nil
+	}
+
+	if chosen != conf.Meet.Rooms.OpenedBy {
+		slog.Warn(
+			"who may open a room was changed from the management pages and no longer matches "+
+				"the configuration file, which is only ever the starting value",
+			"configured", conf.Meet.Rooms.OpenedBy, "in effect", chosen)
+
+		return nil
+	}
+
+	slog.Info("rooms", "opened by", chosen, "administrators", admins)
+
+	return nil
+}
+
 func announce(addr net.Addr) {
 	tcp, ok := addr.(*net.TCPAddr)
 	if !ok {

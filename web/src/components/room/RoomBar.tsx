@@ -1,6 +1,7 @@
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { type Opening, opening as askOpening } from "@/live/api";
 import { MAX_ROOM_NAME, looksGenerated, normaliseRoomName, validRoomName } from "@/live/names";
 import { Check, Copy, Link2, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -17,7 +18,23 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 	const t = useT();
 	const [editing, setEditing] = useState(false);
 	const [copied, setCopied] = useState(false);
+	const [opening, setOpening] = useState<Opening>("anyone");
 	const field = useRef<HTMLInputElement>(null);
+
+	// Asked once, here, because this is the only line on the page it changes.
+	// Starting at the answer every deployment has until somebody changes it, so
+	// the page does not flicker between two sentences while the request is out.
+	useEffect(() => {
+		let live = true;
+
+		void askOpening().then((answer) => {
+			if (live) setOpening(answer);
+		});
+
+		return () => {
+			live = false;
+		};
+	}, []);
 
 	useEffect(() => {
 		if (editing) field.current?.select();
@@ -92,14 +109,24 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 				</Button>
 			</div>
 
-			{/* Said only about a name somebody chose. A generated one is not worth
-			    guessing at, and saying so about every room would train people to
-			    stop reading it. */}
-			{!looksGenerated(room) && (
+			{/* One line at most, and never two. Both of these are about what this
+			    name is worth, and a person reading a paragraph under a text field
+			    reads the first sentence or none. */}
+			{opening === "admins" ? (
 				<p className="text-fg-muted text-xs">
-					Anybody who guesses this name can join. Names that were generated rather than chosen
-					are not worth guessing at.
+					{t("Only an administrator can open a new room here. Type the name you were given.")}
 				</p>
+			) : (
+				// Said only about a name somebody chose. A generated one is not
+				// worth guessing at, and saying so about every room would train
+				// people to stop reading it.
+				!looksGenerated(room) && (
+					<p className="text-fg-muted text-xs">
+						{t(
+							"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.",
+						)}
+					</p>
+				)
 			)}
 		</div>
 	);

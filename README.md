@@ -196,6 +196,22 @@ Behind a proxy, set `meet.trust_proxy` so that `X-Forwarded-For` and
 typed, and believing them would let anybody claim a fresh rate-limit budget per
 request.
 
+`meet.rooms.opened_by` is who may use a name nobody has used before — `anyone`,
+which is the default and what an anonymous meeting link means, or `admins`,
+which refuses one unless the passphrase sent with the join belongs to somebody
+listed under `meet.admins`. A name already in use is untouched by either: a
+meeting in progress is never interrupted by this, and everybody who has the name
+still gets in.
+
+It is the starting value only. The management pages change it, and cannot edit a
+file, so the choice is kept in the store and the file is what the store adopts on
+first run. Editing it afterwards does nothing; the runtime panel shows the file's
+value beside the one in force so the difference is visible rather than puzzling.
+
+Asking for `admins` where nobody is listed as one is a rule nothing could satisfy
+and every new name would be refused for good, so it is read as `anyone` and said
+so at startup.
+
 ## Commands
 
 ```bash

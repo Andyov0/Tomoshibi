@@ -16,12 +16,27 @@ import (
 	"sort"
 	"time"
 
+	"tomoshibi/internal/room"
+
 	bolt "go.etcd.io/bbolt"
 )
 
-// rooms is the only bucket. Named once, here, because the name lives in the file
-// and outlives any refactor of this package.
-var rooms = []byte("rooms")
+// The buckets. Named once, here, because these names live in the file and
+// outlive any refactor of this package.
+var (
+	// rooms holds one tally per name somebody used.
+	rooms = []byte("rooms")
+
+	// settings holds the handful of choices made from the management pages,
+	// which have no configuration file to write to.
+	settings = []byte("settings")
+)
+
+// openedBy is where settings keeps a room.Opening.
+var openedBy = []byte("rooms.opened_by")
+
+// ErrNotOpen refuses a name nobody has used to somebody who may not open one.
+var ErrNotOpen = errors.New("that room has not been opened")
 
 // Room is what is known about a name somebody used.
 //
@@ -74,9 +89,24 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// TouchRoom records a join and returns the tally including it.
-func (s *Store) TouchRoom(name string) (Room, error) {
-	var room Room
+// OpenRoom records a join, refusing a name nobody has used when mayOpen is
+// false. Returns the tally including this join.
+//
+// The refusal and the tally are one transaction because they are one question.
+// bbolt admits a single writer at a time, so two people arriving at a fresh name
+// in the same instant are put in an order: the first opens it, and the second
+// finds it already open and is let in whoever they are. Asked separately — read,
+// decide, write — both would find nothing there and the answer would depend on
+// which of them the scheduler ran first.
+//
+// The name is what "existing" means here, and nothing else could be. Whether
+// anybody is in the room at this moment is the media server's to know and its
+// answer changes every time the last participant leaves, so a policy resting on
+// it would turn everybody out of their own meeting the moment it emptied for a
+// second. This asks whether the name was ever used, which only becomes true and
+// never goes back.
+func (s *Store) OpenRoom(name string, mayOpen bool) (Room, error) {
+	var tally Room
 	now := time.Now().UTC()
 
 	err := s.db.Update(func(tx *bolt.Tx) error {
@@ -85,22 +115,27 @@ func (s *Store) TouchRoom(name string) (Room, error) {
 			return err
 		}
 
+		raw := bucket.Get([]byte(name))
+		if raw == nil && !mayOpen {
+			return ErrNotOpen
+		}
+
 		// A record this build cannot read is treated as one that is not there.
 		// Losing a tally is the whole cost, and it beats refusing to let anybody
 		// into a meeting over a stale row.
-		if raw := bucket.Get([]byte(name)); raw != nil {
-			if err := json.Unmarshal(raw, &room); err != nil {
-				room = Room{}
+		if raw != nil {
+			if err := json.Unmarshal(raw, &tally); err != nil {
+				tally = Room{}
 			}
 		}
 
-		room.Joins++
-		room.Seen = now
-		if room.Created.IsZero() {
-			room.Created = now
+		tally.Joins++
+		tally.Seen = now
+		if tally.Created.IsZero() {
+			tally.Created = now
 		}
 
-		encoded, err := json.Marshal(room)
+		encoded, err := json.Marshal(tally)
 		if err != nil {
 			return err
 		}
@@ -108,11 +143,101 @@ func (s *Store) TouchRoom(name string) (Room, error) {
 		return bucket.Put([]byte(name), encoded)
 	})
 
+	// Returned bare rather than wrapped: this one is an answer the caller sends
+	// on to somebody, not a failure to report.
+	if errors.Is(err, ErrNotOpen) {
+		return Room{}, ErrNotOpen
+	}
+
 	if err != nil {
 		return Room{}, fmt.Errorf("record a join for %q: %w", name, err)
 	}
 
-	return room, nil
+	return tally, nil
+}
+
+// Opening is who may use a name nobody has used before.
+//
+// Kept here rather than in the configuration because it is changed from the
+// management pages, and those cannot edit a file. What the configuration holds
+// is the value this answers before anybody has changed it — see AdoptOpening.
+//
+// An absent or unreadable setting reads as room.ByAnyone, on the same principle
+// as an unreadable tally reading as absent. The default is the state every
+// deployment that never touched this is in, and a failure to read one key is
+// not a reason to start turning people away from meetings.
+func (s *Store) Opening() room.Opening {
+	var opening room.Opening
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		if bucket := tx.Bucket(settings); bucket != nil {
+			opening = room.Opening(bucket.Get(openedBy))
+		}
+
+		return nil
+	})
+
+	if !opening.Valid() {
+		return room.ByAnyone
+	}
+
+	return opening
+}
+
+// SetOpening changes who may open a room.
+func (s *Store) SetOpening(opening room.Opening) error {
+	if !opening.Valid() {
+		return fmt.Errorf("%q is not a way of opening rooms", opening)
+	}
+
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(settings)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(openedBy, []byte(opening))
+	})
+
+	if err != nil {
+		return fmt.Errorf("set who may open a room: %w", err)
+	}
+
+	return nil
+}
+
+// AdoptOpening takes the configured value where nothing has been chosen yet, and
+// returns what is in effect either way.
+//
+// So that a configuration file still describes what a fresh deployment does,
+// without a file being able to quietly undo a choice somebody made from the
+// management pages. The file is where this starts; after that the store is the
+// answer, and the runtime panel shows both so that the difference is visible to
+// whoever is reading the file and wondering why it is not being obeyed.
+func (s *Store) AdoptOpening(configured room.Opening) (room.Opening, error) {
+	var opening room.Opening
+
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(settings)
+		if err != nil {
+			return err
+		}
+
+		if held := room.Opening(bucket.Get(openedBy)); held.Valid() {
+			opening = held
+			return nil
+		}
+
+		opening = configured
+
+		return bucket.Put(openedBy, []byte(configured))
+	})
+
+	if err != nil {
+		return room.ByAnyone, fmt.Errorf("adopt who may open a room: %w", err)
+	}
+
+	return opening, nil
 }
 
 // Named pairs a room with the name it is filed under.
@@ -133,11 +258,11 @@ func (s *Store) Rooms() ([]Named, error) {
 		}
 
 		return bucket.ForEach(func(name, raw []byte) error {
-			var room Room
-			if err := json.Unmarshal(raw, &room); err != nil {
+			var tally Room
+			if err := json.Unmarshal(raw, &tally); err != nil {
 				return nil
 			}
-			found = append(found, Named{Name: string(name), Room: room})
+			found = append(found, Named{Name: string(name), Room: tally})
 			return nil
 		})
 	})

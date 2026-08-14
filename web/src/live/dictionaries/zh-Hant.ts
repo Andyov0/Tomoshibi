@@ -10,6 +10,10 @@ const zhHant: Dictionary = {
 	"Ready to join?": "準備好了嗎？",
 	"Check your camera and microphone first.": "先檢查一下攝影機和麥克風。",
 	"Your name": "你的名字",
+	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
+		"猜到這個名字的人都能進來。隨機產生的名字不值得去猜。",
+	"Only an administrator can open a new room here. Type the name you were given.":
+		"這裡只有管理員能開新房間。請填入別人給你的房間名。",
 	Join: "加入",
 	"Joining…": "正在加入…",
 	"Joining as {name} with a signature only you can produce":
@@ -99,6 +103,8 @@ const zhHant: Dictionary = {
 		"房間名稱只能包含小寫字母、數字，以及中間的連字號。",
 	"The server could not complete the request.": "伺服器無法完成這個請求。",
 	"Could not join {room}.": "無法加入 {room}。",
+	"{room} has not been opened. Ask whoever is holding the meeting for the link.":
+		"{room} 還沒有開。請向開會的人要連結。",
 };
 
 export default zhHant;

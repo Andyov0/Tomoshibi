@@ -10,6 +10,40 @@ import { t } from "./i18n";
  */
 const IDENTITY_KEY = "meet-live.identity";
 
+/**
+ * Who may use a name nobody has used before.
+ *
+ * A property of the deployment and never of the reader. The server will not say
+ * whether this particular person may open a room, because that turns on a
+ * passphrase they have not typed yet, and an endpoint answering it would be an
+ * unauthenticated way to test a guessed administrator's one.
+ *
+ * So the screen says who rooms are opened by, and the answer about any one
+ * person arrives where it always did: on pressing Join.
+ */
+export type Opening = "anyone" | "admins";
+
+/**
+ * Ask who may open a room here.
+ *
+ * Falls back to the answer every deployment starts with. A server that will not
+ * say should leave the page reading the way it has always read rather than
+ * warning about a restriction that may not exist — and if one does exist, the
+ * join is still refused by the only thing that decides it.
+ */
+export async function opening(): Promise<Opening> {
+	try {
+		const response = await fetch("/api/policy");
+		if (!response.ok) return "anyone";
+
+		const body = (await response.json()) as { openedBy?: string };
+
+		return body.openedBy === "admins" ? "admins" : "anyone";
+	} catch {
+		return "anyone";
+	}
+}
+
 /** What the server hands back for one room. */
 export interface Join {
 	url: string;
@@ -81,6 +115,14 @@ function explain(reason: string | undefined, room: string): string {
 			return t("Too many requests. Wait a moment and try again.");
 		case "invalid_room":
 			return t("Room names may only contain lowercase letters, digits, and inner dashes.");
+		// Said as a fact about the room and never as a fact about the person
+		// reading it. They were not judged and nothing about them was found
+		// wanting: the name has simply never been used, and on this deployment
+		// that is not something they can change.
+		case "room_not_open":
+			return t("{room} has not been opened. Ask whoever is holding the meeting for the link.", {
+				room,
+			});
 		case "server_error":
 			return t("The server could not complete the request.");
 		default:

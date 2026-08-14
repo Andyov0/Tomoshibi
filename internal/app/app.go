@@ -9,6 +9,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -69,6 +70,7 @@ func (a *App) Handler() http.Handler {
 	a.admin.Mount(mux)
 
 	mux.HandleFunc("POST /api/rooms/{room}/join", a.join)
+	mux.HandleFunc("GET /api/policy", a.policy)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -120,11 +122,11 @@ type joinResponse struct {
 	Room string `json:"room"`
 }
 
-// join authorises a client for a room.
-//
-// The client may send back the identity it was given before, so that reloading a
-// tab keeps the same one. Without that, a refresh looks to everybody else like a
-// second participant arriving while the first is still being cleaned up.
+type policyResponse struct {
+	// OpenedBy is who may use a name nobody has used before.
+	OpenedBy room.Opening `json:"openedBy"`
+}
+
 // manage serves the management document.
 func (a *App) manage(w http.ResponseWriter, r *http.Request) {
 	if !a.admin.Configured() {
@@ -140,6 +142,16 @@ func (a *App) manage(w http.ResponseWriter, r *http.Request) {
 	a.web.ServeHTTP(w, r)
 }
 
+// join authorises a client for a room.
+//
+// The client may send back the identity it was given before, so that reloading a
+// tab keeps the same one. Without that, a refresh looks to everybody else like a
+// second participant arriving while the first is still being cleaned up.
+//
+// It is also where a name nobody has used is either opened or refused, because
+// this is the only moment anybody asks for one. There is no other endpoint to
+// put that on: rooms are not created here, they are named, and this is where a
+// name is first written down.
 func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// Charged first, so a refused caller costs a header lookup rather than a
 	// signature.
@@ -159,6 +171,37 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	var body joinRequest
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
 
+	// Whether this caller may use a name nobody has used before.
+	//
+	// Under the policy every deployment starts with, everybody may, and the
+	// signature below is never derived — the ordering here is what keeps the
+	// common case free. Under the other one, an administrator is recognised by
+	// the signature their passphrase produces, which is the one the token is
+	// about to carry anyway: the door needed no mechanism that was not already
+	// standing here, only for somebody to look at what it had already worked out.
+	mayOpen := a.opening() == room.ByAnyone
+	if !mayOpen {
+		_, mayOpen = config.Administrator(a.conf.Meet.Admins, body.Passphrase, a.tripKey)
+	}
+
+	// Before the token rather than after it, and waited for rather than sent
+	// off, because this is no longer only an observation: whether the name has
+	// ever been used is the answer, and it has to be settled before anybody is
+	// authorised for it.
+	switch _, err := a.store.OpenRoom(name, mayOpen); {
+	case errors.Is(err, store.ErrNotOpen):
+		fail(w, http.StatusForbidden, reasonNotOpen)
+		return
+
+	case err != nil:
+		// Let through, loudly. A store that will not answer cannot tell a name
+		// nobody has used from one a meeting is happening in, so refusing here
+		// would turn people out of a room that was already open — the one case
+		// this policy was never meant to touch. The lost tally is the rest of
+		// the cost.
+		slog.Error("failed to record a join", "room", name, "error", err)
+	}
+
 	grant, err := room.Authorise(a.conf.Key, a.conf.Secret, room.Request{
 		Room:       name,
 		Identity:   body.Identity,
@@ -173,8 +216,6 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	a.record(name)
-
 	respond(w, joinResponse{
 		URL:      a.signallingURL(r),
 		Token:    grant.Token,
@@ -183,17 +224,21 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// record notes that a room was joined, without making anybody wait for it.
+// policy is what a client needs to know before somebody types a room name.
 //
-// A store that cannot be written is a lost observation; a room full of people
-// who cannot get in would be worse. The rate limiter above bounds how many of
-// these can be in flight, so there is no unbounded spawning here.
-func (a *App) record(name string) {
-	go func() {
-		if _, err := a.store.TouchRoom(name); err != nil {
-			slog.Warn("failed to record a join", "room", name, "error", err)
-		}
-	}()
+// Open to anybody, and deliberately silent about the caller. Whether this
+// particular person may open a room turns on a passphrase they have not typed
+// yet, and an endpoint that would answer that is a way of testing a guessed
+// administrator's passphrase — a faster one than the sign-in page, which is
+// rate limited for precisely that reason.
+func (a *App) policy(w http.ResponseWriter, _ *http.Request) {
+	respond(w, policyResponse{OpenedBy: a.opening()})
+}
+
+// opening is who may use a name nobody has used, as this deployment can
+// actually enforce it.
+func (a *App) opening() room.Opening {
+	return a.store.Opening().InEffect(len(a.conf.Meet.Admins))
 }
 
 // signallingURL is where this client should open its WebSocket.
@@ -249,6 +294,7 @@ func respond(w http.ResponseWriter, body any) {
 const (
 	reasonRateLimited    = "rate_limited"
 	reasonBadRoom        = "invalid_room"
+	reasonNotOpen        = "room_not_open"
 	reasonServerError    = "server_error"
 	reasonNoSuchEndpoint = "no_such_endpoint"
 )

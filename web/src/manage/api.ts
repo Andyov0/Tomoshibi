@@ -96,9 +96,30 @@ export interface Entry {
 	reason?: string;
 }
 
+/** Who may use a name nobody has used before. */
+export type Opening = "anyone" | "admins";
+
+/**
+ * The policy, in the three forms worth telling apart.
+ *
+ * One value would be enough to draw a switch and not enough to explain it.
+ * These separate the choice somebody made from the file it started in and from
+ * what the deployment can actually carry out, which is how the two ways this
+ * goes quietly wrong become something a page can point at.
+ */
+export interface Policy {
+	/** What the server is doing. */
+	openedBy: Opening;
+	/** What was last set, before it was reconciled against who exists. */
+	chosen: Opening;
+	/** The configuration file's value, which is the starting one and no more. */
+	configured: Opening;
+}
+
 export interface Runtime {
 	meet: Record<string, unknown>;
 	rtc: Record<string, unknown>;
+	rooms: Policy;
 	credentials: { key: string };
 	codecs: string[];
 }
@@ -151,6 +172,10 @@ function explain(reason: string | undefined, status: number): string {
 			return "The media server did not answer.";
 		case "no_track":
 			return "No track was named.";
+		case "no_such_policy":
+			return "Rooms are opened either by anyone or by administrators, and that was neither.";
+		case "store_unwritable":
+			return "The change could not be written down, so nothing was changed.";
 		default:
 			return `The server refused the request (HTTP ${status}).`;
 	}
@@ -170,6 +195,10 @@ export const api = {
 	health: () => call<Check[]>("/health"),
 	runtime: () => call<Runtime>("/runtime"),
 	audit: () => call<Entry[]>("/audit"),
+	policy: () => call<Policy>("/policy"),
+
+	setPolicy: (openedBy: Opening) =>
+		call<Policy>("/policy", { method: "PUT", body: JSON.stringify({ openedBy }) }),
 
 	closeRoom: (room: string) => call<void>(`/rooms/${encodeURIComponent(room)}`, { method: "DELETE" }),
 	remove: (room: string, identity: string) =>

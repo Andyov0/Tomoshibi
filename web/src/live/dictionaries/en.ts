@@ -15,6 +15,10 @@ const en = {
 	"Ready to join?": "Ready to join?",
 	"Check your camera and microphone first.": "Check your camera and microphone first.",
 	"Your name": "Your name",
+	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
+		"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.",
+	"Only an administrator can open a new room here. Type the name you were given.":
+		"Only an administrator can open a new room here. Type the name you were given.",
 	Join: "Join",
 	"Joining…": "Joining…",
 	"Joining as {name} with a signature only you can produce":
@@ -117,6 +121,8 @@ const en = {
 		"Room names may only contain lowercase letters, digits, and inner dashes.",
 	"The server could not complete the request.": "The server could not complete the request.",
 	"Could not join {room}.": "Could not join {room}.",
+	"{room} has not been opened. Ask whoever is holding the meeting for the link.":
+		"{room} has not been opened. Ask whoever is holding the meeting for the link.",
 } as const;
 
 export default en;

@@ -10,6 +10,10 @@ const zhHans: Dictionary = {
 	"Ready to join?": "准备好了吗？",
 	"Check your camera and microphone first.": "先检查一下摄像头和麦克风。",
 	"Your name": "你的名字",
+	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
+		"猜到这个名字的人都能进来。随机生成的名字不值得去猜。",
+	"Only an administrator can open a new room here. Type the name you were given.":
+		"这里只有管理员能开新房间。请填入别人给你的房间名。",
 	Join: "加入",
 	"Joining…": "正在加入…",
 	"Joining as {name} with a signature only you can produce":
@@ -99,6 +103,8 @@ const zhHans: Dictionary = {
 		"房间名只能包含小写字母、数字，以及中间的连字符。",
 	"The server could not complete the request.": "服务器无法完成这个请求。",
 	"Could not join {room}.": "无法加入 {room}。",
+	"{room} has not been opened. Ask whoever is holding the meeting for the link.":
+		"{room} 还没有开。请向开会的人要链接。",
 };
 
 export default zhHans;

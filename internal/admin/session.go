@@ -8,7 +8,6 @@ package admin
 
 import (
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
 	"sync"
@@ -77,31 +76,12 @@ func (s *Sessions) Configured() bool {
 
 // Open signs somebody in, or refuses them.
 //
-// The passphrase is turned into a signature the same way a participant's is,
-// with the same key, so an administrator's credential is the one they already
-// have: they type it to join a call and it prints beside their name. What the
-// configuration holds is that printed signature, never the passphrase.
-//
-// Every listed signature is compared even after one matches. The work is a
-// handful of string comparisons and the alternative leaks, through timing, how
-// far down the list a signature sits.
+// Recognising an administrator is [config.Administrator]'s job and not this
+// one's, because the join endpoint asks the same question of the same list with
+// the same key — it has to, to know who may open a room — and two answers to one
+// question is one of them waiting to drift.
 func (s *Sessions) Open(passphrase room.Passphrase) (Session, string, bool) {
-	if passphrase.Empty() {
-		return Session{}, "", false
-	}
-
-	trip := room.Trip(s.tripKey, trimmed(passphrase))
-
-	var found config.Admin
-	matched := false
-
-	for _, admin := range s.admins {
-		if subtle.ConstantTimeCompare([]byte(admin.Trip), []byte(trip)) == 1 {
-			found = admin
-			matched = true
-		}
-	}
-
+	found, matched := config.Administrator(s.admins, passphrase, s.tripKey)
 	if !matched {
 		return Session{}, "", false
 	}
@@ -203,8 +183,4 @@ func secret() string {
 	}
 
 	return base64.RawURLEncoding.EncodeToString(raw)
-}
-
-func trimmed(p room.Passphrase) string {
-	return trimSpace(string(p))
 }

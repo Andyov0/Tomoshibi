@@ -10,6 +10,10 @@ const ja: Dictionary = {
 	"Ready to join?": "参加の準備はできましたか",
 	"Check your camera and microphone first.": "先にカメラとマイクを確認してください。",
 	"Your name": "名前",
+	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
+		"この名前を言い当てた人は誰でも入れます。自動で作られた名前なら、言い当てられる心配はありません。",
+	"Only an administrator can open a new room here. Type the name you were given.":
+		"ここで新しいルームを開けるのは管理者だけです。教わったルーム名を入力してください。",
 	Join: "参加",
 	"Joining…": "参加しています…",
 	"Joining as {name} with a signature only you can produce":
@@ -100,6 +104,8 @@ const ja: Dictionary = {
 		"ルーム名に使えるのは小文字、数字、そして中間のハイフンだけです。",
 	"The server could not complete the request.": "サーバーがリクエストを完了できませんでした。",
 	"Could not join {room}.": "{room} に参加できませんでした。",
+	"{room} has not been opened. Ask whoever is holding the meeting for the link.":
+		"{room} はまだ開かれていません。会議を開いている人にリンクを聞いてください。",
 };
 
 export default ja;

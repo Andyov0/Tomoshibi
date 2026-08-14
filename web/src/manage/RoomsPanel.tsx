@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { useCallback, useState } from "react";
 import { type Participant, type Track, api } from "./api";
 import { actionFailed } from "@/live/notices";
+import { OpeningCard } from "./OpeningCard";
 import { usePoll } from "./poll";
 import { Card, Empty, Failed } from "./Shell";
 import { bitrate, day, since } from "./units";
@@ -114,6 +115,12 @@ export function RoomsPanel({
 						</ul>
 					)}
 				</Card>
+
+				{/* Last of the three, and the order is the argument: what is
+				    happening, what has happened, and what may happen next. Put
+				    above the live rooms it would push the reason anybody opened
+				    this panel below the fold. */}
+				<OpeningCard canModerate={canModerate} onSignedOut={onSignedOut} />
 			</div>
 
 			{open ? (

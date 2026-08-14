@@ -40,13 +40,26 @@ type Control interface {
 	Close(ctx context.Context, room string) error
 }
 
+// Names is what they need of the record of names that have been used.
+//
+// The third of these, and added for the reason the first two were: the moment a
+// gate in front of an endpoint needs something concrete behind it, the gate can
+// only be exercised by standing the concrete thing up, and so it stops being
+// exercised at all. This one arrived with the switch deciding who may open a
+// room, which is the last rule on these pages that should go untested.
+type Names interface {
+	Rooms() ([]store.Named, error)
+	Opening() room.Opening
+	SetOpening(opening room.Opening) error
+}
+
 // API is the management surface.
 type API struct {
 	conf     *config.Config
 	sessions *Sessions
 	control  Control
 	media    Media
-	store    *store.Store
+	store    Names
 	log      *Log
 	history  *History
 	stop     chan struct{}
@@ -123,7 +136,9 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/health", a.observe(a.health))
 	mux.HandleFunc("GET /api/admin/runtime", a.observe(a.runtime))
 	mux.HandleFunc("GET /api/admin/audit", a.observe(a.audit))
+	mux.HandleFunc("GET /api/admin/policy", a.observe(a.readPolicy))
 
+	mux.HandleFunc("PUT /api/admin/policy", a.moderate(a.setPolicy))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}/participants/{identity}", a.moderate(a.removeOne))
 	mux.HandleFunc("POST /api/admin/rooms/{room}/participants/{identity}/mute", a.moderate(a.muteOne))
@@ -409,6 +424,7 @@ func (a *API) runtime(_ Session, w http.ResponseWriter, _ *http.Request) {
 			"database":   a.conf.Meet.Database,
 			"admins":     len(a.conf.Meet.Admins),
 		},
+		"rooms": a.currentPolicy(),
 		"rtc": map[string]any{
 			"nodeIP":        rtcConf.NodeIP.V4,
 			"useExternalIP": rtcConf.UseExternalIP,
@@ -433,6 +449,74 @@ func codecNames(conf *config.Config) []string {
 
 func (a *API) audit(_ Session, w http.ResponseWriter, _ *http.Request) {
 	respond(w, a.log.Recent())
+}
+
+// Who may open a room, in the three forms worth telling apart.
+//
+// One number would be enough to draw a switch and not enough to explain it. The
+// three separate the choice somebody made from the file it started in and from
+// what the deployment can actually carry out, which is how the two ways this
+// goes quietly wrong become visible instead: a file edited after first run and
+// obeyed by nothing, and a policy asking for an administrator on a deployment
+// that has none.
+type policy struct {
+	// OpenedBy is what the server is doing.
+	OpenedBy room.Opening `json:"openedBy"`
+
+	// Chosen is what was last set, before it was reconciled against whether
+	// anybody exists who could satisfy it.
+	Chosen room.Opening `json:"chosen"`
+
+	// Configured is the configuration file's value, which is the starting one
+	// and nothing more.
+	Configured room.Opening `json:"configured"`
+}
+
+func (a *API) currentPolicy() policy {
+	chosen := a.store.Opening()
+
+	return policy{
+		OpenedBy:   chosen.InEffect(len(a.conf.Meet.Admins)),
+		Chosen:     chosen,
+		Configured: a.conf.Meet.Rooms.OpenedBy,
+	}
+}
+
+func (a *API) readPolicy(_ Session, w http.ResponseWriter, _ *http.Request) {
+	respond(w, a.currentPolicy())
+}
+
+// setPolicy changes who may open a room.
+//
+// Under moderation rather than observation, and by some distance the furthest
+// reaching thing behind that gate. Closing a room ends one meeting; this decides
+// whether anybody outside a short list can start one at all, and it goes on
+// deciding after whoever set it has signed out and forgotten.
+func (a *API) setPolicy(session Session, w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OpenedBy room.Opening `json:"openedBy"`
+	}
+
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
+		refuse(w, http.StatusBadRequest, "unreadable_request")
+		return
+	}
+
+	if !body.OpenedBy.Valid() {
+		refuse(w, http.StatusBadRequest, "no_such_policy")
+		return
+	}
+
+	err := a.store.SetOpening(body.OpenedBy)
+	a.record(session, "set who may open a room", "", string(body.OpenedBy), err)
+
+	if err != nil {
+		slog.Error("failed to set who may open a room", "error", err)
+		refuse(w, http.StatusInternalServerError, "store_unwritable")
+		return
+	}
+
+	respond(w, a.currentPolicy())
 }
 
 func (a *API) closeRoom(session Session, w http.ResponseWriter, r *http.Request) {

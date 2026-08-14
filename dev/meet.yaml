@@ -36,3 +36,14 @@ meet:
   # reload rather than needing the server recompiled. Unset in a deployment,
   # where the client inside the binary is used.
   web_root: "../web/dist"
+
+  rooms:
+    # Who may use a name nobody has used before. `anyone` is what an anonymous
+    # meeting link means; `admins` refuses a fresh name unless the passphrase
+    # sent with the join belongs to somebody under `admins` above. Either way a
+    # name already in use stays open to everybody who has it.
+    #
+    # The starting value only. The management pages change this and cannot edit
+    # a file, so it is kept in the store, adopted from here the first time the
+    # server runs, and read from there afterwards.
+    opened_by: anyone

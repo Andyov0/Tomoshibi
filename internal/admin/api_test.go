@@ -12,6 +12,7 @@ import (
 
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
+	"tomoshibi/internal/store"
 
 	livekitconf "github.com/livekit/livekit-server/pkg/config"
 	"github.com/livekit/protocol/livekit"
@@ -76,6 +77,7 @@ func mount(t *testing.T, admins []config.Admin) (*API, http.Handler) {
 		media:    absent{},
 		control:  absent{},
 		log:      NewLog(),
+		store:    unwritten{},
 		history:  NewHistory(),
 		stop:     make(chan struct{}),
 	}
@@ -335,4 +337,158 @@ func sign(body string) *http.Request {
 	request.Header.Set("Content-Type", "application/json")
 
 	return request
+}
+
+// A record of names that is not there.
+//
+// Its own type rather than another face on absent, because a room on the media
+// server and a name somebody once used are two different things that happen to
+// be listed by the same word, and no one object can answer to both.
+type unwritten struct{}
+
+func (unwritten) Rooms() ([]store.Named, error) { return nil, errors.New("no store") }
+
+// The policy a deployment nobody has configured runs under.
+func (unwritten) Opening() room.Opening { return room.ByAnyone }
+
+func (unwritten) SetOpening(room.Opening) error { return errors.New("no store") }
+
+// A record of names that keeps the one setting these tests are about.
+type remembers struct {
+	unwritten
+	opening room.Opening
+}
+
+func (r *remembers) Opening() room.Opening { return r.opening }
+
+func (r *remembers) SetOpening(opening room.Opening) error {
+	r.opening = opening
+	return nil
+}
+
+func TestOnlyAModeratorMayChangeWhoOpensRooms(t *testing.T) {
+	watcher := config.Admin{Trip: room.Trip(key, "watcher"), Name: "watcher"}
+	api, mux := mount(t, []config.Admin{watcher})
+
+	names := &remembers{opening: room.ByAnyone}
+	api.store = names
+
+	_, token, _ := api.sessions.Open("watcher")
+
+	request := httptest.NewRequest(http.MethodPut, "/api/admin/policy",
+		strings.NewReader(`{"openedBy":"admins"}`))
+	request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Errorf("somebody who may only watch changed the policy: %d", recorder.Code)
+	}
+	if names.opening != room.ByAnyone {
+		t.Errorf("the policy was changed anyway: %q", names.opening)
+	}
+}
+
+func TestAModeratorMayChangeWhoOpensRooms(t *testing.T) {
+	moderator := config.Admin{
+		Trip: room.Trip(key, "moderator"), Name: "adam", Can: []string{config.Moderate},
+	}
+	api, mux := mount(t, []config.Admin{moderator})
+
+	names := &remembers{opening: room.ByAnyone}
+	api.store = names
+
+	_, token, _ := api.sessions.Open("moderator")
+
+	request := httptest.NewRequest(http.MethodPut, "/api/admin/policy",
+		strings.NewReader(`{"openedBy":"admins"}`))
+	request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("changing the policy answered %d, want 200", recorder.Code)
+	}
+	if names.opening != room.ByAdmins {
+		t.Errorf("the store holds %q, want %q", names.opening, room.ByAdmins)
+	}
+
+	// The answer is what the server is now doing rather than what was asked
+	// for, which is the whole reason it is sent back at all: with an
+	// administrator configured the two agree, and the test below is where they
+	// do not.
+	var got policy
+	if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
+		t.Fatalf("the answer was not readable: %v", err)
+	}
+	if got.OpenedBy != room.ByAdmins || got.Chosen != room.ByAdmins {
+		t.Errorf("answered %+v", got)
+	}
+
+	// A change to who may open a room outlives whoever made it, so it belongs
+	// in the record beside the rooms they closed.
+	var found bool
+	for _, entry := range api.log.Recent() {
+		if entry.Action == "set who may open a room" && entry.Target == string(room.ByAdmins) {
+			found = true
+			if entry.Trip != moderator.Trip {
+				t.Errorf("recorded against %q, want %q", entry.Trip, moderator.Trip)
+			}
+		}
+	}
+	if !found {
+		t.Error("the policy was changed and not recorded")
+	}
+}
+
+func TestSomethingThatIsNotAPolicyIsRefused(t *testing.T) {
+	api, mux := mount(t, []config.Admin{{
+		Trip: room.Trip(key, "moderator"), Can: []string{config.Moderate},
+	}})
+
+	names := &remembers{opening: room.ByAnyone}
+	api.store = names
+
+	_, token, _ := api.sessions.Open("moderator")
+
+	for _, body := range []string{`{"openedBy":"administrators"}`, `{"openedBy":""}`, `not json`} {
+		request := httptest.NewRequest(http.MethodPut, "/api/admin/policy", strings.NewReader(body))
+		request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, request)
+
+		if recorder.Code != http.StatusBadRequest {
+			t.Errorf("%s answered %d, want 400", body, recorder.Code)
+		}
+	}
+
+	if names.opening != room.ByAnyone {
+		t.Errorf("one of them was stored anyway: %q", names.opening)
+	}
+}
+
+/*
+ * The one reading that is not simply what was stored.
+ *
+ * Asking for an administrator where nobody is configured as one cannot be
+ * carried out by anything, so it is not carried out — every name would be
+ * refused for as long as the deployment lasted, and the pages that could undo it
+ * do not exist either. The panel says so rather than drawing a switch that is on
+ * and doing nothing.
+ */
+func TestAPolicyNobodyCouldSatisfyIsNotInEffect(t *testing.T) {
+	api, _ := mount(t, nil)
+	api.store = &remembers{opening: room.ByAdmins}
+
+	got := api.currentPolicy()
+
+	if got.Chosen != room.ByAdmins {
+		t.Errorf("chosen = %q, want %q", got.Chosen, room.ByAdmins)
+	}
+	if got.OpenedBy != room.ByAnyone {
+		t.Errorf("in effect = %q, want %q with nobody configured", got.OpenedBy, room.ByAnyone)
+	}
 }

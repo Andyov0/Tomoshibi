@@ -1,4 +1,5 @@
-import { api } from "./api";
+import { type Policy, api } from "./api";
+import { words } from "./OpeningCard";
 import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
 
@@ -31,6 +32,10 @@ export function RuntimePanel({ onSignedOut }: { onSignedOut: () => void }) {
 				<Rows values={value?.rtc} />
 			</Card>
 
+			<Card title="Rooms" note="Who may use a name nobody has used">
+				<Opening policy={value?.rooms} />
+			</Card>
+
 			<Card title="Codecs the media server will carry">
 				<p className="readout px-4 py-3 text-[12px] text-fg-muted">
 					{value?.codecs.join("  ·  ") ?? "—"}
@@ -41,6 +46,30 @@ export function RuntimePanel({ onSignedOut }: { onSignedOut: () => void }) {
 				<Rows values={value?.credentials} />
 			</Card>
 		</div>
+	);
+}
+
+/**
+ * The one setting on this server that a configuration file no longer decides.
+ *
+ * Given three lines rather than one because the interesting readings are the
+ * disagreements. A file edited after first run is obeyed by nothing and looks
+ * exactly like a file that is; a policy naming administrators on a deployment
+ * that has none is a rule nothing can satisfy and looks exactly like a rule in
+ * force. Both are silent, and this panel exists for the settings whose real
+ * value is not the one somebody wrote down.
+ */
+function Opening({ policy }: { policy?: Policy }) {
+	if (!policy) return <p className="px-4 py-3 text-fg-muted text-xs">—</p>;
+
+	return (
+		<Rows
+			values={{
+				"in effect": words(policy.openedBy),
+				chosen: words(policy.chosen),
+				configured: words(policy.configured),
+			}}
+		/>
 	);
 }
 

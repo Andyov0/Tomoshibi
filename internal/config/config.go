@@ -9,10 +9,14 @@ package config
 
 import (
 	"bytes"
+	"crypto/subtle"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
+
+	"tomoshibi/internal/room"
 
 	livekit "github.com/livekit/livekit-server/pkg/config"
 	"gopkg.in/yaml.v3"
@@ -64,6 +68,20 @@ type Meet struct {
 	// Admins may open the management pages. Empty, which is the default, means
 	// there are none and those pages do not exist.
 	Admins []Admin `yaml:"admins"`
+
+	// Rooms is what may be done with a name nobody has used.
+	Rooms Rooms `yaml:"rooms"`
+}
+
+// Rooms is the policy for names nobody has used.
+type Rooms struct {
+	// OpenedBy is who may use one for the first time.
+	//
+	// The starting value alone. It is written into the store the first time the
+	// server runs, and from then on the management pages are what change it —
+	// so editing this afterwards changes nothing, and the runtime panel shows
+	// the two side by side for whoever is reading the file and wondering why.
+	OpenedBy room.Opening `yaml:"opened_by"`
 }
 
 // What an administrator is allowed to do.
@@ -143,6 +161,7 @@ var defaults = Meet{
 	JoinRate:    10,
 	JoinBurst:   120,
 	TrustProxy:  false,
+	Rooms:       Rooms{OpenedBy: room.ByAnyone},
 }
 
 // Load reads the configuration from path, or returns the defaults if path is
@@ -179,6 +198,12 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	if !meet.Rooms.OpenedBy.Valid() {
+		return nil, fmt.Errorf(
+			"rooms.opened_by: %q is not who a room can be opened by. The two are %q and %q",
+			meet.Rooms.OpenedBy, room.ByAnyone, room.ByAdmins)
+	}
+
 	return &Config{Meet: meet, LiveKit: lk, Key: key, Secret: secret}, nil
 }
 
@@ -201,11 +226,11 @@ func checkAdmins(admins []Admin) error {
 		case admin.Trip == "":
 			return fmt.Errorf("%s has no trip. Run `tomoshibi admin new` to make one", where)
 
-		case len(admin.Trip) != tripLength:
+		case len(admin.Trip) != room.TripLength:
 			return fmt.Errorf(
 				"%s: a trip is %d characters, and this one is %d. The kind prefix and "+
 					"the dash that follow it in an identity are not part of it",
-				where, tripLength, len(admin.Trip))
+				where, room.TripLength, len(admin.Trip))
 
 		case !tripCharacters(admin.Trip):
 			return fmt.Errorf(
@@ -230,10 +255,40 @@ func checkAdmins(admins []Admin) error {
 	return nil
 }
 
-// tripLength and tripCharacters describe a signature without importing the
-// package that makes them, which imports this one.
-const tripLength = 10
+// Administrator finds the administrator a passphrase belongs to.
+//
+// The signature is derived exactly as a participant's is, with the same key, so
+// an administrator's credential is the one they already have: they type it to
+// join a call and it prints beside their name. What is listed here is that
+// printed signature and never the passphrase.
+//
+// Every entry is compared even after one matches. The work is a handful of
+// string comparisons, and stopping at the first match would leak, through the
+// time taken, how far down the list a signature sits.
+func Administrator(admins []Admin, passphrase room.Passphrase, tripKey []byte) (Admin, bool) {
+	if passphrase.Empty() {
+		return Admin{}, false
+	}
 
+	trip := []byte(room.Trip(tripKey, strings.TrimSpace(string(passphrase))))
+
+	var found Admin
+	matched := false
+
+	for _, admin := range admins {
+		if subtle.ConstantTimeCompare([]byte(admin.Trip), trip) == 1 {
+			found = admin
+			matched = true
+		}
+	}
+
+	return found, matched
+}
+
+// tripCharacters says whether a signature holds only what one is made of. The
+// alphabet lives in the package that makes them; this is the one thing about it
+// worth checking here, and checking it here is what turns a mistyped entry into
+// a message at startup rather than a door that opens for nobody.
 func tripCharacters(trip string) bool {
 	for _, r := range trip {
 		if (r < 'a' || r > 'z') && (r < '2' || r > '7') {

@@ -1,3 +1,4 @@
+import { t } from "@/live/i18n";
 import { type Signature, signatureOf } from "@/live/name";
 import type { TrackReferenceOrPlaceholder } from "@livekit/components-core";
 import { type Participant, Track } from "livekit-client";
@@ -34,7 +35,7 @@ export function label(surface: Surface): string {
 	const participant = owner(surface);
 	const name = participant.name || participant.identity;
 
-	return surface.kind === "screen" ? `${name} (screen)` : name;
+	return surface.kind === "screen" ? t("{name} (screen)", { name }) : name;
 }
 
 /**

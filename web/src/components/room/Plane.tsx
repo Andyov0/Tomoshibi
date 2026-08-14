@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { useMeasure } from "@/hooks/useMeasure";
+import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import type { Plan } from "@/live/plan";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -43,6 +44,7 @@ export function Plane({
 	/** Handed the element whose size the plan was made for. */
 	measure: ReturnType<typeof useMeasure>[0];
 }) {
+	const t = useT();
 	const paged = (pages ?? 1) > 1;
 
 	return (
@@ -89,10 +91,10 @@ export function Plane({
 
 			{paged && (
 				<>
-					<PageButton side="left" onClick={onPrevious} label="Previous page">
+					<PageButton side="left" onClick={onPrevious} label={t("Previous page")}>
 						<ChevronLeft />
 					</PageButton>
-					<PageButton side="right" onClick={onNext} label="Next page">
+					<PageButton side="right" onClick={onNext} label={t("Next page")}>
 						<ChevronRight />
 					</PageButton>
 

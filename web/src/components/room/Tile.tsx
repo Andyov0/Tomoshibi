@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import type { Signature } from "@/live/name";
 import { Maximize2, MicOff, Minimize2 } from "lucide-react";
@@ -47,6 +48,7 @@ export function Tile({
 	/** Already on the stage, so a click sends it back to the grid. */
 	selected?: boolean;
 }) {
+	const t = useT();
 	const interactive = onSelect !== undefined || onExpand !== undefined;
 
 	return (
@@ -57,7 +59,13 @@ export function Tile({
 			role={interactive ? "button" : undefined}
 			tabIndex={interactive ? 0 : undefined}
 			aria-pressed={interactive ? selected : undefined}
-			aria-label={interactive ? (selected ? "Show everybody" : `Show ${label} larger`) : undefined}
+			aria-label={
+				interactive
+					? selected
+						? t("Show everybody")
+						: t("Show {name} larger", { name: label })
+					: undefined
+			}
 			onClick={onSelect}
 			onDoubleClick={onExpand}
 			onKeyDown={(event) => {
@@ -119,8 +127,8 @@ export function Tile({
 					<span
 						title={
 							signature.proven
-								? "A signature only this person can produce"
-								: "Given for this call. It says nothing about who they are"
+								? t("A signature only this person can produce")
+								: t("Given for this call. It says nothing about who they are")
 						}
 						className={cn(
 							"readout shrink-0 text-[10px]",
@@ -134,10 +142,10 @@ export function Tile({
 
 				{unverified && (
 					<span
-						title="Somebody else signed this name; this participant did not"
+						title={t("Somebody else signed this name; this participant did not")}
 						className="silk shrink-0 rounded bg-danger px-1 py-px text-[9px] text-danger-fg"
 					>
-						unverified
+						{t("unverified")}
 					</span>
 				)}
 

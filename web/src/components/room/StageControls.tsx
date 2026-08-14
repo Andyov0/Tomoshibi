@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import type { Surface } from "@/live/surface";
 
@@ -24,6 +25,7 @@ export function StageControls({
 	onFullscreen: () => void;
 	fullscreenSupported: boolean;
 }) {
+	const t = useT();
 	return (
 		// Revealed by hovering the picture these controls belong to. They used to
 		// answer to a stage that owned them, and the stage is gone: a picture on
@@ -40,7 +42,7 @@ export function StageControls({
 					className="gap-1.5 bg-black/60 backdrop-blur hover:bg-black/75"
 				>
 					{other.kind === "screen" ? <MonitorUp className="size-4" /> : <User className="size-4" />}
-					{other.kind === "screen" ? "Their screen" : "Their camera"}
+					{other.kind === "screen" ? t("Their screen") : t("Their camera")}
 				</Button>
 			)}
 
@@ -48,7 +50,7 @@ export function StageControls({
 				<Button
 					variant="secondary"
 					size="icon"
-					aria-label={fullscreen ? "Leave fullscreen" : "Fill the screen"}
+					aria-label={fullscreen ? t("Leave fullscreen") : t("Fill the screen")}
 					onClick={onFullscreen}
 					className="bg-black/60 backdrop-blur hover:bg-black/75"
 				>

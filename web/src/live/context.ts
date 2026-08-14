@@ -1,3 +1,5 @@
+import { t } from "./i18n";
+
 /**
  * Whether this page may touch cameras and microphones at all.
  *
@@ -20,11 +22,11 @@ export function insecureReason(): string {
 	if (protocol === "https:") {
 		// Secure but still no devices: an old browser, or one where the feature
 		// has been switched off by policy.
-		return "This browser will not give the page access to a camera or microphone.";
+		return t("This browser will not give the page access to a camera or microphone.");
 	}
 
-	return (
-		`Cameras and microphones need a secure page, and ${hostname} is not one. ` +
-		"Open the server on localhost, or put it behind HTTPS to reach it from here."
+	return t(
+		"Cameras and microphones need a secure page, and {host} is not one. Open the server on localhost, or put it behind HTTPS to reach it from here.",
+		{ host: hostname },
 	);
 }

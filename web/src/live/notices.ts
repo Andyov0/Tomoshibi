@@ -1,6 +1,7 @@
 import type { Participant, Room } from "livekit-client";
 import { RoomEvent, Track } from "livekit-client";
 import { toast } from "sonner";
+import { t } from "./i18n";
 
 /**
  * What is worth interrupting somebody for.
@@ -29,16 +30,19 @@ export function watch(room: Room): () => void {
 	const named = (participant: Participant) => participant.name || participant.identity;
 
 	const onJoin = (participant: Participant) => {
-		toast(`${named(participant)} joined`, { duration: BRIEFLY });
+		toast(t("{name} joined", { name: named(participant) }), { duration: BRIEFLY });
 	};
 
 	const onLeave = (participant: Participant) => {
-		toast(`${named(participant)} left`, { duration: BRIEFLY });
+		toast(t("{name} left", { name: named(participant) }), { duration: BRIEFLY });
 	};
 
 	const onPublished = (publication: { source: Track.Source }, participant: Participant) => {
 		if (publication.source !== Track.Source.ScreenShare) return;
-		toast(`${named(participant)} started sharing`, { duration: A_MOMENT, className: "is-signal" });
+		toast(t("{name} started sharing", { name: named(participant) }), {
+			duration: A_MOMENT,
+			className: "is-signal",
+		});
 	};
 
 	room.on(RoomEvent.ParticipantConnected, onJoin);
@@ -59,8 +63,11 @@ export function watch(room: Room): () => void {
  * somebody has to go and fix, and it tells them where.
  */
 export function deviceRefused(kind: "camera" | "microphone"): void {
-	toast.error(`Cannot reach your ${kind}`, {
-		description: "Allow it from the icon in the address bar, then try again.",
+	// Two whole phrases rather than one with the device substituted in. A
+	// sentence built around a noun has to agree with it in most languages, and
+	// the one place that would break is the one nobody tests: the error.
+	toast.error(kind === "camera" ? t("Cannot reach your camera") : t("Cannot reach your microphone"), {
+		description: t("Allow it from the icon in the address bar, then try again."),
 		duration: Number.POSITIVE_INFINITY,
 	});
 }
@@ -78,10 +85,10 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
  * some other way.
  */
 export function audioBlocked(resume: () => void): () => void {
-	const id = toast("Nobody can be heard yet", {
-		description: "This browser waits for a click before it will play sound.",
+	const id = toast(t("Nobody can be heard yet"), {
+		description: t("This browser waits for a click before it will play sound."),
 		duration: Number.POSITIVE_INFINITY,
-		action: { label: "Turn on sound", onClick: resume },
+		action: { label: t("Turn on sound"), onClick: resume },
 	});
 
 	return () => toast.dismiss(id);

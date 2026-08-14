@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 const IDENTITY_KEY = "meet-live.identity";
 
 /** What the server hands back for one room. */
@@ -43,16 +44,37 @@ export async function join(room: string, name: string, passphrase = ""): Promise
 	});
 
 	if (!response.ok) {
-		const detail = await response
+		const reason = await response
 			.json()
 			.then((body) => (body as { error?: string }).error)
 			.catch(() => undefined);
 
-		throw new Error(detail ?? `could not join ${room}`);
+		throw new Error(explain(reason, room));
 	}
 
 	const result = (await response.json()) as Join;
 	sessionStorage.setItem(IDENTITY_KEY, result.identity);
 
 	return result;
+}
+
+/**
+ * Turn what the server refused into something a person can read.
+ *
+ * The server sends a code and nothing else, so that the words live in one place
+ * and one language at a time. A code this build does not recognise falls back to
+ * the general failure rather than being shown raw: `rate_limited` on screen is
+ * an implementation detail escaping, and it would escape untranslated.
+ */
+function explain(reason: string | undefined, room: string): string {
+	switch (reason) {
+		case "rate_limited":
+			return t("Too many requests. Wait a moment and try again.");
+		case "invalid_room":
+			return t("Room names may only contain lowercase letters, digits, and inner dashes.");
+		case "server_error":
+			return t("The server could not complete the request.");
+		default:
+			return t("Could not join {room}.", { room });
+	}
 }

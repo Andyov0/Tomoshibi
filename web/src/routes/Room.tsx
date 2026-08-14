@@ -15,6 +15,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { usePin } from "@/hooks/usePin";
 import { useConnection, useRoster } from "@/hooks/useRoomState";
 import { useSpeakingOrder } from "@/hooks/useSpeakingOrder";
+import { useT } from "@/hooks/useT";
 import { watch } from "@/live/notices";
 import { impersonating } from "@/live/name";
 import type { Said } from "@/live/chat";
@@ -79,6 +80,7 @@ function Stage({
 	screen: ReturnType<typeof useFullscreen<HTMLDivElement>>;
 	onCloseChat: () => void;
 }) {
+	const t = useT();
 	const participants = useRoster(room);
 	const state = useConnection(room);
 	const [measure, size] = useMeasure();
@@ -243,7 +245,7 @@ function Stage({
 
 			{state !== ConnectionState.Connected && (
 				<div className="-translate-x-1/2 pointer-events-none absolute top-3 left-1/2 rounded-full bg-surface-hi px-3 py-1 text-fg-muted text-xs shadow">
-					{state === ConnectionState.Reconnecting ? "Reconnecting…" : "Connecting…"}
+					{state === ConnectionState.Reconnecting ? t("Reconnecting…") : t("Connecting…")}
 				</div>
 			)}
 		</main>

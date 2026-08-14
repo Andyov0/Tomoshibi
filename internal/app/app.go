@@ -96,14 +96,13 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// Charged first, so a refused caller costs a header lookup rather than a
 	// signature.
 	if !a.limit.Allow(r) {
-		fail(w, http.StatusTooManyRequests, "too many requests: slow down and try again shortly")
+		fail(w, http.StatusTooManyRequests, reasonRateLimited)
 		return
 	}
 
 	name := strings.ToLower(r.PathValue("room"))
 	if !room.ValidName(name) {
-		fail(w, http.StatusBadRequest,
-			"room names may only contain lowercase letters, digits, and inner dashes")
+		fail(w, http.StatusBadRequest, reasonBadRoom)
 		return
 	}
 
@@ -122,7 +121,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("failed to authorise a join", "room", name, "error", err)
-		fail(w, http.StatusInternalServerError, "the server could not complete the request")
+		fail(w, http.StatusInternalServerError, reasonServerError)
 		return
 	}
 
@@ -190,8 +189,23 @@ func respond(w http.ResponseWriter, body any) {
 	}
 }
 
-func fail(w http.ResponseWriter, status int, message string) {
+// Reasons a request is refused.
+//
+// Codes rather than sentences, because a sentence has a language and this
+// server has no business knowing which one the reader wants. Content
+// negotiation would let it guess, but then the same message exists twice —
+// once here in Go and once in the client's dictionaries — in two formats and
+// two build systems, and the two drift apart with nothing to notice.
+//
+// So the client owns every word it shows, and this owns only what happened.
+const (
+	reasonRateLimited = "rate_limited"
+	reasonBadRoom     = "invalid_room"
+	reasonServerError = "server_error"
+)
+
+func fail(w http.ResponseWriter, status int, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": reason})
 }

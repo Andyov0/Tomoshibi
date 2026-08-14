@@ -7,9 +7,11 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useT } from "@/hooks/useT";
+import { LOCALES, LOCALE_NAMES, locale, setLocale, subscribe } from "@/live/i18n";
 import type { Room } from "livekit-client";
 import { ChevronUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 /**
  * Device pickers.
@@ -21,27 +23,60 @@ import { useEffect, useState } from "react";
  * (playing music) is better served by sharing a tab with its audio.
  */
 export function DeviceMenu({ room }: { room: Room }) {
+	const t = useT();
+
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
-				<Button variant="ghost" size="round" aria-label="Devices">
+				<Button variant="ghost" size="round" aria-label={t("Devices")}>
 					<ChevronUp />
 				</Button>
 			</DropdownMenuTrigger>
 
 			<DropdownMenuContent align="center" side="top">
-				<DropdownMenuLabel>Microphone</DropdownMenuLabel>
+				<DropdownMenuLabel>{t("Microphone")}</DropdownMenuLabel>
 				<Devices room={room} kind="audioinput" />
 
 				<DropdownMenuSeparator />
-				<DropdownMenuLabel>Camera</DropdownMenuLabel>
+				<DropdownMenuLabel>{t("Camera")}</DropdownMenuLabel>
 				<Devices room={room} kind="videoinput" />
+
+				<DropdownMenuSeparator />
+				<DropdownMenuLabel>{t("Language")}</DropdownMenuLabel>
+				<Languages />
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
 }
 
+/**
+ * Which language the interface speaks.
+ *
+ * Here rather than on the island, because a language is chosen once and a call
+ * has six controls already. Each is written in itself and never translated: the
+ * person reading this list is the one person who may not read the language it is
+ * currently in.
+ */
+function Languages() {
+	const current = useSyncExternalStore(subscribe, locale, locale);
+
+	return (
+		<>
+			{LOCALES.map((candidate) => (
+				<DropdownMenuCheckboxItem
+					key={candidate}
+					checked={candidate === current}
+					onCheckedChange={() => setLocale(candidate)}
+				>
+					{LOCALE_NAMES[candidate]}
+				</DropdownMenuCheckboxItem>
+			))}
+		</>
+	);
+}
+
 function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
+	const t = useT();
 	const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
 	const [active, setActive] = useState<string | undefined>(() => room.getActiveDevice(kind));
 
@@ -70,7 +105,7 @@ function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
 	}, [kind]);
 
 	if (devices.length === 0) {
-		return <DropdownMenuLabel>No devices found</DropdownMenuLabel>;
+		return <DropdownMenuLabel>{t("No devices found")}</DropdownMenuLabel>;
 	}
 
 	const select = (deviceId: string) => {
@@ -88,7 +123,7 @@ function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
 				>
 					{/* Labels are empty until permission is granted, and a blank
 					    row is worse than a generic one. */}
-					{device.label || `Device ${index + 1}`}
+					{device.label || t("Device {number}", { number: index + 1 })}
 				</DropdownMenuCheckboxItem>
 			))}
 		</>

@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useT } from "@/hooks/useT";
 import { share } from "@/live/room";
 import type { Room } from "livekit-client";
 import { MessageSquare, Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
@@ -33,6 +34,7 @@ export function ControlBar({
 	onChat: () => void;
 	onLeave: () => void;
 }) {
+	const t = useT();
 	const local = useLocalState(room);
 	const [busy, setBusy] = useState(false);
 
@@ -80,8 +82,8 @@ export function ControlBar({
 		>
 			<Toggle
 				on={local.microphone}
-				onLabel="Mute microphone"
-				offLabel="Unmute microphone"
+				onLabel={t("Mute microphone")}
+				offLabel={t("Unmute microphone")}
 				onClick={guard(
 					() => room.localParticipant.setMicrophoneEnabled(!local.microphone),
 					"microphone",
@@ -92,8 +94,8 @@ export function ControlBar({
 
 			<Toggle
 				on={local.camera}
-				onLabel="Turn camera off"
-				offLabel="Turn camera on"
+				onLabel={t("Turn camera off")}
+				offLabel={t("Turn camera on")}
 				onClick={guard(() => room.localParticipant.setCameraEnabled(!local.camera))}
 			>
 				{local.camera ? <Video /> : <VideoOff />}
@@ -107,8 +109,8 @@ export function ControlBar({
 
 			<Toggle
 				on={chatting}
-				onLabel="Hide messages"
-				offLabel="Show messages"
+				onLabel={t("Hide messages")}
+				offLabel={t("Show messages")}
 				signal
 				onClick={onChat}
 			>
@@ -124,7 +126,7 @@ export function ControlBar({
 
 			<span className="mx-1 h-5 w-px bg-border" />
 
-			<Button variant="danger" size="round" aria-label="Leave" onClick={onLeave}>
+			<Button variant="danger" size="round" aria-label={t("Leave")} onClick={onLeave}>
 				<PhoneOff />
 			</Button>
 		</footer>

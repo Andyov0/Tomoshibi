@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { MonitorUp } from "lucide-react";
 import { Tile } from "./Tile";
 
@@ -13,13 +14,14 @@ import { Tile } from "./Tile";
  * together, and the smaller target is the worse one anyway.
  */
 export function ShareCard({ label, onOpen }: { label: string; onOpen: () => void }) {
+	const t = useT();
 	return (
 		<Tile label={label} onSelect={onOpen}>
 			<div className="absolute inset-0 grid place-items-center bg-surface-hi/40">
 				<div className="flex flex-col items-center gap-2 px-4 text-center">
 					<MonitorUp className="size-8 text-fg-muted" />
-					<p className="text-fg-muted text-sm">{label} is sharing</p>
-					<p className="text-fg-muted/70 text-xs">Click to watch</p>
+					<p className="text-fg-muted text-sm">{t("{name} is sharing", { name: label })}</p>
+					<p className="text-fg-muted/70 text-xs">{t("Click to watch")}</p>
 				</div>
 			</div>
 		</Tile>

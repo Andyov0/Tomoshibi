@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RoomBar } from "@/components/room/RoomBar";
 import { devicesAvailable, insecureReason } from "@/live/context";
+import { Phrased, useT } from "@/hooks/useT";
 import { parseName } from "@/live/name";
 import { KeyRound, ShieldAlert } from "lucide-react";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
@@ -45,6 +46,7 @@ export function PreJoin({ room, onRoomChange, onJoin }: PreJoinProps) {
 }
 
 function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
+	const t = useT();
 	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
 	const [devices, setDevices] = useState(remembered);
 	const [track, setTrack] = useState<LocalVideoTrack>();
@@ -108,8 +110,8 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 		<main className="grid min-h-full place-items-center p-6">
 			<div className="w-full max-w-md space-y-6">
 				<header className="space-y-1 text-center">
-					<h1 className="font-semibold text-2xl tracking-tight">Ready to join?</h1>
-					<p className="text-fg-muted text-sm">Check your camera and microphone first.</p>
+					<h1 className="font-semibold text-2xl tracking-tight">{t("Ready to join?")}</h1>
+					<p className="text-fg-muted text-sm">{t("Check your camera and microphone first.")}</p>
 				</header>
 
 				<RoomBar room={room} onChange={onRoomChange} />
@@ -120,7 +122,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 					<Button
 						variant={devices.microphone ? "secondary" : "danger"}
 						size="icon"
-						aria-label={devices.microphone ? "Mute microphone" : "Unmute microphone"}
+						aria-label={devices.microphone ? t("Mute microphone") : t("Unmute microphone")}
 						aria-pressed={devices.microphone}
 						onClick={() => setDevices((held) => ({ ...held, microphone: !held.microphone }))}
 					>
@@ -129,7 +131,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 					<Button
 						variant={devices.camera ? "secondary" : "danger"}
 						size="icon"
-						aria-label={devices.camera ? "Turn camera off" : "Turn camera on"}
+						aria-label={devices.camera ? t("Turn camera off") : t("Turn camera on")}
 						aria-pressed={devices.camera}
 						onClick={() => setDevices((held) => ({ ...held, camera: !held.camera }))}
 					>
@@ -147,8 +149,8 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 					<Input
 						value={name}
 						onChange={(event) => setName(event.target.value)}
-						placeholder="Your name"
-						aria-label="Your name"
+						placeholder={t("Your name")}
+						aria-label={t("Your name")}
 						autoFocus
 						maxLength={80}
 					/>
@@ -156,20 +158,24 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 					{passphrase ? (
 						<p className="flex items-center justify-center gap-1.5 text-fg-muted text-xs">
 							<KeyRound className="size-3" />
-							<span>
-								Joining as <strong className="text-fg">{display || "?"}</strong> with a
-								signature only you can produce
-							</span>
+							<Phrased
+								phrase="Joining as {name} with a signature only you can produce"
+								values={{
+									name: <strong className="text-fg">{display || "?"}</strong>,
+								}}
+							/>
 						</p>
 					) : (
 						<p className="text-center text-fg-muted text-xs">
-							Add <code className="text-fg">#</code> and a passphrase to sign your name, so
-							nobody else can appear under it.
+							<Phrased
+								phrase="Add {hash} and a passphrase to sign your name, so nobody else can appear under it."
+								values={{ hash: <code className="text-fg">#</code> }}
+							/>
 						</p>
 					)}
 
 					<Button type="submit" size="lg" className="w-full" disabled={!display || joining}>
-						{joining ? "Joining…" : "Join"}
+						{joining ? t("Joining…") : t("Join")}
 					</Button>
 				</form>
 			</div>
@@ -184,11 +190,13 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
  * has to be loaded from somewhere else before any of this works.
  */
 function Unavailable({ reason }: { reason: string }) {
+	const t = useT();
+
 	return (
 		<main className="grid min-h-full place-items-center p-6">
 			<div className="w-full max-w-md space-y-4 text-center">
 				<ShieldAlert className="mx-auto size-10 text-fg-muted" />
-				<h1 className="font-semibold text-2xl tracking-tight">Cannot reach your devices</h1>
+				<h1 className="font-semibold text-2xl tracking-tight">{t("Cannot reach your devices")}</h1>
 				<p className="text-fg-muted text-sm">{reason}</p>
 			</div>
 		</main>

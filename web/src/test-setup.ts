@@ -2,6 +2,17 @@ import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 
 /**
+ * Tell React it is being tested.
+ *
+ * Without it, anything wrapped in `act` warns that the environment does not
+ * support it — on every call, in every test that changes state from outside a
+ * component. The warning is correct and the fix is this flag; leaving it to
+ * scroll past would train everybody to ignore the one place React reports a
+ * genuine problem.
+ */
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+/**
  * Take each rendered tree down before the next test puts one up.
  *
  * Testing Library does this on its own when Vitest is run with globals, and this

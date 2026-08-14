@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Check, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -10,6 +11,7 @@ import { useEffect, useState } from "react";
  * themselves and nothing else.
  */
 export function EmptyRoom() {
+	const t = useT();
 	const [copied, setCopied] = useState(false);
 
 	useEffect(() => {
@@ -29,11 +31,11 @@ export function EmptyRoom() {
 
 	return (
 		<div className="flex flex-col items-center gap-3 text-center">
-			<p className="text-fg-muted text-sm">Nobody else is here yet.</p>
+			<p className="text-fg-muted text-sm">{t("Nobody else is here yet.")}</p>
 
 			<Button variant="secondary" onClick={copy} className="gap-2">
 				{copied ? <Check className="size-4 text-speaking" /> : <Copy className="size-4" />}
-				{copied ? "Link copied" : "Copy the link to this room"}
+				{copied ? t("Link copied") : t("Copy the link to this room")}
 			</Button>
 		</div>
 	);

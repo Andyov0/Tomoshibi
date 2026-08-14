@@ -6,6 +6,8 @@ import {
 	DropdownMenuLabel,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useT } from "@/hooks/useT";
+import type { Phrase } from "@/live/i18n";
 import { SHARE_FRAME_RATES, type ShareFrameRate } from "@/live/room";
 import { MonitorOff, MonitorUp } from "lucide-react";
 
@@ -39,6 +41,8 @@ export function ShareButton({
 	onStart: (frameRate: ShareFrameRate) => void;
 	onStop: () => void;
 }) {
+	const t = useT();
+
 	// Stopping is not a choice, so while a share is running the button is a
 	// button. Opening a menu to answer a question that has already been answered
 	// is a step somebody has to read before they can dismiss it.
@@ -47,7 +51,7 @@ export function ShareButton({
 			<Button
 				variant="default"
 				size="round"
-				aria-label="Stop sharing"
+				aria-label={t("Stop sharing")}
 				aria-pressed
 				onClick={onStop}
 			>
@@ -62,7 +66,7 @@ export function ShareButton({
 				<Button
 					variant="secondary"
 					size="round"
-					aria-label="Share your screen"
+					aria-label={t("Share your screen")}
 					aria-pressed={false}
 					className="text-fg-muted"
 				>
@@ -71,7 +75,7 @@ export function ShareButton({
 			</DropdownMenuTrigger>
 
 			<DropdownMenuContent align="center" side="top">
-				<DropdownMenuLabel>Share your screen</DropdownMenuLabel>
+				<DropdownMenuLabel>{t("Share your screen")}</DropdownMenuLabel>
 
 				{SHARE_FRAME_RATES.map((rate) => (
 					<DropdownMenuItem
@@ -79,11 +83,11 @@ export function ShareButton({
 						onSelect={() => onStart(rate)}
 						className="flex-col items-start gap-0"
 					>
-						<span className="text-fg">{SHARE_INTENT[rate].label}</span>
+						<span className="text-fg">{t(SHARE_INTENT[rate].label)}</span>
 						{/* What each one is good for, rather than what it does to the
 						    encoder. The frame rate is the mechanism; the kind of
 						    picture is the question being asked. */}
-						<span className="text-fg-muted text-xs">{SHARE_INTENT[rate].describes}</span>
+						<span className="text-fg-muted text-xs">{t(SHARE_INTENT[rate].describes)}</span>
 					</DropdownMenuItem>
 				))}
 			</DropdownMenuContent>
@@ -98,7 +102,7 @@ export function ShareButton({
  * the choice: a share of a terminal and a share of a video want opposite answers
  * to everything that follows, and the frame rate is only the first of them.
  */
-const SHARE_INTENT: Record<ShareFrameRate, { label: string; describes: string }> = {
+const SHARE_INTENT: Record<ShareFrameRate, { label: Phrase; describes: Phrase }> = {
 	30: { label: "Sharper text", describes: "Code, documents, slides" },
 	60: { label: "Smoother motion", describes: "Video, animation, a demonstration" },
 };

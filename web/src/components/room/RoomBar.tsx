@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MAX_ROOM_NAME, looksGenerated, normaliseRoomName, validRoomName } from "@/live/names";
@@ -13,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
  * of copy for what is one decision about where to go.
  */
 export function RoomBar({ room, onChange }: { room: string; onChange: (room: string) => void }) {
+	const t = useT();
 	const [editing, setEditing] = useState(false);
 	const [copied, setCopied] = useState(false);
 	const field = useRef<HTMLInputElement>(null);
@@ -48,7 +50,7 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 					<Input
 						ref={field}
 						defaultValue={room}
-						aria-label="Room name"
+						aria-label={t("Room name")}
 						maxLength={MAX_ROOM_NAME}
 						className="h-7 border-0 bg-transparent px-0 font-mono text-sm focus-visible:ring-0"
 						onChange={(event) => {
@@ -71,7 +73,7 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 					<button
 						type="button"
 						onClick={() => setEditing(true)}
-						title="Change room"
+						title={t("Change room")}
 						className="group flex min-w-0 flex-1 items-center gap-1.5 text-left"
 					>
 						<span className="truncate font-mono text-sm">{room}</span>
@@ -83,7 +85,7 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 					variant="ghost"
 					size="icon"
 					className="size-7 shrink-0"
-					aria-label={copied ? "Link copied" : "Copy the link to this room"}
+					aria-label={copied ? t("Link copied") : t("Copy the link to this room")}
 					onClick={copy}
 				>
 					{copied ? <Check className="text-speaking" /> : <Copy />}

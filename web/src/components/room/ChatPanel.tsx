@@ -1,3 +1,5 @@
+import { useT } from "@/hooks/useT";
+import { locale } from "@/live/i18n";
 import { Button } from "@/components/ui/button";
 import type { Said } from "@/live/chat";
 import { cn } from "@/lib/utils";
@@ -29,6 +31,7 @@ export function ChatPanel({
 	offline?: boolean;
 	onClose: () => void;
 }) {
+	const t = useT();
 	const [draft, setDraft] = useState("");
 	const field = useRef<HTMLTextAreaElement>(null);
 	const log = useRef<HTMLDivElement>(null);
@@ -61,8 +64,8 @@ export function ChatPanel({
 			)}
 		>
 			<header className="flex items-center justify-between border-border border-b px-3 py-2">
-				<strong className="font-semibold text-[12.5px]">Messages</strong>
-				<Button variant="ghost" size="icon" className="size-6" aria-label="Close messages" onClick={onClose}>
+				<strong className="font-semibold text-[12.5px]">{t("Messages")}</strong>
+				<Button variant="ghost" size="icon" className="size-6" aria-label={t("Close messages")} onClick={onClose}>
 					<X className="size-3.5" />
 				</Button>
 			</header>
@@ -100,8 +103,8 @@ export function ChatPanel({
 					rows={1}
 					value={draft}
 					disabled={offline}
-					placeholder={offline ? "Waiting for the connection" : "Say something"}
-					aria-label="Say something"
+					placeholder={offline ? t("Waiting for the connection") : t("Say something")}
+					aria-label={t("Say something")}
 					maxLength={2000}
 					onChange={(event) => {
 						setDraft(event.target.value);
@@ -125,7 +128,7 @@ export function ChatPanel({
 				<Button
 					size="icon"
 					className="size-6 shrink-0 rounded-md"
-					aria-label="Send"
+					aria-label={t("Send")}
 					disabled={!draft.trim() || sending || offline}
 					onClick={send}
 				>
@@ -145,17 +148,26 @@ export function ChatPanel({
  * they would rather not leave behind.
  */
 function Empty() {
+	const t = useT();
+
 	return (
 		<div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-8 text-center">
 			<MessageSquareOff className="size-6 text-border" />
 			<p className="max-w-[24ch] text-[11.5px] text-fg-muted leading-relaxed">
-				Messages last as long as the call. Nothing is written down.
+				{t("Messages last as long as the call. Nothing is written down.")}
 			</p>
 		</div>
 	);
 }
 
-/** Wall-clock time, to the minute: seconds are noise in a conversation. */
+/**
+ * Wall-clock time, to the minute: seconds are noise in a conversation.
+ *
+ * Formatted for the language in use rather than for the system, and without an
+ * opinion about the twelve-hour clock. Whether a time reads as 14:30 or 2:30 PM
+ * is a regional habit, and forcing one on somebody is a decision that was never
+ * this application's to make.
+ */
 function clock(at: number): string {
-	return new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+	return new Date(at).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 }

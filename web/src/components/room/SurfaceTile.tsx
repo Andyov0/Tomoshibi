@@ -1,4 +1,5 @@
 import { useSteady } from "@/hooks/useSteady";
+import { useT } from "@/hooks/useT";
 import { type Surface, label, owner, signature } from "@/live/surface";
 import type { TrackReference } from "@livekit/components-core";
 import { VideoTrack } from "@livekit/components-react";
@@ -33,6 +34,7 @@ export function SurfaceTile({
 	onSelect?: () => void;
 	onExpand?: () => void;
 }) {
+	const t = useT();
 	const participant = owner(surface);
 	const camera = surface.kind === "camera";
 
@@ -59,7 +61,7 @@ export function SurfaceTile({
 
 	return (
 		<Tile
-			label={surface.local ? `${label(surface)} (you)` : label(surface)}
+			label={surface.local ? t("{name} (you)", { name: label(surface) }) : label(surface)}
 			signature={camera ? signature(surface) : undefined}
 			unverified={camera && unverified}
 			overlay={overlay}

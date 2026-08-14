@@ -84,6 +84,7 @@ export function OpeningCard({
 						: "Anybody who asks for a name nobody has used opens it, which is what an anonymous meeting link means."}
 				</p>
 
+				{value && <HowLongItLasts remember={value.remember} />}
 				{value && <WhereItLives policy={value} />}
 				{value && <Caveats policy={value} canModerate={canModerate} />}
 			</div>
@@ -118,6 +119,44 @@ function Choice({
 			{label}
 		</button>
 	);
+}
+
+/**
+ * How long a room stays open once it is.
+ *
+ * The other half of the switch above, and it belongs beside it: one says who may
+ * open a room and this says how long one lasts unattended, and either read
+ * without the other is half a rule. Where only administrators may open a room,
+ * this is when the door closes again.
+ *
+ * It ages the record out for a second reason, which is that there was nothing
+ * ageing it out at all: a name is written down the first time somebody joins it
+ * and nothing ever took one away, so the file grew for as long as anybody asked
+ * for names.
+ */
+function HowLongItLasts({ remember }: { remember: number }) {
+	return (
+		<p className="text-fg-muted text-xs leading-relaxed">
+			{remember > 0 ? (
+				<>
+					A name nobody has joined for <Value>{days(remember)}</Value> is forgotten, and is a
+					name nobody has used again.
+				</>
+			) : (
+				<>Every name that has ever been used is kept, and no room is ever forgotten.</>
+			)}
+		</p>
+	);
+}
+
+/** A retention said the way somebody would say it out loud. */
+function days(seconds: number): string {
+	const whole = Math.round(seconds / 86_400);
+	if (whole >= 1) return `${whole} ${whole === 1 ? "day" : "days"}`;
+
+	const hours = Math.max(1, Math.round(seconds / 3_600));
+
+	return `${hours} ${hours === 1 ? "hour" : "hours"}`;
 }
 
 /**

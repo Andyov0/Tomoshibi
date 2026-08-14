@@ -53,3 +53,11 @@ meet:
     # a file, so it is kept in the store, adopted from here the first time the
     # server runs, and read from there afterwards.
     opened_by: anyone
+
+    # How long a name stays used after the last time somebody joined it. Two
+    # things at once, and they agree: a name was written down on first use and
+    # nothing ever took one away, so the file grew for as long as anybody asked
+    # for names — and a name nobody has spoken in a month is not a room in use.
+    # Under `admins` this is therefore how long a room stays open unattended.
+    # Zero keeps every name for ever, which is what this did before it existed.
+    remember: 720h

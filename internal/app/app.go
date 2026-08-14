@@ -13,6 +13,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 
 	"tomoshibi/internal/admin"
 	"tomoshibi/internal/config"
@@ -31,11 +33,14 @@ type App struct {
 	web     http.Handler
 	tripKey []byte
 	admin   *admin.API
+
+	stop    chan struct{}
+	closing sync.Once
 }
 
 // New assembles the application.
 func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handler, tripKey []byte) *App {
-	return &App{
+	a := &App{
 		conf:    conf,
 		store:   st,
 		limit:   limit.New(conf.Meet.JoinRate, conf.Meet.JoinBurst, conf.Meet.TrustProxy),
@@ -43,17 +48,99 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 		web:     web,
 		tripKey: tripKey,
 		admin:   admin.New(conf, media, st, tripKey),
+		stop:    make(chan struct{}),
 	}
+
+	if conf.Meet.Rooms.Remember > 0 {
+		go a.forgetting()
+	}
+
+	return a
 }
 
 // Close stops what the application started.
 //
-// Only the management sampler, which runs on a ticker of its own so that the
-// trend it fills has no gaps where nobody happened to be looking. Left running
-// it would go on asking a media server that is shutting down for figures nobody
-// will read.
+// Two things, both on tickers of their own. The management sampler fills a trend
+// that would otherwise have gaps wherever nobody happened to be looking, and
+// left running it would go on asking a media server that is shutting down for
+// figures nobody will read. The sweeper below takes the store's one writer, and
+// a shutdown that leaves it holding that is a shutdown that waits on it.
+//
+// Guarded, because a server can be shut down from more than one direction — a
+// signal and a failed listener both arrive here — and closing a channel twice is
+// a panic during the one moment nobody is watching the logs.
 func (a *App) Close() {
+	a.closing.Do(func() { close(a.stop) })
 	a.admin.Close()
+}
+
+// How much of the store one sweep may clear before letting go.
+//
+// bbolt admits a single writer and a join is a write, so the number that matters
+// is not how fast this finishes but how long it holds the door. A thousand keys
+// is a few milliseconds; a bucket that has been allowed to grow is cleared over
+// a series of them with joins in between, rather than in one transaction that
+// every caller waits behind.
+const sweepBatch = 1000
+
+// How often the sweep runs.
+//
+// The thing it measures is a month old, so an hour is not a schedule chosen for
+// timeliness — it is chosen so that a server which is restarted daily and one
+// which runs for a year behave the same.
+const sweepEvery = time.Hour
+
+// forgetting ages out names nobody has joined for a while.
+//
+// Once at once, because a deployment restarted every night would otherwise never
+// reach the first tick, and then on the hour.
+func (a *App) forgetting() {
+	ticker := time.NewTicker(sweepEvery)
+	defer ticker.Stop()
+
+	for {
+		a.forget()
+
+		select {
+		case <-a.stop:
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// forget clears one sweep's worth, and keeps going while there is more.
+func (a *App) forget() {
+	since := time.Now().Add(-a.conf.Meet.Rooms.Remember)
+	total := 0
+
+	for {
+		gone, err := a.store.Forget(since, sweepBatch)
+		if err != nil {
+			slog.Error("failed to forget rooms nobody has joined", "error", err)
+			return
+		}
+
+		total += gone
+
+		// A full batch means there is probably more. Anything short is the end
+		// of it, and so is a shutdown that arrived mid-sweep: what is left will
+		// still be there for whoever starts next.
+		if gone < sweepBatch {
+			break
+		}
+
+		select {
+		case <-a.stop:
+			return
+		default:
+		}
+	}
+
+	if total > 0 {
+		slog.Info("forgot rooms nobody had joined for a while",
+			"rooms", total, "unused for", a.conf.Meet.Rooms.Remember)
+	}
 }
 
 // Handler builds the router.

@@ -215,6 +215,19 @@ meet:
     opened_by: admins   # or `anyone`, which is the default
 ```
 
+Rooms age out. A name nobody has joined for `meet.rooms.remember` — thirty days
+by default, `0` to keep them for ever — is forgotten, and is a name nobody has
+used again. That is one setting doing two things that happen to agree: a name was
+written down the first time somebody joined it and nothing ever took one away, so
+the store grew for as long as anybody asked it for names, bounded by the rate
+limiter in how fast and by nothing in how many. And a name nobody has spoken in a
+month is not a room in use — calling it one leaves a room open for good because
+somebody said its name once, last year.
+
+The sweep runs hourly in bounded passes, because the store admits one writer and
+a join is a write: clearing a neglected file in a single transaction would make
+everybody joining a call wait behind it.
+
 That is the starting value only. The management pages change it afterwards and
 cannot edit a file, so the choice lives in the store from then on; the runtime
 panel shows the file's value beside the one in force, so a file edited later is

@@ -91,6 +91,20 @@ type Rooms struct {
 	// so editing this afterwards changes nothing, and the runtime panel shows
 	// the two side by side for whoever is reading the file and wondering why.
 	OpenedBy room.Opening `yaml:"opened_by"`
+
+	// Remember is how long a name stays used after the last time it was joined.
+	//
+	// Two things at once, and they agree. A name is written down on first use
+	// and nothing ever took one away, so the store grew for as long as anybody
+	// asked it for names — bounded by the rate limiter in how fast and by
+	// nothing at all in how many. And a name nobody has spoken in a month is
+	// not a room in use; treating it as one leaves a room open for good because
+	// somebody said its name once, last year.
+	//
+	// Under `admins` this is therefore how long a room stays open unattended.
+	// Zero keeps every name for ever, which is what this did before the setting
+	// existed and is still available to anybody who wants it.
+	Remember time.Duration `yaml:"remember"`
 }
 
 // What an administrator is allowed to do.
@@ -170,8 +184,10 @@ var defaults = Meet{
 	JoinRate:    10,
 	JoinBurst:   120,
 	TrustProxy:  false,
-	Rooms:       Rooms{OpenedBy: room.ByAnyone},
-	SourceURL:   "https://github.com/5t-RawBeRry/Tomoshibi",
+	// Thirty days: long enough that a fortnightly meeting keeps its room, short
+	// enough that a name nobody has used since is not still holding one.
+	Rooms:     Rooms{OpenedBy: room.ByAnyone, Remember: 30 * 24 * time.Hour},
+	SourceURL: "https://github.com/5t-RawBeRry/Tomoshibi",
 }
 
 // Load reads the configuration from path, or returns the defaults if path is
@@ -206,6 +222,12 @@ func Load(path string) (*Config, error) {
 
 	if err := checkAdmins(meet.Admins); err != nil {
 		return nil, err
+	}
+
+	if meet.Rooms.Remember < 0 {
+		return nil, fmt.Errorf(
+			"rooms.remember: %s is not a length of time to keep a name for. Use zero to keep them for ever",
+			meet.Rooms.Remember)
 	}
 
 	if !meet.Rooms.OpenedBy.Valid() {

@@ -114,6 +114,15 @@ export interface Policy {
 	chosen: Opening;
 	/** The configuration file's value, which is the starting one and no more. */
 	configured: Opening;
+	/**
+	 * How long a name stays used after the last join, in seconds, or nought
+	 * where names are kept for ever.
+	 *
+	 * The other half of the same sentence as the switch above it: that says who
+	 * may open a room and this says how long one stays open. Reading either
+	 * without the other is reading half a rule.
+	 */
+	remember: number;
 }
 
 export interface Runtime {

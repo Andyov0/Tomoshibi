@@ -1,13 +1,19 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"tomoshibi/internal/room"
+
+	bolt "go.etcd.io/bbolt"
 )
 
 func open(t *testing.T) *Store {
@@ -281,5 +287,202 @@ func TestTheConfiguredValueIsTakenOnlyWhereNothingWasChosen(t *testing.T) {
 	}
 	if opening != room.ByAnyone {
 		t.Errorf("the file undid a choice made from the management pages: %q", opening)
+	}
+}
+
+/*
+ * Ageing names out, and the two ways it could quietly do harm.
+ *
+ * A name is written down the first time somebody joins it and nothing ever took
+ * one away, so the file grew for as long as anybody asked for names — bounded in
+ * how fast by the rate limiter and in how many by nothing. Measured at four
+ * hundred bytes apiece, which is the part that makes it worth a sweep rather
+ * than a note in a README.
+ *
+ * The harm is that under a policy where a missing record is a closed door, every
+ * one of these deletions is somebody being turned out of a room. So what these
+ * check is not that the sweep works but that it is conservative in the two
+ * places it could be reckless: a record whose age cannot be read, and a batch
+ * that has to end somewhere.
+ */
+
+// aged writes a name whose last join was the given while ago.
+func aged(t *testing.T, st *Store, name string, ago time.Duration) {
+	t.Helper()
+
+	if _, err := st.OpenRoom(name, true); err != nil {
+		t.Fatalf("OpenRoom: %v", err)
+	}
+
+	err := st.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+
+		var tally Room
+		if err := json.Unmarshal(bucket.Get([]byte(name)), &tally); err != nil {
+			return err
+		}
+
+		tally.Seen = time.Now().UTC().Add(-ago)
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(name), encoded)
+	})
+	if err != nil {
+		t.Fatalf("age %q: %v", name, err)
+	}
+}
+
+func names(t *testing.T, st *Store) []string {
+	t.Helper()
+
+	found, err := st.Rooms()
+	if err != nil {
+		t.Fatalf("Rooms: %v", err)
+	}
+
+	var out []string
+	for _, one := range found {
+		out = append(out, one.Name)
+	}
+	sort.Strings(out)
+
+	return out
+}
+
+func TestOnlyNamesNobodyHasJoinedSinceGoAway(t *testing.T) {
+	st := open(t)
+
+	aged(t, st, "ancient", 90*24*time.Hour)
+	aged(t, st, "weekly", 3*24*time.Hour)
+
+	gone, err := st.Forget(time.Now().Add(-30*24*time.Hour), 100)
+	if err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+	if gone != 1 {
+		t.Fatalf("forgot %d, want 1", gone)
+	}
+
+	if got := names(t, st); len(got) != 1 || got[0] != "weekly" {
+		t.Errorf("left %v, want only weekly", got)
+	}
+}
+
+// The whole point of the sweep, said as a property rather than a count: a room
+// somebody keeps using is never aged out, however long the deployment runs.
+func TestARoomInUseIsNeverForgotten(t *testing.T) {
+	st := open(t)
+
+	aged(t, st, "standup", 90*24*time.Hour)
+
+	// Somebody joins it again, which is what a room in use looks like.
+	if _, err := st.OpenRoom("standup", false); err != nil {
+		t.Fatalf("OpenRoom: %v", err)
+	}
+
+	gone, err := st.Forget(time.Now().Add(-30*24*time.Hour), 100)
+	if err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+	if gone != 0 {
+		t.Errorf("forgot %d rooms, want none", gone)
+	}
+}
+
+/*
+ * bbolt admits one writer and a join is a write, so a sweep that cleared a
+ * neglected bucket in one transaction would hold that writer for the whole of
+ * it and everybody joining a call would wait behind it. The bound is what makes
+ * that impossible; the caller comes back for the rest.
+ */
+func TestASweepStopsWhereItWasToldTo(t *testing.T) {
+	st := open(t)
+
+	for i := 0; i < 25; i++ {
+		aged(t, st, fmt.Sprintf("old-%02d", i), 90*24*time.Hour)
+	}
+
+	since := time.Now().Add(-30 * 24 * time.Hour)
+
+	gone, err := st.Forget(since, 10)
+	if err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+	if gone != 10 {
+		t.Fatalf("forgot %d in one pass, want the 10 it was allowed", gone)
+	}
+	if left := len(names(t, st)); left != 15 {
+		t.Fatalf("%d names left, want 15", left)
+	}
+
+	// And the caller coming back finishes it.
+	total := gone
+	for {
+		gone, err = st.Forget(since, 10)
+		if err != nil {
+			t.Fatalf("Forget: %v", err)
+		}
+		total += gone
+		if gone < 10 {
+			break
+		}
+	}
+
+	if total != 25 {
+		t.Errorf("forgot %d altogether, want 25", total)
+	}
+	if left := names(t, st); len(left) != 0 {
+		t.Errorf("left %v", left)
+	}
+}
+
+/*
+ * A record this build cannot read has an age nobody knows. Under a policy where
+ * a missing record is a closed door, deleting on an unknown age is the wrong way
+ * to be wrong — so it stays, and stays readable to the one thing that still
+ * understands it: the check for whether the name has been used at all.
+ */
+func TestARecordThatCannotBeReadIsLeftAlone(t *testing.T) {
+	st := open(t)
+
+	err := st.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(rooms)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte("from-a-later-build"), []byte("{ not a room"))
+	})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	gone, err := st.Forget(time.Now(), 100)
+	if err != nil {
+		t.Fatalf("Forget: %v", err)
+	}
+	if gone != 0 {
+		t.Fatalf("forgot %d, want none", gone)
+	}
+
+	// Still a name that has been used, which is what keeps its room open.
+	if _, err := st.OpenRoom("from-a-later-build", false); err != nil {
+		t.Errorf("a room whose record could not be read was closed: %v", err)
+	}
+}
+
+func TestForgettingNothingIsNotAnError(t *testing.T) {
+	st := open(t)
+
+	gone, err := st.Forget(time.Now(), 100)
+	if err != nil {
+		t.Fatalf("Forget on an untouched store: %v", err)
+	}
+	if gone != 0 {
+		t.Errorf("forgot %d from an untouched store", gone)
 	}
 }

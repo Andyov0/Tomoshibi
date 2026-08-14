@@ -1,10 +1,22 @@
-// Package store keeps the handful of observations worth surviving a restart.
+// Package store keeps the few facts that have to survive a restart.
 //
-// Nothing here is authoritative. Who is in a room is the media server's to know,
-// and a token is signed rather than stored, so everything below could be lost
-// without changing what the server does. That single property is what lets this
-// stay small: there is no migration framework, no schema version, and no startup
-// check, because a record this build cannot read is simply one it does not have.
+// Most of what is here is observation and could be lost without changing what
+// the server does: how many times a name has been joined, and when. Two things
+// could not, and both arrived with the setting that limits who may open a room.
+// One is that setting itself, which is changed from the management pages and so
+// has nowhere else to live. The other is whether a name has ever been used,
+// because under that setting it is what decides whether somebody is let in.
+//
+// So this file is a tally on one deployment and part of the access control on
+// another, and one setting is the whole difference. Losing it where anybody may
+// open a room costs the figures on a management page. Losing it where only
+// administrators may turns people out of rooms they were in the middle of using.
+//
+// What has not changed is that there is no migration framework, no schema
+// version, and no startup check. A record this build cannot read is treated as
+// one that is not there — a lost tally in the first case, a closed room in the
+// second — which is why fields here are only ever added, and why forgetting
+// leaves a record it could not read exactly where it is.
 package store
 
 import (
@@ -44,6 +56,11 @@ var ErrNotOpen = errors.New("that room has not been opened")
 // definition: it records that the name was used, not that anything exists
 // because of it. Fields are only ever added, never renamed or removed, which is
 // the whole of the schema-evolution story here.
+//
+// That the record is here at all is the second fact it carries, and the one
+// that is load-bearing: where only administrators may open a room, a name with
+// no record is a name nobody may use. Which is why Seen is not only a figure on
+// a management page — it is how long the room has left. See Forget.
 type Room struct {
 	// Created is when the name was first seen.
 	Created time.Time `json:"created"`
@@ -155,6 +172,91 @@ func (s *Store) OpenRoom(name string, mayOpen bool) (Room, error) {
 
 	return tally, nil
 }
+
+// Forget removes names nobody has joined since the given moment, at most limit
+// of them, and reports how many went.
+//
+// Bounded because bbolt admits one writer at a time and a join is a write. A
+// single transaction clearing a bucket that has been allowed to grow would hold
+// that writer for the whole of it, and every person trying to join a call would
+// wait. So a sweep is a series of small transactions with room between them,
+// and the caller comes back for more.
+//
+// Why there is anything to sweep at all: a name is written down the first time
+// somebody joins it and nothing has ever taken one away. Where anybody may open
+// a room the only door to that is the rate limiter, which bounds how fast names
+// arrive and not how many — measured at four hundred bytes apiece, a script
+// spending its whole allowance writes a few hundred megabytes a day and nothing
+// says a word.
+//
+// Ageing them is not merely a way of keeping the file small, though. A name
+// nobody has spoken in a month is not a room in use, and calling it one is the
+// less honest reading of the two: it leaves a room open for good because
+// somebody said its name once, last year.
+//
+// A record this build cannot read is left exactly where it is. Its age is
+// unknown, and under a policy where a missing record is a closed door, deleting
+// on an unknown age is the wrong way to be wrong.
+func (s *Store) Forget(since time.Time, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+
+	gone := 0
+
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		// Gathered before anything is removed. Deleting through a cursor while
+		// walking it is a question bbolt answers for its own iterator with
+		// "undefined behaviour", and a bounded pass makes the list small enough
+		// that there is nothing to be gained by asking.
+		stale := make([][]byte, 0, limit)
+
+		err := bucket.ForEach(func(name, raw []byte) error {
+			if len(stale) >= limit {
+				return errEnough
+			}
+
+			var tally Room
+			if err := json.Unmarshal(raw, &tally); err != nil {
+				return nil
+			}
+
+			if tally.Seen.Before(since) {
+				stale = append(stale, append([]byte(nil), name...))
+			}
+
+			return nil
+		})
+		if err != nil && !errors.Is(err, errEnough) {
+			return err
+		}
+
+		for _, name := range stale {
+			if err := bucket.Delete(name); err != nil {
+				return err
+			}
+			gone++
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return 0, fmt.Errorf("forget rooms last joined before %s: %w", since.Format(time.RFC3339), err)
+	}
+
+	return gone, nil
+}
+
+// errEnough stops a walk that has found as much as it was asked for. Never
+// returned to a caller: a full batch is an ordinary outcome, and the caller
+// learns of it from the count.
+var errEnough = errors.New("enough")
 
 // Opening is who may use a name nobody has used before.
 //

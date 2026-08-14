@@ -470,6 +470,15 @@ type policy struct {
 	// Configured is the configuration file's value, which is the starting one
 	// and nothing more.
 	Configured room.Opening `json:"configured"`
+
+	// Remember is how long a name stays used after the last join, in seconds,
+	// or nought where names are kept for ever.
+	//
+	// Beside the policy rather than somewhere of its own, because it is the
+	// other half of the same sentence: this says who may open a room and that
+	// says how long one stays open. Somebody reading the switch without it is
+	// reading half a rule.
+	Remember int64 `json:"remember"`
 }
 
 func (a *API) currentPolicy() policy {
@@ -479,6 +488,7 @@ func (a *API) currentPolicy() policy {
 		OpenedBy:   chosen.InEffect(len(a.conf.Meet.Admins)),
 		Chosen:     chosen,
 		Configured: a.conf.Meet.Rooms.OpenedBy,
+		Remember:   int64(a.conf.Meet.Rooms.Remember / time.Second),
 	}
 }
 

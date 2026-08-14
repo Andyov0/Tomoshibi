@@ -1,4 +1,5 @@
 import { App } from "@/App";
+import { Notices } from "@/components/room/Notices";
 import { start } from "@/live/i18n";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
@@ -15,5 +16,9 @@ if (!root) throw new Error("missing #root");
 createRoot(root).render(
 	<StrictMode>
 		<App />
+		{/* At the root rather than inside the room. Anything that goes wrong
+		    before there is a room — and the one thing that can, a room that will
+		    not open — has somewhere to be said. */}
+		<Notices />
 	</StrictMode>,
 );

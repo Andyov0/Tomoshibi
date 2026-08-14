@@ -1,7 +1,6 @@
 import { Audible } from "@/components/room/Audible";
 import { ChatPanel } from "@/components/room/ChatPanel";
 import { ControlBar } from "@/components/room/ControlBar";
-import { Notices } from "@/components/room/Notices";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
 import { Plane } from "@/components/room/Plane";
 import { ShareCard } from "@/components/room/ShareCard";
@@ -69,7 +68,6 @@ export function Room({ room, onLeave }: RoomProps) {
 			{/* Outside the stage on purpose: what people can hear must not depend
 			    on what the layout happens to be drawing. */}
 			<Audible room={room} />
-			<Notices />
 		</div>
 	);
 }

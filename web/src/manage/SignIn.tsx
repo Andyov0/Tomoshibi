@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
+import { actionFailed } from "@/live/notices";
 import { api } from "./api";
 
 /**
@@ -19,7 +20,6 @@ import { api } from "./api";
  */
 export function SignIn({ onIn }: { onIn: () => void }) {
 	const [passphrase, setPassphrase] = useState("");
-	const [failure, setFailure] = useState<string>();
 	const [busy, setBusy] = useState(false);
 
 	const submit = async (event: FormEvent) => {
@@ -27,13 +27,15 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 		if (busy || !passphrase) return;
 
 		setBusy(true);
-		setFailure(undefined);
 
 		try {
 			await api.signIn(passphrase);
 			onIn();
 		} catch (err) {
-			setFailure(err instanceof Error ? err.message : String(err));
+			// A refused passphrase is an event, and the field is cleared for the
+			// next attempt. Kept as a banner it would sit under an empty field
+			// describing an attempt that is already over.
+			actionFailed(err instanceof Error ? err.message : String(err));
 			setPassphrase("");
 		} finally {
 			setBusy(false);
@@ -62,12 +64,6 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 					autoFocus
 					maxLength={200}
 				/>
-
-				{failure && (
-					<p role="alert" className="text-center text-danger text-xs">
-						{failure}
-					</p>
-				)}
 
 				<Button type="submit" size="lg" disabled={!passphrase || busy}>
 					{busy ? "Signing in…" : "Sign in"}

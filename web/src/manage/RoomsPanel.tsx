@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { ChevronLeft } from "lucide-react";
 import { useCallback, useState } from "react";
 import { type Participant, type Track, api } from "./api";
+import { actionFailed } from "@/live/notices";
 import { usePoll } from "./poll";
 import { Card, Empty, Failed } from "./Shell";
 import { bitrate, day, since } from "./units";
@@ -26,7 +27,6 @@ export function RoomsPanel({
 }) {
 	const [selected, setSelected] = useState<string>();
 	const [acting, setActing] = useState(false);
-	const [failure, setFailure] = useState<string>();
 
 	const { value, error, refresh } = usePoll(api.rooms, { onSignedOut });
 
@@ -39,13 +39,15 @@ export function RoomsPanel({
 	const act = useCallback(
 		async (what: () => Promise<void>) => {
 			setActing(true);
-			setFailure(undefined);
 
 			try {
 				await what();
 				await refresh();
 			} catch (err) {
-				setFailure(err instanceof Error ? err.message : String(err));
+				// Something that happened rather than something still true: the
+				// room is still there, the panel still works, and one press did
+				// not take. It fades, like every other event in this deployment.
+				actionFailed(err instanceof Error ? err.message : String(err));
 			} finally {
 				setActing(false);
 			}
@@ -120,7 +122,6 @@ export function RoomsPanel({
 					onBack={() => setSelected(undefined)}
 					canModerate={canModerate}
 					acting={acting}
-					failure={failure}
 					onSignedOut={onSignedOut}
 					onClose={() => act(() => api.closeRoom(open))}
 					onRemove={(identity) => act(() => api.remove(open, identity))}
@@ -140,7 +141,6 @@ function People({
 	onBack,
 	canModerate,
 	acting,
-	failure,
 	onSignedOut,
 	onClose,
 	onRemove,
@@ -150,7 +150,6 @@ function People({
 	onBack: () => void;
 	canModerate: boolean;
 	acting: boolean;
-	failure?: string;
 	onSignedOut: () => void;
 	onClose: () => void;
 	onRemove: (identity: string) => void;
@@ -176,7 +175,6 @@ function People({
 			}
 		>
 			{error && <Failed>{error}</Failed>}
-			{failure && <Failed>{failure}</Failed>}
 
 			{canModerate && (
 				<div className="flex justify-end border-border border-b px-4 py-2">

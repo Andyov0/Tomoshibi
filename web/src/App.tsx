@@ -1,6 +1,7 @@
 import { join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { connect, create } from "@/live/room";
+import { joinFailed } from "@/live/notices";
 import { type Choices, PreJoin } from "@/routes/PreJoin";
 import { Room } from "@/routes/Room";
 import type { Room as LiveRoom } from "livekit-client";
@@ -34,7 +35,6 @@ function initialRoom(): string {
 export function App() {
 	const [room, setRoom] = useState(initialRoom);
 	const [live, setLive] = useState<LiveRoom>();
-	const [error, setError] = useState<string>();
 
 	// Held in a ref as well so the unmount cleanup can reach it without making
 	// the effect depend on it, which would disconnect on every render.
@@ -70,7 +70,6 @@ export function App() {
 
 	const onJoin = useCallback(
 		async ({ name, passphrase, camera, microphone }: Choices) => {
-			setError(undefined);
 
 			const made = create();
 
@@ -89,7 +88,7 @@ export function App() {
 				setLive(made);
 			} catch (err) {
 				void made.disconnect();
-				setError(err instanceof Error ? err.message : String(err));
+				joinFailed(err instanceof Error ? err.message : String(err));
 			}
 		},
 		[room],
@@ -105,14 +104,5 @@ export function App() {
 		return <Room room={live} onLeave={onLeave} />;
 	}
 
-	return (
-		<>
-			<PreJoin room={room} onRoomChange={setRoom} onJoin={onJoin} />
-			{error && (
-				<p className="-translate-x-1/2 fixed bottom-6 left-1/2 rounded-lg bg-danger px-4 py-2 text-danger-fg text-sm">
-					{error}
-				</p>
-			)}
-		</>
-	);
+	return <PreJoin room={room} onRoomChange={setRoom} onJoin={onJoin} />;
 }

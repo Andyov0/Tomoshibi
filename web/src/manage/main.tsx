@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@/index.css";
+import { Notices } from "@/components/room/Notices";
 import { Manage } from "./Manage";
 
 /**
@@ -21,5 +22,10 @@ if (!root) throw new Error("missing #root");
 createRoot(root).render(
 	<StrictMode>
 		<Manage />
+		{/* The same notices the client raises, in the same corner, following the
+		    same rule: an action that failed is something that happened and
+		    fades; a panel that cannot reach the server is something still true
+		    and stays where the missing figures are. */}
+		<Notices />
 	</StrictMode>,
 );

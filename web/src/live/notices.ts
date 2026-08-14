@@ -73,6 +73,42 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
 }
 
 /**
+ * A room that would not open.
+ *
+ * The one failure between deciding to join and being in a call, and it used to
+ * be shown by a red bar the page kept for itself — because the notices lived
+ * inside the room, and this happens before there is one. They live at the root
+ * now, so this can be said the same way as everything else.
+ *
+ * Given no duration, like a refused device: it is a thing somebody has to act
+ * on, and a message about why they are not in the meeting should not disappear
+ * while they are reading it.
+ */
+export function joinFailed(reason: string): void {
+	toast.error(reason, { duration: Number.POSITIVE_INFINITY });
+}
+
+/**
+ * Something somebody just pressed, which did not take.
+ *
+ * The management pages raise these, and they are the reason the notices moved
+ * to the root: those pages had grown a third way of saying it, on top of the
+ * client's toasts and the red bar its first screen kept for itself.
+ *
+ * It fades, unlike the two above, and the difference is the whole rule. A
+ * refused device and a room that would not open are things somebody has to go
+ * and do something about. A press that did not take is over: the room is still
+ * there, the panel still works, and pressing again is the whole of the remedy.
+ *
+ * The words come from the caller because the server already sent a reason and
+ * the client already turned it into a sentence. Rewriting it here would be a
+ * second place for the same message to drift.
+ */
+export function actionFailed(reason: string): void {
+	toast.error(reason, { duration: A_MOMENT + 2000 });
+}
+
+/**
  * Sound the browser refused to start on its own.
  *
  * The same category as a refused device, and shown the same way: it stays until

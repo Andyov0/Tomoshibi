@@ -37,7 +37,7 @@ export function ShareCard({
 				<div className="flex flex-col items-center gap-2 px-4 text-center">
 					<MonitorUp className="size-8 text-fg-muted" />
 					<p className="text-fg-muted text-sm">{t("{name} is sharing", { name: label })}</p>
-					<p className="text-fg-muted/70 text-xs">{t("Click to watch")}</p>
+					<p className="text-fg-muted/70 text-xs">{t("Watch")}</p>
 				</div>
 			</div>
 		</Tile>

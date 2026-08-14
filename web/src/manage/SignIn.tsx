@@ -56,7 +56,7 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 					<ShieldCheck className="size-8 text-fg-muted" />
 					<h1 className="font-semibold text-xl tracking-tight">Management</h1>
 					<p className="text-fg-muted text-sm">
-						Sign in with an administrator's passphrase.
+						Enter your passphrase.
 					</p>
 				</header>
 

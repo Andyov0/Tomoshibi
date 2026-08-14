@@ -81,7 +81,6 @@ export interface Check {
 	name: string;
 	verdict: "good" | "warn" | "unknown";
 	found: string;
-	examined: string;
 	remedy?: string;
 }
 

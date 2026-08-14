@@ -102,7 +102,7 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 					variant="ghost"
 					size="icon"
 					className="size-7 shrink-0"
-					aria-label={copied ? t("Link copied") : t("Copy the link to this room")}
+					aria-label={copied ? t("Link copied") : t("Copy link")}
 					onClick={copy}
 				>
 					{copied ? <Check className="text-speaking" /> : <Copy />}
@@ -114,7 +114,7 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 			    reads the first sentence or none. */}
 			{opening === "admins" ? (
 				<p className="text-fg-muted text-xs">
-					{t("Only an administrator can open a new room here. Type the name you were given.")}
+					{t("Only administrators can start new rooms. Enter the name you were given.")}
 				</p>
 			) : (
 				// Said only about a name somebody chose. A generated one is not
@@ -123,7 +123,7 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 				!looksGenerated(room) && (
 					<p className="text-fg-muted text-xs">
 						{t(
-							"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.",
+							"Anyone who guesses this name can join.",
 						)}
 					</p>
 				)

@@ -46,9 +46,7 @@ type Check struct {
 	Verdict Verdict `json:"verdict"`
 	// Found is what was actually there.
 	Found string `json:"found"`
-	// Examined says what this check looked at, so that a reader can tell
-	// whether it still means what it meant when it was written.
-	Examined string `json:"examined"`
+
 	// Remedy is what to do, where there is something to do. Printed rather
 	// than offered as a button: the fix for several of these is on the host,
 	// outside this container, and reaching across that boundary is not a
@@ -85,39 +83,34 @@ func advertised(conf *config.Config, nodeIP string) Check {
 	switch {
 	case configured == "" && conf.LiveKit.RTC.UseExternalIP:
 		return Check{
-			Name:     "Address given to clients",
-			Verdict:  Warn,
-			Found:    nodeIP + ", discovered",
-			Examined: "Whether the address in ICE candidates was configured or guessed at over STUN.",
-			Remedy: "Behind a gateway that rewrites the source address, what is discovered is not " +
-				"what clients can reach. Set rtc.node_ip, and rtc.use_external_ip to false.",
+			Name:    "Address given to clients",
+			Verdict: Warn,
+			Found:   nodeIP + ", discovered",
+			Remedy: "Set rtc.node_ip to the address browsers dial, and rtc.use_external_ip " +
+				"to false.",
 		}
 
 	case configured != "" && conf.LiveKit.RTC.UseExternalIP:
 		return Check{
-			Name:     "Address given to clients",
-			Verdict:  Warn,
-			Found:    nodeIP + ", discovery still on",
-			Examined: "Both rtc.node_ip and rtc.use_external_ip, which are one setting in two halves.",
-			Remedy: "A configured address is overwritten while use_external_ip is true. " +
-				"Set it to false.",
+			Name:    "Address given to clients",
+			Verdict: Warn,
+			Found:   nodeIP + ", discovery still on",
+			Remedy:  "Set rtc.use_external_ip to false, or rtc.node_ip is ignored.",
 		}
 
 	case configured == "":
 		return Check{
-			Name:     "Address given to clients",
-			Verdict:  Warn,
-			Found:    nodeIP + ", from the interface",
-			Examined: "Whether an address was configured for ICE candidates.",
-			Remedy:   "Set rtc.node_ip to the address browsers dial, if it differs from this one.",
+			Name:    "Address given to clients",
+			Verdict: Warn,
+			Found:   nodeIP + ", from the interface",
+			Remedy:  "Set rtc.node_ip to the address browsers dial, if it differs from this one.",
 		}
 
 	default:
 		return Check{
-			Name:     "Address given to clients",
-			Verdict:  Good,
-			Found:    configured,
-			Examined: "rtc.node_ip, with discovery off so it cannot be overwritten.",
+			Name:    "Address given to clients",
+			Verdict: Good,
+			Found:   configured,
 		}
 	}
 }
@@ -126,10 +119,9 @@ func advertised(conf *config.Config, nodeIP string) Check {
 func port(name, network string, number int) Check {
 	if number == 0 {
 		return Check{
-			Name:     name,
-			Verdict:  Warn,
-			Found:    "not configured",
-			Examined: "Whether a port was set for this at all.",
+			Name:    name,
+			Verdict: Warn,
+			Found:   "not configured",
 		}
 	}
 
@@ -141,21 +133,19 @@ func port(name, network string, number int) Check {
 	listener, err := listen(network, number)
 	if err != nil {
 		return Check{
-			Name:     name,
-			Verdict:  Good,
-			Found:    found + ", in use",
-			Examined: "Whether the port is held, by trying to take it and being refused.",
+			Name:    name,
+			Verdict: Good,
+			Found:   found + ", in use",
 		}
 	}
 	_ = listener.Close()
 
 	return Check{
-		Name:     name,
-		Verdict:  Warn,
-		Found:    found + ", free",
-		Examined: "Whether the port is held, by trying to take it and succeeding.",
-		Remedy: "Nothing is listening. Media will not arrive on this port; check that the " +
-			"media server started and that the port is not being remapped.",
+		Name:    name,
+		Verdict: Warn,
+		Found:   found + ", free",
+		Remedy: "Nothing is listening. Check the media server started, and that the port " +
+			"is not remapped.",
 	}
 }
 
@@ -180,50 +170,44 @@ func receiveBuffer() Check {
 
 	if runtime.GOOS != "linux" {
 		return Check{
-			Name:     "UDP receive buffer",
-			Verdict:  Unknown,
-			Found:    "not readable on " + runtime.GOOS,
-			Examined: "net.core.rmem_max, which only Linux publishes this way.",
+			Name:    "UDP receive buffer",
+			Verdict: Unknown,
+			Found:   "not readable on " + runtime.GOOS,
 		}
 	}
 
 	raw, err := os.ReadFile("/proc/sys/net/core/rmem_max")
 	if err != nil {
 		return Check{
-			Name:     "UDP receive buffer",
-			Verdict:  Unknown,
-			Found:    "could not be read",
-			Examined: "/proc/sys/net/core/rmem_max.",
+			Name:    "UDP receive buffer",
+			Verdict: Unknown,
+			Found:   "could not be read",
 		}
 	}
 
 	size, err := strconv.Atoi(strings.TrimSpace(string(raw)))
 	if err != nil {
 		return Check{
-			Name:     "UDP receive buffer",
-			Verdict:  Unknown,
-			Found:    strings.TrimSpace(string(raw)),
-			Examined: "/proc/sys/net/core/rmem_max, which did not hold a number.",
+			Name:    "UDP receive buffer",
+			Verdict: Unknown,
+			Found:   strings.TrimSpace(string(raw)),
 		}
 	}
 
 	if size < suggested {
 		return Check{
-			Name:     "UDP receive buffer",
-			Verdict:  Warn,
-			Found:    fmt.Sprintf("%d, below the %d asked for", size, suggested),
-			Examined: "net.core.rmem_max against what the media server asks for at startup.",
-			Remedy: "Loss here sounds like a bad network. In an unprivileged container this " +
-				"cannot be set from inside; set it on the host and restart the container, " +
-				"which inherits it: net.core.rmem_max = 8388608",
+			Name:    "UDP receive buffer",
+			Verdict: Warn,
+			Found:   fmt.Sprintf("%d, below the %d asked for", size, suggested),
+			Remedy: "Set net.core.rmem_max = 8388608 on the host, then restart the " +
+				"container. It cannot be set from inside one.",
 		}
 	}
 
 	return Check{
-		Name:     "UDP receive buffer",
-		Verdict:  Good,
-		Found:    strconv.Itoa(size),
-		Examined: "net.core.rmem_max against what the media server asks for at startup.",
+		Name:    "UDP receive buffer",
+		Verdict: Good,
+		Found:   strconv.Itoa(size),
 	}
 }
 
@@ -237,32 +221,29 @@ func loopbackOnly(conf *config.Config) Check {
 
 	if len(addresses) == 0 {
 		return Check{
-			Name:     "Media server's own HTTP",
-			Verdict:  Warn,
-			Found:    "every interface",
-			Examined: "bind_addresses, which is unset and therefore means all of them.",
-			Remedy: "This port answers to administrative tokens. Set bind_addresses to " +
-				"[127.0.0.1]; the application forwards signalling to it from there.",
+			Name:    "Media server's own HTTP",
+			Verdict: Warn,
+			Found:   "every interface",
+			Remedy: "Set bind_addresses to [127.0.0.1]. This port accepts administrative " +
+				"tokens.",
 		}
 	}
 
 	for _, address := range addresses {
 		if ip := net.ParseIP(address); ip == nil || !ip.IsLoopback() {
 			return Check{
-				Name:     "Media server's own HTTP",
-				Verdict:  Warn,
-				Found:    strings.Join(addresses, ", "),
-				Examined: "bind_addresses, for anything that is not loopback.",
-				Remedy:   "This port answers to administrative tokens. Set bind_addresses to [127.0.0.1].",
+				Name:    "Media server's own HTTP",
+				Verdict: Warn,
+				Found:   strings.Join(addresses, ", "),
+				Remedy:  "Set bind_addresses to [127.0.0.1]. This port accepts administrative tokens.",
 			}
 		}
 	}
 
 	return Check{
-		Name:     "Media server's own HTTP",
-		Verdict:  Good,
-		Found:    strings.Join(addresses, ", "),
-		Examined: "bind_addresses, for anything that is not loopback.",
+		Name:    "Media server's own HTTP",
+		Verdict: Good,
+		Found:   strings.Join(addresses, ", "),
 	}
 }
 

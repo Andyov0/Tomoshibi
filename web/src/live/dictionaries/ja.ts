@@ -11,26 +11,20 @@ const ja: Dictionary = {
 	"Check your camera and microphone first.": "先にカメラとマイクを確認してください。",
 	"Your name": "名前",
 	"Passphrase (optional)": "合言葉（任意）",
-	"A passphrase signs your name, so nobody else can appear under it.":
-		"合言葉が名前の署名になり、ほかの人がその名前で現れなくなります。",
-	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
-		"この名前を言い当てた人は誰でも入れます。自動で作られた名前なら、言い当てられる心配はありません。",
-	"Only an administrator can open a new room here. Type the name you were given.":
-		"ここで新しいルームを開けるのは管理者だけです。教わったルーム名を入力してください。",
+	"Stops anyone else using your name.": "ほかの人がこの名前を使えなくなります。",
+	"Anyone who guesses this name can join.": "この名前を言い当てた人は誰でも入れます。",
+	"Only administrators can start new rooms. Enter the name you were given.": "新しいルームを開けるのは管理者だけです。教わったルーム名を入力してください。",
 	Join: "参加",
 	"Joining…": "参加しています…",
-	"Joining as {name} with a signature only you can produce":
-		"{name} として参加します。あなただけが作れる署名つきです",
+	"Only you can join as {name}": "{name} として参加できるのはあなただけです",
 
 	"Cannot reach your devices": "デバイスに接続できません",
-	"This browser will not give the page access to a camera or microphone.":
-		"このブラウザは、カメラとマイクへのアクセスをページに許可しません。",
-	"Cameras and microphones need a secure page, and {host} is not one. Open the server on localhost, or put it behind HTTPS to reach it from here.":
-		"カメラとマイクには安全なページが必要ですが、{host} はそうではありません。localhost で開くか、HTTPS の内側に置いてからここへアクセスしてください。",
+	"This browser blocks camera and microphone access.": "このブラウザはカメラとマイクへのアクセスを許可していません。",
+	"Cameras and microphones need HTTPS, and {host} is not secure.": "カメラとマイクには HTTPS が必要ですが、{host} は安全な接続ではありません。",
 
 	"Room name": "ルーム名",
 	"Change room": "ルームを変える",
-	"Copy the link to this room": "このルームのリンクをコピー",
+	"Copy link": "リンクをコピー",
 	"Link copied": "リンクをコピーしました",
 
 	Microphone: "マイク",
@@ -53,9 +47,9 @@ const ja: Dictionary = {
 	"Sharper text": "文字がくっきり",
 	"Code, documents, slides": "コード、文書、スライド",
 	"Smoother motion": "動きがなめらか",
-	"Video, animation, a demonstration": "動画、アニメーション、操作の実演",
+	"Video, animation, demos": "動画・アニメ・デモ",
 	"{name} is sharing": "{name} が共有しています",
-	"Click to watch": "クリックして見る",
+	"Watch": "見る",
 
 	"Their screen": "画面共有",
 	"Their camera": "カメラ映像",
@@ -69,56 +63,48 @@ const ja: Dictionary = {
 	"{name} (screen)": "{name}（画面）",
 	"{name} (you)": "{name}（あなた）",
 	unverified: "未確認",
-	"A signature only this person can produce": "この人だけが作れる署名",
-	"Given for this call. It says nothing about who they are":
-		"この通話のために配られたもので、誰であるかは示しません",
-	"Somebody else signed this name; this participant did not":
-		"この名前には別の人の署名があり、この参加者にはありません",
+	"This person proved their name": "この人は名前を証明しています",
+	"Random, just for this call": "この通話かぎりのランダムな印です",
+	"This person has not proved this name": "この人はこの名前を証明していません",
 
 	Messages: "メッセージ",
 	"Close messages": "メッセージを閉じる",
 	"Say something": "メッセージを入力",
 	"Waiting for the connection": "接続を待っています",
 	Send: "送信",
-	"Messages last as long as the call. Nothing is written down.":
-		"メッセージは通話のあいだだけ残り、記録はされません。",
+	"Messages disappear when the call ends.": "メッセージは通話が終わると消えます。",
 
 	"{name} joined": "{name} が参加しました",
 	"{name} left": "{name} が退出しました",
 	"{name} started sharing": "{name} が共有を始めました",
 	"Cannot reach your camera": "カメラに接続できません",
 	"Cannot reach your microphone": "マイクに接続できません",
-	"Allow it from the icon in the address bar, then try again.":
-		"アドレスバーのアイコンから許可して、もう一度お試しください。",
+	"Allow access from the icon in the address bar.": "アドレスバーのアイコンから許可してください。",
 	Sound: "音声",
-	"Adjust the sound": "音量を調整",
-	"Copy the signature": "署名をコピー",
+	"Sound settings": "音声設定",
+	"Copy signature": "署名をコピー",
 	"Show sound": "音声パネルを開く",
 	"Hide sound": "音声パネルを閉じる",
 	"Close sound": "音声パネルを閉じる",
-	"There is nobody else to hear.": "いま聞こえる相手はいません。",
+	"Nobody else is here.": "いまはあなただけです。",
 	"microphone off": "マイクオフ",
-	"How loud {name} is": "{name} の音量",
-	"Stop hearing {name}": "{name} を聞かない",
-	"Hear {name} again": "{name} をもう一度聞く",
-	"You have stopped hearing this": "この音声は聞かない設定です",
-	off: "オフ",
-	"Nobody can be heard yet": "まだ誰の声も聞こえません",
-	"This browser waits for a click before it will play sound.":
-		"このブラウザは、一度クリックするまで音を再生しません。",
+	"{name}'s volume": "{name} の音量",
+	"Mute {name}": "{name} をミュート",
+	"Unmute {name}": "{name} のミュートを解除",
+	"Muted by you": "あなたがミュートしています",
+	"Muted": "ミュート",
+	"You can't hear anyone yet": "まだ誰の声も聞こえません",
+	"Your browser needs one click first.": "ブラウザが最初のクリックを待っています。",
 	"Turn on sound": "音を出す",
 
 	"Connecting…": "接続しています…",
 	"Reconnecting…": "再接続しています…",
 
-	"Too many requests. Wait a moment and try again.":
-		"リクエストが多すぎます。少し待ってからお試しください。",
-	"Room names may only contain lowercase letters, digits, and inner dashes.":
-		"ルーム名に使えるのは小文字、数字、そして中間のハイフンだけです。",
-	"The server could not complete the request.": "サーバーがリクエストを完了できませんでした。",
+	"Too many attempts. Try again in a moment.": "回数が多すぎます。少し待ってからお試しください。",
+	"Room names can use lowercase letters, numbers and dashes.": "ルーム名に使えるのは小文字・数字・ハイフンです。",
+	"Something went wrong. Try again.": "問題が起きました。もう一度お試しください。",
 	"Could not join {room}.": "{room} に参加できませんでした。",
-	"{room} has not been opened. Ask whoever is holding the meeting for the link.":
-		"{room} はまだ開かれていません。会議を開いている人にリンクを聞いてください。",
+	"{room} isn't open. Ask the organiser for the link.": "{room} はまだ開かれていません。会議を開いている人にリンクを聞いてください。",
 };
 
 export default ja;

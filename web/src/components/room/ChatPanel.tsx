@@ -165,7 +165,7 @@ function Empty() {
 		<div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-8 text-center">
 			<MessageSquareOff className="size-6 text-border" />
 			<p className="max-w-[24ch] text-[11.5px] text-fg-muted leading-relaxed">
-				{t("Messages last as long as the call. Nothing is written down.")}
+				{t("Messages disappear when the call ends.")}
 			</p>
 		</div>
 	);

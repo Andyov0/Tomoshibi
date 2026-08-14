@@ -45,7 +45,7 @@ describe("RoomBar", () => {
 		await waitFor(() => expect(fetch).toHaveBeenCalled());
 
 		expect(screen.queryByText(/administrator/i)).toBeNull();
-		expect(screen.queryByText(/anybody who guesses/i)).toBeNull();
+		expect(screen.queryByText(/anyone who guesses/i)).toBeNull();
 	});
 
 	it("warns about a name somebody chose", async () => {
@@ -53,7 +53,7 @@ describe("RoomBar", () => {
 
 		render(<RoomBar room="standup" onChange={vi.fn()} />);
 
-		await waitFor(() => expect(screen.getByText(/anybody who guesses/i)).toBeDefined());
+		await waitFor(() => expect(screen.getByText(/anyone who guesses/i)).toBeDefined());
 	});
 
 	// And it replaces that warning rather than joining it, generated or not.
@@ -62,8 +62,8 @@ describe("RoomBar", () => {
 
 		render(<RoomBar room="standup" onChange={vi.fn()} />);
 
-		await waitFor(() => expect(screen.getByText(/only an administrator/i)).toBeDefined());
-		expect(screen.queryByText(/anybody who guesses/i)).toBeNull();
+		await waitFor(() => expect(screen.getByText(/only administrators/i)).toBeDefined());
+		expect(screen.queryByText(/anyone who guesses/i)).toBeNull();
 	});
 
 	/*
@@ -84,7 +84,7 @@ describe("RoomBar", () => {
 
 		render(<RoomBar room="standup" onChange={vi.fn()} />);
 
-		await waitFor(() => expect(screen.getByText(/anybody who guesses/i)).toBeDefined());
-		expect(screen.queryByText(/only an administrator/i)).toBeNull();
+		await waitFor(() => expect(screen.getByText(/anyone who guesses/i)).toBeDefined());
+		expect(screen.queryByText(/only administrators/i)).toBeNull();
 	});
 });

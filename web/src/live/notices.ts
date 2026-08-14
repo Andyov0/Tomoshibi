@@ -67,7 +67,7 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
 	// sentence built around a noun has to agree with it in most languages, and
 	// the one place that would break is the one nobody tests: the error.
 	toast.error(kind === "camera" ? t("Cannot reach your camera") : t("Cannot reach your microphone"), {
-		description: t("Allow it from the icon in the address bar, then try again."),
+		description: t("Allow access from the icon in the address bar."),
 		duration: Number.POSITIVE_INFINITY,
 	});
 }
@@ -121,8 +121,8 @@ export function actionFailed(reason: string): void {
  * some other way.
  */
 export function audioBlocked(resume: () => void): () => void {
-	const id = toast(t("Nobody can be heard yet"), {
-		description: t("This browser waits for a click before it will play sound."),
+	const id = toast(t("You can't hear anyone yet"), {
+		description: t("Your browser needs one click first."),
 		duration: Number.POSITIVE_INFINITY,
 		action: { label: t("Turn on sound"), onClick: resume },
 	});

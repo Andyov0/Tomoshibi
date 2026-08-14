@@ -76,8 +76,8 @@ describe("SoundPanel", () => {
 
 		const { rerender } = render(<SoundPanel room={room} onClose={vi.fn()} />);
 
-		expect(screen.getByLabelText("How loud Alex is")).toBeDefined();
-		expect(screen.queryByLabelText("How loud Alex (screen) is")).toBeNull();
+		expect(screen.getByLabelText("Alex's volume")).toBeDefined();
+		expect(screen.queryByLabelText("Alex (screen)'s volume")).toBeNull();
 
 		// The same person, now playing something. The two are separate tracks on
 		// the wire and separate decisions here.
@@ -87,8 +87,8 @@ describe("SoundPanel", () => {
 		);
 		rerender(<SoundPanel room={sharing} onClose={vi.fn()} />);
 
-		expect(screen.getByLabelText("How loud Alex is")).toBeDefined();
-		expect(screen.getByLabelText("How loud Alex (screen) is")).toBeDefined();
+		expect(screen.getByLabelText("Alex's volume")).toBeDefined();
+		expect(screen.getByLabelText("Alex (screen)'s volume")).toBeDefined();
 	});
 
 	// Nobody hears their own microphone, so a row for it would be a control that
@@ -98,13 +98,13 @@ describe("SoundPanel", () => {
 
 		render(<SoundPanel room={room} onClose={vi.fn()} />);
 
-		expect(screen.queryByLabelText("How loud me is")).toBeNull();
+		expect(screen.queryByLabelText("me's volume")).toBeNull();
 	});
 
 	it("says so when there is nobody else", () => {
 		render(<SoundPanel room={roomOf(person(MINE, { isLocal: true }))} onClose={vi.fn()} />);
 
-		expect(screen.getByText("There is nobody else to hear.")).toBeDefined();
+		expect(screen.getByText("Nobody else is here.")).toBeDefined();
 	});
 
 	it("writes a moved slider down against the person it is about", () => {
@@ -112,7 +112,7 @@ describe("SoundPanel", () => {
 
 		render(<SoundPanel room={room} onClose={vi.fn()} />);
 
-		fireEvent.change(screen.getByLabelText("How loud Alex is"), { target: { value: "0.4" } });
+		fireEvent.change(screen.getByLabelText("Alex's volume"), { target: { value: "0.4" } });
 
 		expect(settingFor(OTHER, "voice").volume).toBeCloseTo(0.4);
 		// And touches nothing else of theirs.
@@ -125,19 +125,19 @@ describe("SoundPanel", () => {
 	 * somebody is deciding — a control labelled with its current state is one
 	 * that has to be read twice before it can be pressed once.
 	 */
-	it("offers to stop, then offers to start again", () => {
+	it("offers to mute, then offers to unmute", () => {
 		const room = roomOf(person(MINE, { isLocal: true }), person(OTHER, { name: "Alex" }));
 
 		render(<SoundPanel room={room} onClose={vi.fn()} />);
 
-		fireEvent.click(screen.getByLabelText("Stop hearing Alex"));
+		fireEvent.click(screen.getByLabelText("Mute Alex"));
 
 		expect(settingFor(OTHER, "voice").blocked).toBe(true);
-		expect(screen.getByLabelText("Hear Alex again")).toBeDefined();
+		expect(screen.getByLabelText("Unmute Alex")).toBeDefined();
 
 		// Nothing is arriving to be made louder, so the slider says so rather
 		// than moving while the sound stays off.
-		expect((screen.getByLabelText("How loud Alex is") as HTMLInputElement).disabled).toBe(true);
+		expect((screen.getByLabelText("Alex's volume") as HTMLInputElement).disabled).toBe(true);
 	});
 
 	// Said rather than drawn as a state of the slider: one is about what this
@@ -151,6 +151,6 @@ describe("SoundPanel", () => {
 		render(<SoundPanel room={room} onClose={vi.fn()} />);
 
 		expect(screen.getByText("microphone off")).toBeDefined();
-		expect((screen.getByLabelText("How loud Alex is") as HTMLInputElement).disabled).toBe(false);
+		expect((screen.getByLabelText("Alex's volume") as HTMLInputElement).disabled).toBe(false);
 	});
 });

@@ -78,7 +78,7 @@ describe("PictureMenu", () => {
 		render(menu(surfaceOf(PROVEN)));
 		rightClick(screen.getByText("picture"));
 
-		fireEvent.click(screen.getByText("Stop hearing Alex"));
+		fireEvent.click(screen.getByText("Mute Alex"));
 
 		// The same record the panel writes to, so the panel, the mark on the
 		// picture, and this all say one thing.
@@ -90,8 +90,8 @@ describe("PictureMenu", () => {
 		render(menu(surfaceOf(PROVEN, { local: true })));
 		rightClick(screen.getByText("picture"));
 
-		expect(screen.queryByText(/Stop hearing/)).toBeNull();
-		expect(screen.queryByText("Adjust the sound")).toBeNull();
+		expect(screen.queryByText(/^Mute /)).toBeNull();
+		expect(screen.queryByText("Sound settings")).toBeNull();
 	});
 
 	/*
@@ -103,12 +103,12 @@ describe("PictureMenu", () => {
 	it("offers only a signature somebody earned", () => {
 		const { unmount } = render(menu(surfaceOf(PROVEN)));
 		rightClick(screen.getByText("picture"));
-		expect(screen.getByText("Copy the signature")).toBeDefined();
+		expect(screen.getByText("Copy signature")).toBeDefined();
 		unmount();
 
 		render(menu(surfaceOf(GUEST)));
 		rightClick(screen.getByText("picture"));
-		expect(screen.queryByText("Copy the signature")).toBeNull();
+		expect(screen.queryByText("Copy signature")).toBeNull();
 	});
 
 	// The stage is the element that goes full screen, so anywhere else the item
@@ -150,7 +150,7 @@ describe("a picture inside the room", () => {
 		expect(screen.getByText("Show Alex larger")).toBeDefined();
 		// Counted rather than looked for. Both menus carry the link now, so its
 		// presence says nothing and a second copy of it says everything.
-		expect(screen.queryAllByText("Copy the link to this room")).toHaveLength(1);
+		expect(screen.queryAllByText("Copy link")).toHaveLength(1);
 	});
 
 	it("opens one menu on a long press and not both", () => {
@@ -167,7 +167,7 @@ describe("a picture inside the room", () => {
 			});
 
 			expect(screen.getByText("Show Alex larger")).toBeDefined();
-			expect(screen.queryAllByText("Copy the link to this room")).toHaveLength(1);
+			expect(screen.queryAllByText("Copy link")).toHaveLength(1);
 		} finally {
 			vi.useRealTimers();
 		}
@@ -182,7 +182,7 @@ describe("a picture inside the room", () => {
 
 		rightClick(screen.getByText("the space between"));
 
-		expect(screen.getByText("Copy the link to this room")).toBeDefined();
+		expect(screen.getByText("Copy link")).toBeDefined();
 	});
 
 	/*
@@ -197,6 +197,6 @@ describe("a picture inside the room", () => {
 		inside();
 
 		rightClick(screen.getByText("picture"));
-		expect(screen.getByText("Copy the link to this room")).toBeDefined();
+		expect(screen.getByText("Copy link")).toBeDefined();
 	});
 });

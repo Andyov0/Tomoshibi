@@ -104,5 +104,5 @@ export function ShareButton({
  */
 const SHARE_INTENT: Record<ShareFrameRate, { label: Phrase; describes: Phrase }> = {
 	30: { label: "Sharper text", describes: "Code, documents, slides" },
-	60: { label: "Smoother motion", describes: "Video, animation, a demonstration" },
+	60: { label: "Smoother motion", describes: "Video, animation, demos" },
 };

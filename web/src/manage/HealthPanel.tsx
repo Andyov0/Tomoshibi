@@ -12,7 +12,7 @@ import { Card, Failed } from "./Shell";
  * pointed away from the cause. Speech breaking up was a socket buffer. A call
  * that never connected was an address discovered instead of configured.
  *
- * Each says what it examined rather than only how it came out. A tick that has
+ * Each says what it found rather than only how it came out. A tick that has
  * gone stale is worse than no check, and being able to read what it thought it
  * was proving is the only way anybody notices.
  */
@@ -62,8 +62,6 @@ function Row({ check }: { check: Check }) {
 					<span className="text-[13px]">{check.name}</span>
 					<span className="readout text-[11px] text-fg-muted">{check.found}</span>
 				</div>
-
-				<p className="text-fg-muted text-xs">{check.examined}</p>
 
 				{check.remedy && (
 					// Printed, not offered as a button. The fix for more than one

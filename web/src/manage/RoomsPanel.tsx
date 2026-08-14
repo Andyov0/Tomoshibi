@@ -71,7 +71,7 @@ export function RoomsPanel({
 					{error && <Failed>{error}</Failed>}
 
 					{live.length === 0 ? (
-						<Empty>Nothing is happening.</Empty>
+						<Empty>No calls right now.</Empty>
 					) : (
 						<ul>
 							{live.map((one) => (
@@ -96,9 +96,9 @@ export function RoomsPanel({
 					)}
 				</Card>
 
-				<Card title="Known" note="Every room this server has seen named">
+				<Card title="Known" note="Rooms this server has seen">
 					{known.length === 0 ? (
-						<Empty>None recorded.</Empty>
+						<Empty>None yet.</Empty>
 					) : (
 						<ul className="max-h-80 overflow-y-auto">
 							{known.map((one) => (

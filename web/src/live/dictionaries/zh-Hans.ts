@@ -11,26 +11,20 @@ const zhHans: Dictionary = {
 	"Check your camera and microphone first.": "先检查一下摄像头和麦克风。",
 	"Your name": "你的名字",
 	"Passphrase (optional)": "口令（可选）",
-	"A passphrase signs your name, so nobody else can appear under it.":
-		"口令会给你的名字签名，别人就无法用它出现。",
-	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
-		"猜到这个名字的人都能进来。随机生成的名字不值得去猜。",
-	"Only an administrator can open a new room here. Type the name you were given.":
-		"这里只有管理员能开新房间。请填入别人给你的房间名。",
+	"Stops anyone else using your name.": "别人就无法用你的名字。",
+	"Anyone who guesses this name can join.": "猜到这个名字的人都能进来。",
+	"Only administrators can start new rooms. Enter the name you were given.": "只有管理员能开新房间。请填入别人给你的房间名。",
 	Join: "加入",
 	"Joining…": "正在加入…",
-	"Joining as {name} with a signature only you can produce":
-		"以 {name} 加入，带着只有你能产生的签名",
+	"Only you can join as {name}": "只有你能用 {name} 加入",
 
 	"Cannot reach your devices": "无法访问你的设备",
-	"This browser will not give the page access to a camera or microphone.":
-		"这个浏览器不会把摄像头和麦克风交给本页面。",
-	"Cameras and microphones need a secure page, and {host} is not one. Open the server on localhost, or put it behind HTTPS to reach it from here.":
-		"摄像头和麦克风需要安全页面，而 {host} 不是。请在 localhost 上打开，或者给它加上 HTTPS 之后再从这里访问。",
+	"This browser blocks camera and microphone access.": "这个浏览器不允许访问摄像头和麦克风。",
+	"Cameras and microphones need HTTPS, and {host} is not secure.": "摄像头和麦克风需要 HTTPS，而 {host} 不是安全连接。",
 
 	"Room name": "房间名",
 	"Change room": "换个房间",
-	"Copy the link to this room": "复制这个房间的链接",
+	"Copy link": "复制链接",
 	"Link copied": "链接已复制",
 
 	Microphone: "麦克风",
@@ -53,9 +47,9 @@ const zhHans: Dictionary = {
 	"Sharper text": "文字更锐利",
 	"Code, documents, slides": "代码、文档、幻灯片",
 	"Smoother motion": "画面更流畅",
-	"Video, animation, a demonstration": "视频、动画、操作演示",
+	"Video, animation, demos": "视频、动画、演示",
 	"{name} is sharing": "{name} 正在共享",
-	"Click to watch": "点击观看",
+	"Watch": "查看",
 
 	"Their screen": "屏幕画面",
 	"Their camera": "摄像头画面",
@@ -69,55 +63,48 @@ const zhHans: Dictionary = {
 	"{name} (screen)": "{name}（屏幕）",
 	"{name} (you)": "{name}（你）",
 	unverified: "未验证",
-	"A signature only this person can produce": "只有此人能产生的签名",
-	"Given for this call. It says nothing about who they are":
-		"本次通话临时分配。它不说明这个人是谁",
-	"Somebody else signed this name; this participant did not":
-		"有人为这个名字签过名，而此人没有",
+	"This person proved their name": "这个人证明了自己的名字",
+	"Random, just for this call": "随机生成，仅本次通话有效",
+	"This person has not proved this name": "这个人没有证明这个名字",
 
 	Messages: "消息",
 	"Close messages": "关闭消息",
 	"Say something": "说点什么",
 	"Waiting for the connection": "等待连接",
 	Send: "发送",
-	"Messages last as long as the call. Nothing is written down.":
-		"消息只在通话期间存在，不会被记录下来。",
+	"Messages disappear when the call ends.": "通话结束后消息就没了。",
 
 	"{name} joined": "{name} 加入了",
 	"{name} left": "{name} 离开了",
 	"{name} started sharing": "{name} 开始共享",
 	"Cannot reach your camera": "找不到你的摄像头",
 	"Cannot reach your microphone": "找不到你的麦克风",
-	"Allow it from the icon in the address bar, then try again.":
-		"在地址栏的图标里允许它，然后再试一次。",
+	"Allow access from the icon in the address bar.": "在地址栏的图标里允许访问。",
 	Sound: "声音",
-	"Adjust the sound": "调整声音",
-	"Copy the signature": "复制签名",
+	"Sound settings": "声音设置",
+	"Copy signature": "复制签名",
 	"Show sound": "打开声音面板",
 	"Hide sound": "收起声音面板",
 	"Close sound": "关闭声音面板",
-	"There is nobody else to hear.": "现在没有别人可听。",
+	"Nobody else is here.": "现在只有你一个人。",
 	"microphone off": "麦克风已关",
-	"How loud {name} is": "{name} 的音量",
-	"Stop hearing {name}": "不再听 {name}",
-	"Hear {name} again": "重新听 {name}",
-	"You have stopped hearing this": "你已经不听这一路声音了",
-	off: "已关",
-	"Nobody can be heard yet": "还听不到任何人",
-	"This browser waits for a click before it will play sound.":
-		"这个浏览器要先有一次点击才会播放声音。",
+	"{name}'s volume": "{name} 的音量",
+	"Mute {name}": "静音 {name}",
+	"Unmute {name}": "取消静音 {name}",
+	"Muted by you": "已被你静音",
+	"Muted": "静音",
+	"You can't hear anyone yet": "你还听不到任何人",
+	"Your browser needs one click first.": "浏览器需要你先点一下。",
 	"Turn on sound": "打开声音",
 
 	"Connecting…": "正在连接…",
 	"Reconnecting…": "正在重连…",
 
-	"Too many requests. Wait a moment and try again.": "请求太频繁。稍等一下再试。",
-	"Room names may only contain lowercase letters, digits, and inner dashes.":
-		"房间名只能包含小写字母、数字，以及中间的连字符。",
-	"The server could not complete the request.": "服务器无法完成这个请求。",
+	"Too many attempts. Try again in a moment.": "尝试太频繁，请稍后再试。",
+	"Room names can use lowercase letters, numbers and dashes.": "房间名只能用小写字母、数字和连字符。",
+	"Something went wrong. Try again.": "出了点问题，请重试。",
 	"Could not join {room}.": "无法加入 {room}。",
-	"{room} has not been opened. Ask whoever is holding the meeting for the link.":
-		"{room} 还没有开。请向开会的人要链接。",
+	"{room} isn't open. Ask the organiser for the link.": "{room} 还没有开。请向开会的人要链接。",
 };
 
 export default zhHans;

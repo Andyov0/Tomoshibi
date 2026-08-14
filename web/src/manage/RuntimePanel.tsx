@@ -28,21 +28,21 @@ export function RuntimePanel({ onSignedOut }: { onSignedOut: () => void }) {
 				<Rows values={value?.meet} />
 			</Card>
 
-			<Card title="Media" note="Where clients are told to send, and on what">
+			<Card title="Media" note="What clients are told to dial">
 				<Rows values={value?.rtc} />
 			</Card>
 
-			<Card title="Rooms" note="Who may use a name nobody has used">
+			<Card title="Rooms" note="Who can start one">
 				<Opening policy={value?.rooms} />
 			</Card>
 
-			<Card title="Codecs the media server will carry">
+			<Card title="Codecs">
 				<p className="readout px-4 py-3 text-[12px] text-fg-muted">
 					{value?.codecs.join("  ·  ") ?? "—"}
 				</p>
 			</Card>
 
-			<Card title="Credentials" note="The secret is not shown here, and will not be">
+			<Card title="Credentials" note="The secret is never shown">
 				<Rows values={value?.credentials} />
 			</Card>
 		</div>

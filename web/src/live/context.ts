@@ -22,11 +22,11 @@ export function insecureReason(): string {
 	if (protocol === "https:") {
 		// Secure but still no devices: an old browser, or one where the feature
 		// has been switched off by policy.
-		return t("This browser will not give the page access to a camera or microphone.");
+		return t("This browser blocks camera and microphone access.");
 	}
 
 	return t(
-		"Cameras and microphones need a secure page, and {host} is not one. Open the server on localhost, or put it behind HTTPS to reach it from here.",
+		"Cameras and microphones need HTTPS, and {host} is not secure.",
 		{ host: hostname },
 	);
 }

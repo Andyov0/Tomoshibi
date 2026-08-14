@@ -267,7 +267,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 						<p className="flex items-center justify-center gap-1.5 text-fg-muted text-xs">
 							<KeyRound className="size-3" />
 							<Phrased
-								phrase="Joining as {name} with a signature only you can produce"
+								phrase="Only you can join as {name}"
 								values={{
 									name: <strong className="text-fg">{display || "?"}</strong>,
 								}}
@@ -275,7 +275,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 						</p>
 					) : (
 						<p className="text-center text-fg-muted text-xs">
-							{t("A passphrase signs your name, so nobody else can appear under it.")}
+							{t("Stops anyone else using your name.")}
 						</p>
 					)}
 

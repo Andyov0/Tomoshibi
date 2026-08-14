@@ -11,26 +11,20 @@ const zhHant: Dictionary = {
 	"Check your camera and microphone first.": "先檢查一下攝影機和麥克風。",
 	"Your name": "你的名字",
 	"Passphrase (optional)": "密語（選填）",
-	"A passphrase signs your name, so nobody else can appear under it.":
-		"密語會為你的名字簽名，別人就無法用它出現。",
-	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
-		"猜到這個名字的人都能進來。隨機產生的名字不值得去猜。",
-	"Only an administrator can open a new room here. Type the name you were given.":
-		"這裡只有管理員能開新房間。請填入別人給你的房間名。",
+	"Stops anyone else using your name.": "別人就無法用你的名字。",
+	"Anyone who guesses this name can join.": "猜到這個名字的人都能進來。",
+	"Only administrators can start new rooms. Enter the name you were given.": "只有管理員能開新房間。請填入別人給你的房間名。",
 	Join: "加入",
 	"Joining…": "正在加入…",
-	"Joining as {name} with a signature only you can produce":
-		"以 {name} 加入，帶著只有你能產生的簽名",
+	"Only you can join as {name}": "只有你能用 {name} 加入",
 
 	"Cannot reach your devices": "無法存取你的裝置",
-	"This browser will not give the page access to a camera or microphone.":
-		"這個瀏覽器不會把攝影機和麥克風交給本頁面。",
-	"Cameras and microphones need a secure page, and {host} is not one. Open the server on localhost, or put it behind HTTPS to reach it from here.":
-		"攝影機和麥克風需要安全頁面，而 {host} 不是。請在 localhost 上開啟，或者為它加上 HTTPS 之後再從這裡存取。",
+	"This browser blocks camera and microphone access.": "這個瀏覽器不允許存取攝影機和麥克風。",
+	"Cameras and microphones need HTTPS, and {host} is not secure.": "攝影機和麥克風需要 HTTPS，而 {host} 不是安全連線。",
 
 	"Room name": "房間名稱",
 	"Change room": "換個房間",
-	"Copy the link to this room": "複製這個房間的連結",
+	"Copy link": "複製連結",
 	"Link copied": "連結已複製",
 
 	Microphone: "麥克風",
@@ -53,9 +47,9 @@ const zhHant: Dictionary = {
 	"Sharper text": "文字更銳利",
 	"Code, documents, slides": "程式碼、文件、簡報",
 	"Smoother motion": "畫面更流暢",
-	"Video, animation, a demonstration": "影片、動畫、操作示範",
+	"Video, animation, demos": "影片、動畫、示範",
 	"{name} is sharing": "{name} 正在分享",
-	"Click to watch": "點擊觀看",
+	"Watch": "查看",
 
 	"Their screen": "螢幕畫面",
 	"Their camera": "攝影機畫面",
@@ -69,55 +63,48 @@ const zhHant: Dictionary = {
 	"{name} (screen)": "{name}（螢幕）",
 	"{name} (you)": "{name}（你）",
 	unverified: "未驗證",
-	"A signature only this person can produce": "只有此人能產生的簽名",
-	"Given for this call. It says nothing about who they are":
-		"本次通話臨時配發。它不說明這個人是誰",
-	"Somebody else signed this name; this participant did not":
-		"有人為這個名字簽過名，而此人沒有",
+	"This person proved their name": "這個人證明了自己的名字",
+	"Random, just for this call": "隨機產生，僅本次通話有效",
+	"This person has not proved this name": "這個人沒有證明這個名字",
 
 	Messages: "訊息",
 	"Close messages": "關閉訊息",
 	"Say something": "說點什麼",
 	"Waiting for the connection": "等待連線",
 	Send: "傳送",
-	"Messages last as long as the call. Nothing is written down.":
-		"訊息只在通話期間存在，不會被記錄下來。",
+	"Messages disappear when the call ends.": "通話結束後訊息就沒了。",
 
 	"{name} joined": "{name} 加入了",
 	"{name} left": "{name} 離開了",
 	"{name} started sharing": "{name} 開始分享",
 	"Cannot reach your camera": "找不到你的攝影機",
 	"Cannot reach your microphone": "找不到你的麥克風",
-	"Allow it from the icon in the address bar, then try again.":
-		"在網址列的圖示裡允許它，然後再試一次。",
+	"Allow access from the icon in the address bar.": "在網址列的圖示裡允許存取。",
 	Sound: "聲音",
-	"Adjust the sound": "調整聲音",
-	"Copy the signature": "複製簽名",
+	"Sound settings": "聲音設定",
+	"Copy signature": "複製簽名",
 	"Show sound": "打開聲音面板",
 	"Hide sound": "收起聲音面板",
 	"Close sound": "關閉聲音面板",
-	"There is nobody else to hear.": "現在沒有別人可聽。",
+	"Nobody else is here.": "現在只有你一個人。",
 	"microphone off": "麥克風已關",
-	"How loud {name} is": "{name} 的音量",
-	"Stop hearing {name}": "不再聽 {name}",
-	"Hear {name} again": "重新聽 {name}",
-	"You have stopped hearing this": "你已經不聽這一路聲音了",
-	off: "已關",
-	"Nobody can be heard yet": "還聽不到任何人",
-	"This browser waits for a click before it will play sound.":
-		"這個瀏覽器要先有一次點擊才會播放聲音。",
+	"{name}'s volume": "{name} 的音量",
+	"Mute {name}": "靜音 {name}",
+	"Unmute {name}": "取消靜音 {name}",
+	"Muted by you": "已被你靜音",
+	"Muted": "靜音",
+	"You can't hear anyone yet": "你還聽不到任何人",
+	"Your browser needs one click first.": "瀏覽器需要你先點一下。",
 	"Turn on sound": "開啟聲音",
 
 	"Connecting…": "正在連線…",
 	"Reconnecting…": "正在重新連線…",
 
-	"Too many requests. Wait a moment and try again.": "請求太頻繁。稍等一下再試。",
-	"Room names may only contain lowercase letters, digits, and inner dashes.":
-		"房間名稱只能包含小寫字母、數字，以及中間的連字號。",
-	"The server could not complete the request.": "伺服器無法完成這個請求。",
+	"Too many attempts. Try again in a moment.": "嘗試太頻繁，請稍後再試。",
+	"Room names can use lowercase letters, numbers and dashes.": "房間名只能用小寫字母、數字和連字號。",
+	"Something went wrong. Try again.": "出了點問題，請重試。",
 	"Could not join {room}.": "無法加入 {room}。",
-	"{room} has not been opened. Ask whoever is holding the meeting for the link.":
-		"{room} 還沒有開。請向開會的人要連結。",
+	"{room} isn't open. Ask the organiser for the link.": "{room} 還沒有開。請向開會的人要連結。",
 };
 
 export default zhHant;

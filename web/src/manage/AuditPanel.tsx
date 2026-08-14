@@ -24,7 +24,7 @@ export function AuditPanel({ onSignedOut }: { onSignedOut: () => void }) {
 		<div className="mx-auto max-w-4xl">
 			<Card
 				title="Recent"
-				note="Held in memory, and lost on restart. Every entry is also in the process log"
+				note="Cleared on restart"
 			>
 				{error && <Failed>{error}</Failed>}
 

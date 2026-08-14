@@ -132,19 +132,19 @@ export async function join(room: string, name: string, passphrase = ""): Promise
 function explain(reason: string | undefined, room: string): string {
 	switch (reason) {
 		case "rate_limited":
-			return t("Too many requests. Wait a moment and try again.");
+			return t("Too many attempts. Try again in a moment.");
 		case "invalid_room":
-			return t("Room names may only contain lowercase letters, digits, and inner dashes.");
+			return t("Room names can use lowercase letters, numbers and dashes.");
 		// Said as a fact about the room and never as a fact about the person
 		// reading it. They were not judged and nothing about them was found
 		// wanting: the name has simply never been used, and on this deployment
 		// that is not something they can change.
 		case "room_not_open":
-			return t("{room} has not been opened. Ask whoever is holding the meeting for the link.", {
+			return t("{room} isn't open. Ask the organiser for the link.", {
 				room,
 			});
 		case "server_error":
-			return t("The server could not complete the request.");
+			return t("Something went wrong. Try again.");
 		default:
 			return t("Could not join {room}.", { room });
 	}

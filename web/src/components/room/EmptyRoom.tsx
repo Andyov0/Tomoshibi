@@ -41,7 +41,7 @@ export function EmptyRoom() {
 		<div className="flex flex-col items-center gap-3 text-center">
 			<Button variant="secondary" onClick={copy} className="gap-2">
 				{copied ? <Check className="size-4 text-speaking" /> : <Copy className="size-4" />}
-				{copied ? t("Link copied") : t("Copy the link to this room")}
+				{copied ? t("Link copied") : t("Copy link")}
 			</Button>
 		</div>
 	);

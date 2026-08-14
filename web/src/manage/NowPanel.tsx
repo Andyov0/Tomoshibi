@@ -69,7 +69,7 @@ export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => v
 					</dl>
 				</Card>
 
-				<Card title="Since this process started" note="Counters reset on restart">
+				<Card title="Since restart">
 					<dl className="grid grid-cols-2 gap-x-4 gap-y-3 px-3 py-3 sm:px-4 sm:py-4">
 						<Figure label="Running" value={now ? since(now.since) : "—"} />
 						<Figure
@@ -119,7 +119,7 @@ function Ceiling({ bitsPerSecond }: { bitsPerSecond: number }) {
 				aria-valuenow={Math.round(share * 100)}
 				aria-valuemin={0}
 				aria-valuemax={100}
-				aria-label="Share of the link in use"
+				aria-label="Link usage"
 			>
 				<div
 					className={cn(

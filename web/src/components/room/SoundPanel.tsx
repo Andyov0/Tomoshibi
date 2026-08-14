@@ -61,7 +61,7 @@ export function SoundPanel({ room, onClose }: { room: Room; onClose: () => void 
 
 			{others.length === 0 ? (
 				<p className="px-4 py-8 text-center text-fg-muted text-xs">
-					{t("There is nobody else to hear.")}
+					{t("Nobody else is here.")}
 				</p>
 			) : (
 				<div className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
@@ -143,8 +143,8 @@ function Row({
 					// is what somebody is deciding.
 					aria-label={
 						setting.blocked
-							? t("Hear {name} again", { name })
-							: t("Stop hearing {name}", { name })
+							? t("Unmute {name}", { name })
+							: t("Mute {name}", { name })
 					}
 					aria-pressed={setting.blocked}
 					onClick={() => setBlocked(identity, sound, !setting.blocked)}
@@ -162,7 +162,7 @@ function Row({
 					// arriving to be made louder, and a slider that moves while
 					// the sound stays off is a control that lies.
 					disabled={setting.blocked}
-					aria-label={t("How loud {name} is", { name })}
+					aria-label={t("{name}'s volume", { name })}
 					onChange={(event) => setVolume(identity, sound, event.target.valueAsNumber)}
 					// The browser's own slider, tinted. Stripping its appearance to
 					// draw a track by hand takes the thumb with it — the accent
@@ -179,7 +179,7 @@ function Row({
 				{/* Read at a glance beside the slider, because a slider near one
 				    end tells nobody whether it is at nought. */}
 				<span className="readout w-9 shrink-0 text-right text-[10.5px] text-fg-muted tabular-nums">
-					{setting.blocked ? t("off") : `${Math.round(setting.volume * 100)}%`}
+					{setting.blocked ? t("Muted") : `${Math.round(setting.volume * 100)}%`}
 				</span>
 			</div>
 		</div>

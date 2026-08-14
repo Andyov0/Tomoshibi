@@ -130,8 +130,8 @@ export function Tile({
 					<span
 						title={
 							signature.proven
-								? t("A signature only this person can produce")
-								: t("Given for this call. It says nothing about who they are")
+								? t("This person proved their name")
+								: t("Random, just for this call")
 						}
 						className={cn(
 							"readout shrink-0 text-[10px]",
@@ -145,7 +145,7 @@ export function Tile({
 
 				{unverified && (
 					<span
-						title={t("Somebody else signed this name; this participant did not")}
+						title={t("This person has not proved this name")}
 						className="silk shrink-0 rounded bg-danger px-1 py-px text-[9px] text-danger-fg"
 					>
 						{t("unverified")}
@@ -165,7 +165,7 @@ export function Tile({
 			{silenced ? (
 				<VolumeX
 					className="size-3 shrink-0 text-danger"
-					aria-label={t("You have stopped hearing this")}
+					aria-label={t("Muted by you")}
 				/>
 			) : (
 				muted && <MicOff className="size-3 shrink-0 text-fg-muted" />

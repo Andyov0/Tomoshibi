@@ -115,13 +115,13 @@ export function PictureMenu({
 						>
 							{setting.blocked ? <Volume2 /> : <VolumeX />}
 							{setting.blocked
-								? t("Hear {name} again", { name: named })
-								: t("Stop hearing {name}", { name: named })}
+								? t("Unmute {name}", { name: named })
+								: t("Mute {name}", { name: named })}
 						</ContextMenuItem>
 
 						<ContextMenuItem onSelect={onOpenSound}>
 							<SlidersHorizontal />
-							{t("Adjust the sound")}
+							{t("Sound settings")}
 						</ContextMenuItem>
 					</>
 				)}
@@ -138,7 +138,7 @@ export function PictureMenu({
 						<ContextMenuSeparator />
 						<ContextMenuItem onSelect={() => void navigator.clipboard.writeText(mark.trip)}>
 							<Copy />
-							{t("Copy the signature")}
+							{t("Copy signature")}
 						</ContextMenuItem>
 					</>
 				)}

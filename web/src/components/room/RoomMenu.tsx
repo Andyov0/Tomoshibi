@@ -32,7 +32,7 @@ export function RoomItems() {
 			onSelect={() => void navigator.clipboard.writeText(window.location.href)}
 		>
 			<Link2 />
-			{t("Copy the link to this room")}
+			{t("Copy link")}
 		</ContextMenuItem>
 	);
 }

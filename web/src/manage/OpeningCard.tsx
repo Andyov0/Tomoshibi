@@ -55,13 +55,13 @@ export function OpeningCard({
 	);
 
 	return (
-		<Card title="New rooms" note="Who may use a name nobody has used">
+		<Card title="New rooms" note="Who can start one">
 			{error && <Failed>{error}</Failed>}
 
 			<div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
 				<div
 					role="group"
-					aria-label="Who may open a new room"
+					aria-label="Who can start a new room"
 					className="grid grid-cols-2 gap-1 rounded-md border border-border bg-bg p-1"
 				>
 					<Choice
@@ -80,8 +80,8 @@ export function OpeningCard({
 
 				<p className="text-fg-muted text-xs leading-relaxed">
 					{value?.chosen === "admins"
-						? "A name nobody has used is refused unless the passphrase sent with the join is an administrator's. Rooms already in use stay open to everybody who has the name."
-						: "Anybody who asks for a name nobody has used opens it, which is what an anonymous meeting link means."}
+						? "Only administrators can start a room. Rooms already in use stay open."
+						: "Anyone with a link can start a room."}
 				</p>
 
 				{value && <HowLongItLasts remember={value.remember} />}
@@ -139,11 +139,10 @@ function HowLongItLasts({ remember }: { remember: number }) {
 		<p className="text-fg-muted text-xs leading-relaxed">
 			{remember > 0 ? (
 				<>
-					A name nobody has joined for <Value>{days(remember)}</Value> is forgotten, and is a
-					name nobody has used again.
+					Unused rooms close after <Value>{days(remember)}</Value>.
 				</>
 			) : (
-				<>Every name that has ever been used is kept, and no room is ever forgotten.</>
+				<>Rooms never close.</>
 			)}
 		</p>
 	);
@@ -174,17 +173,16 @@ function days(seconds: number): string {
  * switch goes looking in a second place for what it does.
  */
 function WhereItLives({ policy }: { policy: Policy }) {
-	const agrees = policy.configured === policy.chosen;
+	if (policy.configured === policy.chosen) {
+		return (
+			<p className="text-fg-muted text-xs leading-relaxed">Set here, not in the config file.</p>
+		);
+	}
 
 	return (
-		<p className="border-border border-l-2 pl-2.5 text-fg-muted text-xs leading-relaxed">
-			Held in the store rather than the configuration file, because these pages have no file to
-			edit. <Value>meet.rooms.opened_by</Value> says <Value>{words(policy.configured)}</Value>,
-			and is read once — when a fresh store first runs.{" "}
-			{agrees
-				? "Editing it afterwards changes nothing here."
-				: "This was changed from here since, and what is set here is what the server does."}
-		</p>
+		<Note kind="quiet">
+			The config file says <Value>{words(policy.configured)}</Value>. This setting wins.
+		</Note>
 	);
 }
 
@@ -200,12 +198,11 @@ function Caveats({ policy, canModerate }: { policy: Policy; canModerate: boolean
 		<>
 			{policy.openedBy !== policy.chosen && (
 				<Note kind="warn">
-					Nobody is configured as an administrator, so nothing could satisfy this and anybody
-					may open a room. List one in the configuration file to put it into effect.
+					No administrators are configured, so anyone can start a room.
 				</Note>
 			)}
 
-			{!canModerate && <Note kind="quiet">Shown here to be read. Changing it needs moderation.</Note>}
+			{!canModerate && <Note kind="quiet">You can view this but not change it.</Note>}
 		</>
 	);
 }

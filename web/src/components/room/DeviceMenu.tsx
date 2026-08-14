@@ -8,10 +8,9 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useT } from "@/hooks/useT";
-import { LOCALES, LOCALE_NAMES, locale, setLocale, subscribe } from "@/live/i18n";
 import type { Room } from "livekit-client";
 import { ChevronUp } from "lucide-react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Device pickers.
@@ -40,38 +39,8 @@ export function DeviceMenu({ room }: { room: Room }) {
 				<DropdownMenuSeparator />
 				<DropdownMenuLabel>{t("Camera")}</DropdownMenuLabel>
 				<Devices room={room} kind="videoinput" />
-
-				<DropdownMenuSeparator />
-				<DropdownMenuLabel>{t("Language")}</DropdownMenuLabel>
-				<Languages />
 			</DropdownMenuContent>
 		</DropdownMenu>
-	);
-}
-
-/**
- * Which language the interface speaks.
- *
- * Here rather than on the island, because a language is chosen once and a call
- * has six controls already. Each is written in itself and never translated: the
- * person reading this list is the one person who may not read the language it is
- * currently in.
- */
-function Languages() {
-	const current = useSyncExternalStore(subscribe, locale, locale);
-
-	return (
-		<>
-			{LOCALES.map((candidate) => (
-				<DropdownMenuCheckboxItem
-					key={candidate}
-					checked={candidate === current}
-					onCheckedChange={() => setLocale(candidate)}
-				>
-					{LOCALE_NAMES[candidate]}
-				</DropdownMenuCheckboxItem>
-			))}
-		</>
 	);
 }
 

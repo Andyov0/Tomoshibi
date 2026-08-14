@@ -1,3 +1,4 @@
+import { LanguagePicker } from "@/components/room/LanguagePicker";
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,7 @@ import { parseName } from "@/live/name";
 import { KeyRound, ShieldAlert } from "lucide-react";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { Mic, MicOff, Video, VideoOff } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 const NAME_KEY = "meet-live.name";
 const DEVICES_KEY = "meet-live.devices";
@@ -43,6 +44,24 @@ export function PreJoin({ room, onRoomChange, onJoin }: PreJoinProps) {
 	}
 
 	return <Form room={room} onRoomChange={onRoomChange} onJoin={onJoin} />;
+}
+
+/**
+ * The page before a call, whichever of its two states it is in.
+ *
+ * The language picker sits above both. It is needed most on the state that
+ * cannot be joined from: somebody who lands on the dead end in a language they
+ * do not read has no way to find out why, and no button that would tell them.
+ */
+function Page({ children }: { children: ReactNode }) {
+	return (
+		<main className="relative grid min-h-full place-items-center p-6">
+			<div className="absolute top-4 right-4">
+				<LanguagePicker />
+			</div>
+			{children}
+		</main>
+	);
 }
 
 function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
@@ -107,7 +126,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	};
 
 	return (
-		<main className="grid min-h-full place-items-center p-6">
+		<Page>
 			<div className="w-full max-w-md space-y-6">
 				<header className="space-y-1 text-center">
 					<h1 className="font-semibold text-2xl tracking-tight">{t("Ready to join?")}</h1>
@@ -179,7 +198,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 					</Button>
 				</form>
 			</div>
-		</main>
+		</Page>
 	);
 }
 
@@ -193,13 +212,13 @@ function Unavailable({ reason }: { reason: string }) {
 	const t = useT();
 
 	return (
-		<main className="grid min-h-full place-items-center p-6">
+		<Page>
 			<div className="w-full max-w-md space-y-4 text-center">
 				<ShieldAlert className="mx-auto size-10 text-fg-muted" />
 				<h1 className="font-semibold text-2xl tracking-tight">{t("Cannot reach your devices")}</h1>
 				<p className="text-fg-muted text-sm">{reason}</p>
 			</div>
-		</main>
+		</Page>
 	);
 }
 

@@ -37,6 +37,12 @@ meet:
   # where the client inside the binary is used.
   web_root: "../web/dist"
 
+  # Where the code running here can be read. Shown on the join page, because
+  # this is under the AGPL and offering a program over a network obliges its
+  # operator to offer the source to whoever is using it that way. Point it at a
+  # changed copy if this one has been changed.
+  source_url: "https://github.com/5t-RawBeRry/Tomoshibi"
+
   rooms:
     # Who may use a name nobody has used before. `anyone` is what an anonymous
     # meeting link means; `admins` refuses a fresh name unless the passphrase

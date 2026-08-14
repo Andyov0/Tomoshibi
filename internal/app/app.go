@@ -70,7 +70,7 @@ func (a *App) Handler() http.Handler {
 	a.admin.Mount(mux)
 
 	mux.HandleFunc("POST /api/rooms/{room}/join", a.join)
-	mux.HandleFunc("GET /api/policy", a.policy)
+	mux.HandleFunc("GET /api/deployment", a.deployment)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -122,9 +122,21 @@ type joinResponse struct {
 	Room string `json:"room"`
 }
 
-type policyResponse struct {
+// What a client needs to know about the server it reached, before anybody has
+// typed anything into it.
+type deployment struct {
 	// OpenedBy is who may use a name nobody has used before.
 	OpenedBy room.Opening `json:"openedBy"`
+
+	// Source is where the code running here can be read.
+	//
+	// Required rather than courteous. This is licensed under the AGPL, whose
+	// thirteenth section says that offering people the use of a program over a
+	// network obliges the operator to offer them its source — and the people
+	// being offered the use of this one are on a web page, so the offer has to
+	// be on the web page. It is configurable because a deployment running a
+	// changed copy owes its visitors that copy and not this one.
+	Source string `json:"source"`
 }
 
 // manage serves the management document.
@@ -224,15 +236,15 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// policy is what a client needs to know before somebody types a room name.
+// deployment is what a client needs to know before somebody types a room name.
 //
 // Open to anybody, and deliberately silent about the caller. Whether this
 // particular person may open a room turns on a passphrase they have not typed
 // yet, and an endpoint that would answer that is a way of testing a guessed
 // administrator's passphrase — a faster one than the sign-in page, which is
 // rate limited for precisely that reason.
-func (a *App) policy(w http.ResponseWriter, _ *http.Request) {
-	respond(w, policyResponse{OpenedBy: a.opening()})
+func (a *App) deployment(w http.ResponseWriter, _ *http.Request) {
+	respond(w, deployment{OpenedBy: a.opening(), Source: a.conf.Meet.SourceURL})
 }
 
 // opening is who may use a name nobody has used, as this deployment can

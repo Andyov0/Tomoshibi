@@ -1,7 +1,7 @@
 import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { type Opening, opening as askOpening } from "@/live/api";
+import { type Opening, deployment } from "@/live/api";
 import { MAX_ROOM_NAME, looksGenerated, normaliseRoomName, validRoomName } from "@/live/names";
 import { Check, Copy, Link2, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -27,8 +27,8 @@ export function RoomBar({ room, onChange }: { room: string; onChange: (room: str
 	useEffect(() => {
 		let live = true;
 
-		void askOpening().then((answer) => {
-			if (live) setOpening(answer);
+		void deployment().then((said) => {
+			if (live) setOpening(said.openedBy);
 		});
 
 		return () => {

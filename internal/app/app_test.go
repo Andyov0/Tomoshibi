@@ -37,6 +37,10 @@ var tripKey = []byte("a key for the tests and nowhere else")
 
 const passphrase = "the administrator's passphrase"
 
+// Where the code running here can be read, which the licence obliges this to
+// offer to whoever is using it over a network.
+const source = "https://example.invalid/source"
+
 func mount(t *testing.T, admins []config.Admin) (*App, http.Handler) {
 	t.Helper()
 
@@ -55,6 +59,7 @@ func mount(t *testing.T, admins []config.Admin) (*App, http.Handler) {
 				JoinRate:  1000,
 				JoinBurst: 1000,
 				Admins:    admins,
+				SourceURL: source,
 			},
 		},
 		store:   st,
@@ -67,7 +72,7 @@ func mount(t *testing.T, admins []config.Admin) (*App, http.Handler) {
 	// would not have one.
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/rooms/{room}/join", app.join)
-	mux.HandleFunc("GET /api/policy", app.policy)
+	mux.HandleFunc("GET /api/deployment", app.deployment)
 
 	return app, mux
 }
@@ -204,22 +209,23 @@ func TestWithNobodyToOpenARoomAnybodyMay(t *testing.T) {
  * What the client is told, and what it is not.
  *
  * It needs the policy to say the right thing on the screen where a room name is
- * typed. It is never told whether the person at that screen is an administrator,
- * because answering that would be a way to test a guessed passphrase — an
- * unauthenticated one, quicker than the sign-in page that is rate limited for
- * exactly this reason.
+ * typed, and it needs somewhere to read the source, which the licence obliges
+ * this to offer whoever is using it over a network. It is never told whether the
+ * person at that screen is an administrator, because answering that would be a
+ * way to test a guessed passphrase — an unauthenticated one, quicker than the
+ * sign-in page that is rate limited for exactly this reason.
  */
-func TestThePolicyIsPublicAndSaysNothingAboutTheCaller(t *testing.T) {
+func TestWhatTheClientIsToldAboutTheDeployment(t *testing.T) {
 	app, mux := mount(t, []config.Admin{administrator()})
 
 	if err := app.store.SetOpening(room.ByAdmins); err != nil {
 		t.Fatalf("SetOpening: %v", err)
 	}
 
-	recorder := ask(mux, httptest.NewRequest(http.MethodGet, "/api/policy", nil))
+	recorder := ask(mux, httptest.NewRequest(http.MethodGet, "/api/deployment", nil))
 
 	if recorder.Code != http.StatusOK {
-		t.Fatalf("the policy answered %d, want 200", recorder.Code)
+		t.Fatalf("the deployment answered %d, want 200", recorder.Code)
 	}
 
 	var said map[string]any
@@ -230,8 +236,14 @@ func TestThePolicyIsPublicAndSaysNothingAboutTheCaller(t *testing.T) {
 	if said["openedBy"] != string(room.ByAdmins) {
 		t.Errorf("openedBy = %v, want %q", said["openedBy"], room.ByAdmins)
 	}
-	if len(said) != 1 {
-		t.Errorf("the policy says more than who may open a room: %v", said)
+	if said["source"] != source {
+		t.Errorf("source = %v, want %q", said["source"], source)
+	}
+
+	// Nothing else. Anything added here is said to everybody who loads the page,
+	// including whoever is working out what this server will admit.
+	if len(said) != 2 {
+		t.Errorf("the deployment says more about itself than it was asked: %v", said)
 	}
 }
 

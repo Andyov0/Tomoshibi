@@ -23,24 +23,44 @@ const IDENTITY_KEY = "meet-live.identity";
  */
 export type Opening = "anyone" | "admins";
 
+/** What the server said about itself. */
+export interface Deployment {
+	openedBy: Opening;
+	/**
+	 * Where the code running here can be read.
+	 *
+	 * Shown rather than kept, because this is licensed under the AGPL and its
+	 * thirteenth section obliges whoever offers a program over a network to
+	 * offer its source to the people using it that way. The people using this
+	 * one are on this page.
+	 */
+	source: string;
+}
+
+/** What a deployment that will not say anything is taken to be. */
+const PLAIN: Deployment = { openedBy: "anyone", source: "" };
+
 /**
- * Ask who may open a room here.
+ * Ask the server about itself.
  *
  * Falls back to the answer every deployment starts with. A server that will not
  * say should leave the page reading the way it has always read rather than
  * warning about a restriction that may not exist — and if one does exist, the
  * join is still refused by the only thing that decides it.
  */
-export async function opening(): Promise<Opening> {
+export async function deployment(): Promise<Deployment> {
 	try {
-		const response = await fetch("/api/policy");
-		if (!response.ok) return "anyone";
+		const response = await fetch("/api/deployment");
+		if (!response.ok) return PLAIN;
 
-		const body = (await response.json()) as { openedBy?: string };
+		const body = (await response.json()) as Partial<Deployment>;
 
-		return body.openedBy === "admins" ? "admins" : "anyone";
+		return {
+			openedBy: body.openedBy === "admins" ? "admins" : "anyone",
+			source: typeof body.source === "string" ? body.source : "",
+		};
 	} catch {
-		return "anyone";
+		return PLAIN;
 	}
 }
 

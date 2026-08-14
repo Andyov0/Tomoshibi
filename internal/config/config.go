@@ -71,6 +71,15 @@ type Meet struct {
 
 	// Rooms is what may be done with a name nobody has used.
 	Rooms Rooms `yaml:"rooms"`
+
+	// SourceURL is where the code running here can be read.
+	//
+	// Shown to everybody who opens the client, because this is licensed under
+	// the AGPL and its thirteenth section obliges whoever offers a program over
+	// a network to offer its source to the people using it that way. Set it to
+	// wherever a changed copy lives: a link to somebody else's repository is
+	// not an offer of the source anybody is actually running.
+	SourceURL string `yaml:"source_url"`
 }
 
 // Rooms is the policy for names nobody has used.
@@ -162,6 +171,7 @@ var defaults = Meet{
 	JoinBurst:   120,
 	TrustProxy:  false,
 	Rooms:       Rooms{OpenedBy: room.ByAnyone},
+	SourceURL:   "https://github.com/5t-RawBeRry/Tomoshibi",
 }
 
 // Load reads the configuration from path, or returns the defaults if path is

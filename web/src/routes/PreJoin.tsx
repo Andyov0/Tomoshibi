@@ -1,4 +1,5 @@
 import { LanguagePicker } from "@/components/room/LanguagePicker";
+import { deployment } from "@/live/api";
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,7 +71,53 @@ function Page({ children }: { children: ReactNode }) {
 				<LanguagePicker />
 			</div>
 			{children}
+			<Source />
 		</main>
+	);
+}
+
+/**
+ * Where the code running this can be read.
+ *
+ * An obligation rather than a courtesy, and one that only a page can discharge.
+ * This is licensed under the AGPL, whose thirteenth section says that offering
+ * people the use of a program over a network obliges the operator to offer them
+ * its source — and everybody being offered the use of this one arrives here.
+ *
+ * The address comes from the server because a deployment running a changed copy
+ * owes its visitors that copy rather than this one. Where a server says nothing,
+ * nothing is drawn: an offer of somebody else's source is worse than none, since
+ * it looks discharged.
+ */
+function Source() {
+	const [source, setSource] = useState("");
+
+	useEffect(() => {
+		let live = true;
+
+		void deployment().then((said) => {
+			if (live) setSource(said.source);
+		});
+
+		return () => {
+			live = false;
+		};
+	}, []);
+
+	if (!source) return null;
+
+	return (
+		<a
+			href={source}
+			target="_blank"
+			rel="noreferrer"
+			className="absolute inset-x-0 bottom-3 text-center text-[11px] text-fg-muted/60 transition-colors hover:text-fg-muted"
+		>
+			{/* Not translated, and not an oversight. It is the name of the licence
+			    this is under, which is the same string in every language, and the
+			    word beside it is what the link goes to. */}
+			AGPL-3.0 · source
+		</a>
 	);
 }
 

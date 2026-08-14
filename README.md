@@ -1,7 +1,17 @@
-# tomoshibi
+# Tomoshibi
 
-A video meeting server in one binary: the media server, the join endpoint, and
-the client, compiled together.
+A video meeting server in one binary. The media server, the API, and the client
+are compiled together into a single file: deploying is copying it to a machine
+and running it, and there is nothing beside it to keep in step.
+
+Somebody opens a link, is shown their own camera, types a name, and is in a
+call. Nobody registers, and there is no account to lose. What it does have is a
+way of proving a name — a passphrase turns one into a name nobody else can wear
+— a management surface for whoever runs the deployment, and a switch that limits
+new rooms to the people on that list.
+
+`tomoshibi` is Japanese for a small light left burning: a lamp in a window,
+enough for the people who need it and no brighter.
 
 ```
 main.go      Command dispatch, the embedded client, graceful shutdown.
@@ -16,19 +26,208 @@ web/         Vite, React, Tailwind, and the LiveKit client SDK.
 dev/         Configuration for running it locally.
 ```
 
+## Building it
+
+Go 1.26 and pnpm. The client is compiled into the binary, so it is built first
+and every time; a stale `web/dist` is a stale application with no sign of it.
+
+```bash
+cd web && pnpm install && pnpm run build && cd ..
+go build -o tomoshibi .
+```
+
+For something to hand to a server, strip the symbol table and the build id. The
+last of those is what makes two builds of one commit byte-identical, which is
+the only way to tell whether a binary on a machine is the one that was meant to
+be there.
+
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+  go build -trimpath -ldflags="-s -w -buildid=" -o tomoshibi .
+```
+
 ## Running it
 
 ```bash
-cd web && bun install && bun run build
-go build -o tomoshibi .
 cd dev && ../tomoshibi meet.yaml
 ```
 
 Open the printed URL and pick a room with `#/room-name`. Two tabs in different
 windows are enough to have a call with yourself.
 
-While working on the client, `bun run dev` proxies the API and the signalling to
-a running server, so changes reload without recompiling anything.
+While working on the client, `pnpm run dev` proxies the API and the signalling
+to a running server, so changes reload without recompiling anything.
+
+## Deploying it
+
+Two ports have to be reachable, and only two:
+
+| Port | Protocol | What it carries |
+| --- | --- | --- |
+| `meet.listen` | TCP | The client, the API, and the signalling WebSocket |
+| `rtc.udp_port` | UDP | Every track, from everybody, multiplexed onto one port |
+
+Put a reverse proxy in front of the TCP one and give it a certificate. This is
+not a preference: browsers withhold cameras and microphones outside a secure
+context, and only `localhost` is exempt, so an unproxied deployment is usable
+from the machine it runs on and nowhere else. The UDP port needs no certificate
+— media is encrypted end to end regardless — and must not be proxied.
+
+A working deployment, then, is four files and a service:
+
+```
+/usr/local/bin/tomoshibi          the binary
+/etc/tomoshibi/meet.yaml          the configuration
+/var/lib/tomoshibi/meet.db        the store, created on first run
+/var/lib/tomoshibi/tripcode.key   the signing key, created on first run
+```
+
+```ini
+[Unit]
+Description=Tomoshibi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/tomoshibi serve /etc/tomoshibi/meet.yaml
+WorkingDirectory=/var/lib/tomoshibi
+Restart=on-failure
+RestartSec=2
+
+# Nothing here needs a privileged port, a shell, or anybody else's files.
+DynamicUser=yes
+StateDirectory=tomoshibi
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target
+```
+
+The configuration it wants:
+
+```yaml
+port: 7880
+bind_addresses: ["127.0.0.1"]
+
+rtc:
+  udp_port: 7882
+  tcp_port: 7881
+  # True on any machine with a public address. False hands participants an
+  # address only the host can reach, and the call connects to nothing.
+  use_external_ip: true
+
+keys:
+  # Generate a real pair with `tomoshibi keygen`. These are one secret rather
+  # than two: the same process signs and verifies with them.
+  APIyourkey: your-secret
+
+meet:
+  listen: ":8080"
+  database: /var/lib/tomoshibi/meet.db
+  tripcode_key: /var/lib/tomoshibi/tripcode.key
+
+  # The address clients are told to dial, when it is not the one they arrived
+  # at. Needed behind a proxy.
+  public_url: https://meet.example.com
+
+  # Only behind a proxy that sets them. Exposed directly they are whatever the
+  # caller typed, and believing them hands anybody a fresh rate-limit budget.
+  trust_proxy: true
+```
+
+Upgrading is replacing the binary and restarting. The running one holds the
+file open, so write beside it and move it into place:
+
+```bash
+scp tomoshibi server:/usr/local/bin/tomoshibi.new
+ssh server 'mv /usr/local/bin/tomoshibi.new /usr/local/bin/tomoshibi \
+  && systemctl restart tomoshibi'
+```
+
+Nothing in the store needs migrating between versions. A record a build cannot
+read is treated as one that is not there, which is affordable because none of it
+is authoritative: who is in a room is the media server's to know, and a token is
+signed rather than stored.
+
+## Administrators
+
+There are no accounts. An administrator is a signature listed in the
+configuration file — the same signature their passphrase already produces beside
+their name in every room they join.
+
+```bash
+tomoshibi admin new /etc/tomoshibi/meet.yaml
+```
+
+```
+passphrase  7mrdz-nlq32
+trip        5dtfc2ouiu
+```
+
+The passphrase goes into a password manager and the trip goes into the file. The
+passphrase is not stored anywhere and cannot be recovered; the trip is public and
+grants nothing, which is the whole reason it is the half that gets written down.
+
+```yaml
+meet:
+  admins:
+    - trip: 5dtfc2ouiu
+      name: adam
+      can: [moderate]
+```
+
+`can` is empty for somebody who may only watch: the readings, the trend, the
+health checks, and who is in which room. `moderate` adds the actions — removing
+a participant, muting a track, closing a room, and changing who may open one.
+Two levels rather than one, because binding them together makes the choice
+"everybody gets the dangerous half, or nobody gets the useful one".
+
+Restart, and `/admin` exists. Where no administrator is listed it does not: the
+address answers like any other nobody claimed, so there is no sign-in page on a
+deployment with nobody to sign in.
+
+To sign in, type the passphrase. `adam#7mrdz-nlq32` is accepted too, because that
+is the form this application teaches everywhere else.
+
+Somebody who has already joined a call has their trip printed beside their name,
+and the management pages will copy it: right-click their picture and take **Copy
+the signature**. That is the string to paste into the file.
+
+## Letting only administrators open rooms
+
+A room here is a name and nothing else — there is no object to create — so the
+question this answers is *who may be the first to use a name*. Names already in
+use are untouched, which means a meeting in progress can never be interrupted by
+it, and everybody who has the link still gets in.
+
+From the management pages: **Rooms**, then **New rooms**, then
+**Administrators**. It takes effect at once and needs no restart.
+
+To have a deployment start that way, set the value the store adopts on its first
+run:
+
+```yaml
+meet:
+  rooms:
+    opened_by: admins   # or `anyone`, which is the default
+```
+
+That is the starting value only. The management pages change it afterwards and
+cannot edit a file, so the choice lives in the store from then on; the runtime
+panel shows the file's value beside the one in force, so a file edited later is
+visibly not being obeyed rather than puzzlingly ignored.
+
+Asking for `admins` where nobody is listed as an administrator is a rule nothing
+could satisfy — every new name would be refused for good, and the pages that
+could undo it would not exist either — so it is read as `anyone` and said so at
+startup.
+
+An administrator opens a new room by joining it with their passphrase, in the
+passphrase field on the join page. Everybody else is told the room has not been
+opened and to ask whoever is holding the meeting for the link.
 
 ## How it works
 
@@ -248,6 +447,9 @@ so at startup.
 tomoshibi [serve] [config.yaml]   Serve the client, the API, and the media
 tomoshibi keygen                  Print a fresh API key and secret
 tomoshibi rooms <database>        List the rooms a store has seen
+tomoshibi admin new [config.yaml] Make an administrator's passphrase and trip
+tomoshibi admin trip [config.yaml] <passphrase>
+                                  Work out the trip a passphrase already gives
 ```
 
 `rooms` needs the server stopped: the store admits one process at a time. Live
@@ -258,7 +460,7 @@ already knows it.
 
 ```bash
 go test ./...
-cd web && bunx tsc --noEmit && bunx vitest run
+cd web && pnpm run check && pnpm test
 ```
 
 The interesting behaviour needs two browsers and a running server, so it is
@@ -282,3 +484,21 @@ yet is not counted twice.
   microphones outside a secure context, and only localhost is exempt. The client
   says so rather than failing, and the startup log qualifies the network address
   for the same reason.
+
+## Licence
+
+[GNU Affero General Public License, version 3 or later](LICENSE).
+
+The Affero clause is the one that matters for something like this. A meeting
+server is used over a network and never distributed, so an ordinary copyleft
+licence would place no obligation on anybody running a changed copy: they would
+owe their participants nothing, and the participants would have no way of asking.
+Section 13 closes that — whoever offers this over a network owes its source to
+the people using it that way.
+
+Which is why the join page carries a link to it. Set `meet.source_url` to
+wherever a changed copy lives; a link to somebody else's repository is not an
+offer of the code anybody is actually running.
+
+The embedded media server is LiveKit, under Apache-2.0, and everything the client
+is built from is MIT or ISC. All of them may be carried by an AGPL work.

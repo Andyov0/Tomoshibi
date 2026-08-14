@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -225,31 +226,62 @@ func TestSucceedingCostsNothing(t *testing.T) {
 	}
 }
 
-func TestAttemptsAreForgotten(t *testing.T) {
+func TestABudgetRefills(t *testing.T) {
 	limit := newAttempts()
 
 	for i := 0; i < perAddress; i++ {
 		limit.Failed("10.0.0.3")
 	}
 
+	if limit.Allow("10.0.0.3") {
+		t.Fatal("guessing continued past the limit")
+	}
+
+	// The bucket returns a token every six seconds, so nothing is forgiven at
+	// once and a caller is never locked out for good. Advanced by hand rather
+	// than waited for: a test that sleeps six seconds is a test somebody skips.
 	limit.mu.Lock()
-	for i := range limit.byCaller["10.0.0.3"] {
-		limit.byCaller["10.0.0.3"][i] = time.Now().Add(-window - time.Second)
-	}
-	for i := range limit.all {
-		limit.all[i] = time.Now().Add(-window - time.Second)
-	}
+	limit.byCaller["10.0.0.3"].limiter.AllowN(time.Now().Add(time.Minute), 0)
 	limit.mu.Unlock()
 
 	if !limit.Allow("10.0.0.3") {
-		t.Error("a caller was locked out past the window")
+		t.Error("a caller was still refused a minute after their last attempt")
+	}
+}
+
+func TestCallersAreForgotten(t *testing.T) {
+	limit := newAttempts()
+
+	// A script cycling through addresses is what this guards against, so the
+	// test is that shape: many callers, each failing once and never returning.
+	// Counting what is held afterwards is the only assertion that fails when
+	// the sweep is removed — checking one absent key passes whether the others
+	// were dropped or not.
+	const strangers = 200
+
+	for i := 0; i < strangers; i++ {
+		limit.Failed(strconv.Itoa(i))
 	}
 
+	// Aged by moving the clock the sweep reads rather than by rewriting each
+	// entry against `idle`: rewriting them relative to the constant makes the
+	// test pass whatever that constant is, including a value that would keep
+	// every caller for ever.
 	limit.mu.Lock()
-	remaining := len(limit.byCaller)
+	stale := time.Now().Add(-24 * time.Hour)
+	for _, held := range limit.byCaller {
+		held.seen = stale
+	}
+	limit.swept = time.Now().Add(-2 * time.Minute)
 	limit.mu.Unlock()
 
-	if remaining != 0 {
-		t.Errorf("%d callers kept after ageing out; the map grows without bound", remaining)
+	limit.Failed("somebody still trying")
+
+	limit.mu.Lock()
+	held := len(limit.byCaller)
+	limit.mu.Unlock()
+
+	if held > 1 {
+		t.Errorf("%d callers held after all but one aged out; the map grows without bound", held)
 	}
 }

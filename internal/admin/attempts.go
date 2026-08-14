@@ -4,6 +4,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 // How hard the sign-in may be pushed.
@@ -18,13 +20,29 @@ import (
 // passphrase from one somebody thought of, and against the second kind the rate
 // is the whole defence. Ten a minute leaves a dictionary of ten million taking
 // nineteen centuries.
+//
+// Expressed as a bucket that refills rather than as a count inside a window,
+// because that is what the rest of this server already uses and one idea is
+// cheaper to hold than two. The shapes differ slightly — a window forgives all
+// ten at once where a bucket returns them one at a time — and for a limit whose
+// job is to make guessing slow, returning them gradually is if anything the
+// better behaviour.
 const (
-	perAddress = 10
+	perAddress    = 10
+	perAddressAll = rate.Limit(perAddress) / rate.Limit(time.Minute/time.Second)
+
 	overall    = 30
-	window     = time.Minute
+	overallAll = rate.Limit(overall) / rate.Limit(time.Minute/time.Second)
 )
 
-// attempts counts failed sign-ins, by address and in total.
+// idle is how long a caller's bucket is kept after their last failure.
+//
+// Only failures create one, so a map of these is a map of people who have got
+// it wrong recently. Swept on write rather than on a timer, which keeps it free
+// when nobody is trying.
+const idle = 10 * time.Minute
+
+// attempts bounds failed sign-ins, by address and in total.
 //
 // In total as well as by address, because by address alone is not a limit. The
 // budget is per caller and an attacker chooses how many callers to be: a
@@ -36,66 +54,69 @@ const (
 // is an inconvenience, and it being open is the end of every other control.
 type attempts struct {
 	mu       sync.Mutex
-	byCaller map[string][]time.Time
-	all      []time.Time
+	byCaller map[string]*budget
+	all      *rate.Limiter
+	swept    time.Time
+}
+
+type budget struct {
+	limiter *rate.Limiter
+	seen    time.Time
 }
 
 func newAttempts() *attempts {
-	return &attempts{byCaller: make(map[string][]time.Time)}
+	return &attempts{
+		byCaller: make(map[string]*budget),
+		all:      rate.NewLimiter(overallAll, overall),
+	}
 }
 
-// Allow reports whether this address may try again, without counting the try.
+// Allow reports whether this address may try again, without spending anything.
+//
+// Asked rather than taken, because a successful sign-in should cost nothing:
+// somebody who proves who they are has demonstrated they were not guessing, and
+// charging them for it makes an administrator's day harder than an attacker's.
 func (a *attempts) Allow(caller string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	now := time.Now()
-	a.forget(now)
+	held, known := a.byCaller[caller]
 
-	return len(a.byCaller[caller]) < perAddress && len(a.all) < overall
+	return (!known || held.limiter.Tokens() >= 1) && a.all.Tokens() >= 1
 }
 
-// Failed records a refusal. Only failures are counted: somebody signing in
-// successfully has proved they are not guessing, and charging them for it would
-// make an administrator's own day harder than an attacker's.
+// Failed records a refusal, spending from both buckets.
 func (a *attempts) Failed(caller string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	now := time.Now()
-	a.forget(now)
+	a.sweep(now)
 
-	a.byCaller[caller] = append(a.byCaller[caller], now)
-	a.all = append(a.all, now)
+	held, known := a.byCaller[caller]
+	if !known {
+		held = &budget{limiter: rate.NewLimiter(perAddressAll, perAddress)}
+		a.byCaller[caller] = held
+	}
+
+	held.seen = now
+	held.limiter.Allow()
+	a.all.Allow()
 }
 
-// forget drops what has aged out of the window. Called under the lock by both
-// paths, so the maps cannot grow without bound on an endpoint nobody is using
-// legitimately.
-func (a *attempts) forget(now time.Time) {
-	cutoff := now.Add(-window)
+// sweep drops callers who have not failed in a while, so that a script cycling
+// through addresses cannot grow the map without bound.
+func (a *attempts) sweep(now time.Time) {
+	if now.Sub(a.swept) < time.Minute {
+		return
+	}
+	a.swept = now
 
-	a.all = after(a.all, cutoff)
-
-	for caller, times := range a.byCaller {
-		kept := after(times, cutoff)
-		if len(kept) == 0 {
+	for caller, held := range a.byCaller {
+		if now.Sub(held.seen) > idle {
 			delete(a.byCaller, caller)
-			continue
-		}
-		a.byCaller[caller] = kept
-	}
-}
-
-func after(times []time.Time, cutoff time.Time) []time.Time {
-	kept := times[:0]
-	for _, at := range times {
-		if at.After(cutoff) {
-			kept = append(kept, at)
 		}
 	}
-
-	return kept
 }
 
 func trimSpace(s string) string {

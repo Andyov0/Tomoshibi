@@ -10,6 +10,9 @@ const ja: Dictionary = {
 	"Ready to join?": "参加の準備はできましたか",
 	"Check your camera and microphone first.": "先にカメラとマイクを確認してください。",
 	"Your name": "名前",
+	"Passphrase (optional)": "合言葉（任意）",
+	"A passphrase signs your name, so nobody else can appear under it.":
+		"合言葉が名前の署名になり、ほかの人がその名前で現れなくなります。",
 	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
 		"この名前を言い当てた人は誰でも入れます。自動で作られた名前なら、言い当てられる心配はありません。",
 	"Only an administrator can open a new room here. Type the name you were given.":
@@ -18,8 +21,6 @@ const ja: Dictionary = {
 	"Joining…": "参加しています…",
 	"Joining as {name} with a signature only you can produce":
 		"{name} として参加します。あなただけが作れる署名つきです",
-	"Add {hash} and a passphrase to sign your name, so nobody else can appear under it.":
-		"名前のうしろに {hash} と合言葉を付けると署名になり、ほかの人がその名前で現れなくなります。",
 
 	"Cannot reach your devices": "デバイスに接続できません",
 	"This browser will not give the page access to a camera or microphone.":
@@ -31,7 +32,6 @@ const ja: Dictionary = {
 	"Change room": "ルームを変える",
 	"Copy the link to this room": "このルームのリンクをコピー",
 	"Link copied": "リンクをコピーしました",
-	"Nobody else is here yet.": "まだほかに誰もいません。",
 
 	Microphone: "マイク",
 	Camera: "カメラ",
@@ -91,6 +91,8 @@ const ja: Dictionary = {
 	"Allow it from the icon in the address bar, then try again.":
 		"アドレスバーのアイコンから許可して、もう一度お試しください。",
 	Sound: "音声",
+	"Adjust the sound": "音量を調整",
+	"Copy the signature": "署名をコピー",
 	"Show sound": "音声パネルを開く",
 	"Hide sound": "音声パネルを閉じる",
 	"Close sound": "音声パネルを閉じる",

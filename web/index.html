@@ -7,7 +7,12 @@
 		<meta name="color-scheme" content="dark" />
 		<title>Tomoshibi</title>
 	</head>
-	<body>
+	<!-- Marks the document a call is held in, which is the one that is not a
+	     document: nothing in it is prose to drag across, and a long press has
+	     to reach a menu rather than a text selection. The management pages
+	     share this stylesheet and are a console to copy figures out of, so they
+	     carry no such class. -->
+	<body class="call">
 		<div id="root"></div>
 		<script type="module" src="/src/main.tsx"></script>
 	</body>

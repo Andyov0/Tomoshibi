@@ -45,7 +45,12 @@ function imported(): Set<string> {
 	const found = new Set<string>();
 	// Matches both static imports and the dynamic and side-effect forms, since
 	// a package pulled in for its stylesheet alone is still a dependency.
-	const pattern = /(?:from|import)\s*\(?\s*["']([^"'.][^"']*)["']/g;
+	//
+	// A module specifier holds no whitespace, and saying so is what keeps this
+	// from reading English. The word "from" happens to end sentences, and a test
+	// named for one ending in it — followed, as everything in a source file is,
+	// by a quote — was being reported as a package nobody had installed.
+	const pattern = /(?:from|import)\s*\(?\s*["']([^"'.\s][^"'\s]*)["']/g;
 
 	const walk = (directory: string) => {
 		for (const entry of readdirSync(directory, { withFileTypes: true })) {

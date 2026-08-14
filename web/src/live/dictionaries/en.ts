@@ -15,6 +15,9 @@ const en = {
 	"Ready to join?": "Ready to join?",
 	"Check your camera and microphone first.": "Check your camera and microphone first.",
 	"Your name": "Your name",
+	"Passphrase (optional)": "Passphrase (optional)",
+	"A passphrase signs your name, so nobody else can appear under it.":
+		"A passphrase signs your name, so nobody else can appear under it.",
 	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
 		"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.",
 	"Only an administrator can open a new room here. Type the name you were given.":
@@ -23,8 +26,6 @@ const en = {
 	"Joining…": "Joining…",
 	"Joining as {name} with a signature only you can produce":
 		"Joining as {name} with a signature only you can produce",
-	"Add {hash} and a passphrase to sign your name, so nobody else can appear under it.":
-		"Add {hash} and a passphrase to sign your name, so nobody else can appear under it.",
 
 	// A page that cannot reach a device at all.
 	"Cannot reach your devices": "Cannot reach your devices",
@@ -38,7 +39,6 @@ const en = {
 	"Change room": "Change room",
 	"Copy the link to this room": "Copy the link to this room",
 	"Link copied": "Link copied",
-	"Nobody else is here yet.": "Nobody else is here yet.",
 
 	// Devices.
 	Microphone: "Microphone",
@@ -106,6 +106,8 @@ const en = {
 		"Allow it from the icon in the address bar, then try again.",
 	// Sound, which is one person's own decision about everybody else.
 	Sound: "Sound",
+	"Adjust the sound": "Adjust the sound",
+	"Copy the signature": "Copy the signature",
 	"Show sound": "Show sound",
 	"Hide sound": "Hide sound",
 	"Close sound": "Close sound",

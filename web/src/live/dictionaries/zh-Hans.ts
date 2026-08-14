@@ -10,6 +10,9 @@ const zhHans: Dictionary = {
 	"Ready to join?": "准备好了吗？",
 	"Check your camera and microphone first.": "先检查一下摄像头和麦克风。",
 	"Your name": "你的名字",
+	"Passphrase (optional)": "口令（可选）",
+	"A passphrase signs your name, so nobody else can appear under it.":
+		"口令会给你的名字签名，别人就无法用它出现。",
 	"Anybody who guesses this name can join. Names that were generated rather than chosen are not worth guessing at.":
 		"猜到这个名字的人都能进来。随机生成的名字不值得去猜。",
 	"Only an administrator can open a new room here. Type the name you were given.":
@@ -18,8 +21,6 @@ const zhHans: Dictionary = {
 	"Joining…": "正在加入…",
 	"Joining as {name} with a signature only you can produce":
 		"以 {name} 加入，带着只有你能产生的签名",
-	"Add {hash} and a passphrase to sign your name, so nobody else can appear under it.":
-		"在名字后加 {hash} 和一个口令来签名，别人就无法用它出现。",
 
 	"Cannot reach your devices": "无法访问你的设备",
 	"This browser will not give the page access to a camera or microphone.":
@@ -31,7 +32,6 @@ const zhHans: Dictionary = {
 	"Change room": "换个房间",
 	"Copy the link to this room": "复制这个房间的链接",
 	"Link copied": "链接已复制",
-	"Nobody else is here yet.": "还没有其他人。",
 
 	Microphone: "麦克风",
 	Camera: "摄像头",
@@ -91,6 +91,8 @@ const zhHans: Dictionary = {
 	"Allow it from the icon in the address bar, then try again.":
 		"在地址栏的图标里允许它，然后再试一次。",
 	Sound: "声音",
+	"Adjust the sound": "调整声音",
+	"Copy the signature": "复制签名",
 	"Show sound": "打开声音面板",
 	"Hide sound": "收起声音面板",
 	"Close sound": "关闭声音面板",

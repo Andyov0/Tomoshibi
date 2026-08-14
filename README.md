@@ -66,11 +66,21 @@ somebody typed instead is short and meaningful, which is exactly what makes it
 guessable, so the client says so about those and stays quiet about the rest.
 
 **Everybody carries a mark; not every mark proves anything.** Anybody can call
-themselves anything, so `Alice#secret` sends the passphrase with the join
-request and the server derives a short mark from it, keyed with a file of its
-own. Somebody who gives no passphrase is issued one instead, drawn from nothing
-and fresh each visit — without it, two people arriving under one name are
-indistinguishable and the roster cannot say which of them spoke.
+themselves anything, so a passphrase is sent with the join request and the
+server derives a short mark from it, keyed with a file of its own. Somebody who
+gives no passphrase is issued one instead, drawn from nothing and fresh each
+visit — without it, two people arriving under one name are indistinguishable and
+the roster cannot say which of them spoke.
+
+The passphrase has a field of its own, which is less a matter of taste than it
+sounds. It used to be the half of the name field after a hash, and no password
+manager on earth can see that — not the browser's, not the one in the extension
+bar — so the thing every person was asked to remember was the one thing nothing
+was allowed to remember for them. It is a password field with an autocomplete
+attribute now, and Chromium is additionally offered the credential outright,
+since a page that never navigates never gives its heuristic the submission it
+watches for. `Alice#secret` still works and is no longer advertised: a syntax
+that quietly stops being accepted is worse than one that is no longer mentioned.
 
 The two kinds must never look alike, or the earned one is worth nothing: an
 impostor would point at their own and claim it. So they wear different prefixes

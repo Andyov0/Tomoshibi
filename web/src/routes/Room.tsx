@@ -2,7 +2,9 @@ import { Audible } from "@/components/room/Audible";
 import { ChatPanel } from "@/components/room/ChatPanel";
 import { ControlBar } from "@/components/room/ControlBar";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
+import { PictureMenu } from "@/components/room/PictureMenu";
 import { Plane } from "@/components/room/Plane";
+import { RoomMenu } from "@/components/room/RoomMenu";
 import { ShareCard } from "@/components/room/ShareCard";
 import { SoundPanel } from "@/components/room/SoundPanel";
 import { SaidInCorner, SaidOnTile } from "@/components/room/Said";
@@ -65,6 +67,7 @@ export function Room({ room, onLeave }: RoomProps) {
 				listening={listening}
 				screen={screen}
 				onClosePanel={() => setPanel(undefined)}
+				onOpenSound={() => setPanel("sound")}
 			/>
 			<ControlBar
 				room={room}
@@ -90,6 +93,7 @@ function Stage({
 	listening,
 	screen,
 	onClosePanel,
+	onOpenSound,
 }: {
 	room: LiveRoom;
 	chat: ReturnType<typeof useChat>;
@@ -97,6 +101,7 @@ function Stage({
 	listening: boolean;
 	screen: ReturnType<typeof useFullscreen<HTMLDivElement>>;
 	onClosePanel: () => void;
+	onOpenSound: () => void;
 }) {
 	const t = useT();
 	const heard = useHearing();
@@ -238,8 +243,9 @@ function Stage({
 			{/* The element that fills the screen. It holds the pictures and nothing
 			    else, so a fullscreen stage is a stage rather than a room with its
 			    chrome still attached. */}
-			<div ref={screen.ref} className="h-full w-full bg-bg">
-				<Plane
+			<RoomMenu>
+				<div ref={screen.ref} className="h-full w-full bg-bg">
+					<Plane
 					measure={measure}
 					plan={plan}
 					page={paged.page}
@@ -248,10 +254,23 @@ function Stage({
 					onPrevious={paged.previous}
 					tiles={all.map((surface) => ({
 						id: surface.id,
-						node: <div className="size-full animate-arrive">{tile(surface)}</div>,
+						node: (
+							<PictureMenu
+								surface={surface}
+								onStage={surface.id === pinned?.id}
+								fullscreen={screen.active}
+								fullscreenSupported={screen.supported}
+								onToggleStage={() => toggle(surface)}
+								onFullscreen={screen.toggle}
+								onOpenSound={onOpenSound}
+							>
+								<div className="size-full animate-arrive">{tile(surface)}</div>
+							</PictureMenu>
+						),
 					}))}
-				/>
-			</div>
+					/>
+				</div>
+			</RoomMenu>
 
 			{/* Placed over the grid rather than instead of it, so the self view
 			    stays where it will be when somebody arrives. */}

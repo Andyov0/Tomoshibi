@@ -60,6 +60,32 @@
 	}
 
 	/*
+	 * A call is not a document.
+	 *
+	 * Every label on it is furniture — a name under a face, a figure on a
+	 * control — and dragging across furniture selects it, which looks like the
+	 * page came apart. On a touchscreen it is worse than untidy: a long press
+	 * and a text selection are the same gesture, and whichever starts first
+	 * cancels the other, so a selectable label is a menu that will not open.
+	 *
+	 * Written with no specificity at all, so that anything saying it is words
+	 * rather than furniture wins by simply saying so.
+	 */
+	:where(body.call) {
+		-webkit-user-select: none;
+		user-select: none;
+	}
+
+	/*
+	 * What somebody types is theirs to select, and browsers do not all exempt a
+	 * field from an ancestor that refused.
+	 */
+	:where(body.call) :is(input, textarea) {
+		-webkit-user-select: text;
+		user-select: text;
+	}
+
+	/*
 	 * Anything a machine produced is set in a monospace and aligned by digit:
 	 * room names, signatures, timestamps, rates. Anything a person wrote is
 	 * set in the sans. No typeface is bundled — this client is compiled into a
@@ -70,6 +96,12 @@
 		font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 		font-variant-numeric: tabular-nums;
 		letter-spacing: 0.01em;
+
+		/* And is the one thing on a call worth taking away from it. A signature
+		   goes into a configuration file and a room name is read to somebody
+		   over the telephone; both are reached for with a cursor first. */
+		-webkit-user-select: text;
+		user-select: text;
 	}
 
 	/* Instrument silkscreen: small, wide, quiet. */

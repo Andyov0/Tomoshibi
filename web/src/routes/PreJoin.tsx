@@ -6,6 +6,7 @@ import { RoomBar } from "@/components/room/RoomBar";
 import { devicesAvailable, insecureReason } from "@/live/context";
 import { Phrased, useT } from "@/hooks/useT";
 import { parseName } from "@/live/name";
+import { remember } from "@/live/remember";
 import { KeyRound, ShieldAlert } from "lucide-react";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { Mic, MicOff, Video, VideoOff } from "lucide-react";
@@ -76,6 +77,7 @@ function Page({ children }: { children: ReactNode }) {
 function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	const t = useT();
 	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
+	const [secret, setSecret] = useState("");
 	const [devices, setDevices] = useState(remembered);
 	const [track, setTrack] = useState<LocalVideoTrack>();
 	const [joining, setJoining] = useState(false);
@@ -119,16 +121,33 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	// preview and prompt again a moment later.
 	useEffect(() => () => current.current?.stop(), []);
 
-	const { name: display, passphrase } = parseName(name);
+	/*
+	 * Two ways in, and one of them is not drawn.
+	 *
+	 * The field below is the one this teaches, because a field is the only shape
+	 * a password manager can see — the whole reason nobody could remember their
+	 * passphrase is that it used to be the half of this one after a hash, which
+	 * is invisible to every manager ever written.
+	 *
+	 * `Alice#secret` still works, and goes on working without being advertised.
+	 * It is the form this application taught everybody who has used it, and a
+	 * syntax that quietly stops being accepted is worse than one that is no
+	 * longer mentioned. The field wins where both are filled, since it is the
+	 * one somebody can see.
+	 */
+	const { name: display, passphrase: written } = parseName(name);
+	const passphrase = secret || written;
 
 	const submit = () => {
 		if (!display || joining) return;
 
-		// Only the name is remembered. A passphrase is a secret, and local
-		// storage is shared with every tab on this origin and outlives the
-		// session; it is typed again or not used.
+		// The name is written down here; the passphrase is offered to the
+		// browser instead. Local storage is shared with every tab on this origin
+		// and outlives the session, which is no place for a credential — and the
+		// password manager is a better one than this application could build.
 		localStorage.setItem(NAME_KEY, display);
 		localStorage.setItem(DEVICES_KEY, JSON.stringify(devices));
+		void remember(display, passphrase);
 
 		setJoining(true);
 		onJoin({ name: display, passphrase, ...devices });
@@ -179,8 +198,22 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 						onChange={(event) => setName(event.target.value)}
 						placeholder={t("Your name")}
 						aria-label={t("Your name")}
+						// Named for the manager rather than for this form. It is
+						// what a stored credential is filed under, and what makes
+						// the field below fill itself alongside it.
+						autoComplete="username"
 						autoFocus
 						maxLength={80}
+					/>
+
+					<Input
+						type="password"
+						value={secret}
+						onChange={(event) => setSecret(event.target.value)}
+						placeholder={t("Passphrase (optional)")}
+						aria-label={t("Passphrase (optional)")}
+						autoComplete="current-password"
+						maxLength={200}
 					/>
 
 					{passphrase ? (
@@ -195,10 +228,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 						</p>
 					) : (
 						<p className="text-center text-fg-muted text-xs">
-							<Phrased
-								phrase="Add {hash} and a passphrase to sign your name, so nobody else can appear under it."
-								values={{ hash: <code className="text-fg">#</code> }}
-							/>
+							{t("A passphrase signs your name, so nobody else can appear under it.")}
 						</p>
 					)}
 

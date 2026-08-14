@@ -96,7 +96,10 @@ export function ChatPanel({
 										<span className="readout text-[9.5px] text-fg-muted">{clock(one.at)}</span>
 									</span>
 								)}
-								<span className="break-words text-[12.5px] leading-normal">
+								{/* Somebody's words, so they are theirs to take away. A
+								    call is furniture and is not selectable for it; this
+								    is the one thing in one that is prose. */}
+								<span className="select-text break-words text-[12.5px] leading-normal">
 									<Linked text={one.body} />
 								</span>
 							</div>

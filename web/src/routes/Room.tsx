@@ -53,6 +53,20 @@ export function Room({ room, onLeave }: RoomProps) {
 	// Arrivals, departures, and somebody taking the stage with a share.
 	useEffect(() => watch(room), [room]);
 
+	/*
+	 * Said on the document, because the one thing that needs to know is a
+	 * stylesheet. Notices sit along the bottom edge of a hand-held screen and so
+	 * do these controls, and the notices have to clear them — which is a fact
+	 * about this screen rather than about any component either of them can see.
+	 */
+	useEffect(() => {
+		document.body.dataset.island = "";
+
+		return () => {
+			delete document.body.dataset.island;
+		};
+	}, []);
+
 	const openChat = useCallback(() => {
 		setPanel("messages");
 		chat.markRead();

@@ -12,6 +12,13 @@ import { t } from "./i18n";
  * belongs in the banner over the stage, not in something that fades. What is
  * left is other people arriving and leaving, somebody else taking the stage
  * with a share, and the two failures a person can actually act on.
+ *
+ * One rule decides two things at once, and they are the same thing. A notice
+ * about something that is over fades, and carries no way to close it: a target
+ * that lives two seconds is one nobody hits, and pressing it would save nobody
+ * anything. A notice about something still true does not leave on its own — so
+ * it has to be possible to decide not to deal with it, which is the close
+ * button, and it belongs to exactly those.
  */
 
 /** How long an ordinary notice stays. Long enough to read four words. */
@@ -69,6 +76,7 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
 	toast.error(kind === "camera" ? t("Can't use your camera") : t("Can't use your microphone"), {
 		description: t("Allow access from the icon in the address bar."),
 		duration: Number.POSITIVE_INFINITY,
+		closeButton: true,
 	});
 }
 
@@ -85,7 +93,7 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
  * while they are reading it.
  */
 export function joinFailed(reason: string): void {
-	toast.error(reason, { duration: Number.POSITIVE_INFINITY });
+	toast.error(reason, { duration: Number.POSITIVE_INFINITY, closeButton: true });
 }
 
 /**
@@ -124,6 +132,7 @@ export function audioBlocked(resume: () => void): () => void {
 	const id = toast(t("You can't hear anyone yet"), {
 		description: t("Your browser needs one click first."),
 		duration: Number.POSITIVE_INFINITY,
+		closeButton: true,
 		action: { label: t("Turn on sound"), onClick: resume },
 	});
 

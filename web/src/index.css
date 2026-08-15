@@ -120,7 +120,38 @@
 	 * sonner's own variants carry an icon and a palette of their own.
 	 */
 	.is-signal {
-		border-color: color-mix(in oklch, var(--color-tally) 45%, transparent);
+		border-left-color: var(--color-tally);
+	}
+
+	/*
+	 * The column notices fall into, and only where there is room beside the
+	 * pictures for one.
+	 *
+	 * It keeps a width so that text has somewhere to lay itself out; each notice
+	 * then shrinks to its own words inside it. Given as a rule rather than as a
+	 * style on the element, because below this width the library lays them
+	 * across the foot of the screen instead — and a width written inline cannot
+	 * be asked to stop applying.
+	 */
+	@media (min-width: 601px) {
+		[data-sonner-toaster] {
+			width: 18rem;
+		}
+	}
+
+	/*
+	 * Notices clear whatever else is along the bottom edge, and what is there
+	 * depends on the screen. A call keeps its controls in an island down there;
+	 * the screen before one keeps the button that gets you in. Both are reached
+	 * for, and a notice covering either is the same fault — the more so on the
+	 * one that says a room would not open, which is an answer about the button
+	 * it would be sitting on.
+	 *
+	 * Written with no specificity, so the library's own inline value is what it
+	 * overrides rather than something a later rule has to fight.
+	 */
+	:where(body[data-island]) [data-sonner-toaster] {
+		--mobile-offset-bottom: calc(env(safe-area-inset-bottom) + 5rem);
 	}
 
 	/*

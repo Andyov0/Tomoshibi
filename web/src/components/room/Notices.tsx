@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { Toaster } from "sonner";
 
 /**
@@ -25,14 +26,21 @@ import { Toaster } from "sonner";
  *
  * Sonner's own styling is replaced wholesale. Its defaults are a light card
  * with its own icons and its own type scale, none of which belong in a room
- * that is deliberately this quiet.
+ * that is deliberately this quiet. Unstyled also takes its close button out of
+ * its own hands: every rule it ships for one is written against a toast it
+ * styled, so the button arrives here with nothing on it at all.
  */
 export function Notices() {
+	const t = useT();
+
 	return (
 		<Toaster
 			position="bottom-right"
 			// Its icons are not the set the rest of the interface uses, and a
-			// notice this short says everything in the words anyway.
+			// notice this short says everything in the words anyway — the more so
+			// now that what kind it is, is an edge. Hidden rather than unset,
+			// because an icon it was given falsy falls through to the one it
+			// ships: there is no way to ask for none.
 			icons={{}}
 			// Three is what fits above the island without becoming a column of
 			// its own; the fourth pushes the oldest out, which is the right
@@ -40,29 +48,54 @@ export function Notices() {
 			visibleToasts={3}
 			offset={16}
 			gap={8}
-			// Clear of the home indicator, on the one document that is read in a
-			// hand as often as at a desk.
-			mobileOffset={{ bottom: "calc(env(safe-area-inset-bottom) + 1rem)", right: 12 }}
-			// The column keeps a width so text has somewhere to lay itself out;
-			// each notice then shrinks to its own words inside it and hugs the
-			// right edge. Letting the column itself collapse sets four words one
-			// letter to a line, which is what happens when nothing has a width.
-			style={{ width: "18rem", right: 16 }}
+			// Below six hundred these stretch across the foot of the screen, which
+			// is the library's own doing and the right shape for a hand. What is
+			// set here is how far up: the controls sit in an island along that
+			// same edge, and a notice laid over the button somebody is reaching
+			// for is worst on the one that asks them to press it.
+			// Below six hundred these stretch across the foot of the screen, which
+			// is the library's own doing and the right shape for a hand. How far
+			// up is not one number: the screen before a call keeps its own button
+			// down there and the call keeps an island, and a notice laid over
+			// either is a notice covering the thing somebody is reaching for.
+			// This clears the first; the stylesheet lifts it for the second.
+			mobileOffset={{
+				bottom: "calc(env(safe-area-inset-bottom) + 2.5rem)",
+				left: 12,
+				right: 12,
+			}}
 			toastOptions={{
 				unstyled: true,
+				closeButtonAriaLabel: t("Dismiss"),
 				classNames: {
 					toast: [
-						"ml-auto flex w-fit max-w-72 items-start gap-2 rounded-lg border border-border",
+						// Across the foot in a hand, and no wider than its own words
+						// once there is a column to sit in.
+						"ml-auto flex w-full max-w-full sm:w-fit sm:max-w-72",
+						"items-start gap-2 rounded-lg border border-border",
+						// The edge is the whole of the severity system. A wash of
+						// colour over a notice this small says less than a rail
+						// beside it, and this interface spends its two colours on
+						// what things are rather than on tinting them.
+						"border-l-2 border-l-border",
 						"bg-surface/95 px-3 py-2 shadow-lg backdrop-blur-md",
 						"font-sans text-[12.5px] text-fg leading-snug",
 					].join(" "),
+					icon: "hidden",
 					title: "font-normal",
 					description: "mt-0.5 text-[11.5px] text-fg-muted",
-					// The one signal colour, for anything that went wrong.
-					error: "border-danger/40",
+					error: "border-l-danger",
 					actionButton: [
-						"ml-auto shrink-0 rounded-md bg-tally px-2 py-1",
-						"font-medium text-[11.5px] text-tally-fg",
+						// The foreground colour rather than the signal one. Amber
+						// means something is happening, and the notice this sits on
+						// says nothing can be heard.
+						"shrink-0 self-center rounded-md bg-fg px-2 py-1",
+						"font-semibold text-[11.5px] text-bg transition-opacity hover:opacity-90",
+					].join(" "),
+					closeButton: [
+						"order-last shrink-0 self-start rounded p-0.5 text-fg-muted",
+						"transition-colors hover:bg-surface-hi hover:text-fg",
+						"outline-none focus-visible:ring-2 focus-visible:ring-fg/70",
 					].join(" "),
 				},
 			}}

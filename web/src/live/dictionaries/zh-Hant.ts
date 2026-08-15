@@ -95,6 +95,7 @@ const zhHant: Dictionary = {
 	"You can't hear anyone yet": "現在還聽不到聲音",
 	"Your browser needs one click first.": "瀏覽器需要你先點一下。",
 	"Turn on sound": "開啟聲音",
+	"Dismiss": "關閉",
 
 	"Connecting…": "正在連線…",
 	"Reconnecting…": "正在重新連線…",

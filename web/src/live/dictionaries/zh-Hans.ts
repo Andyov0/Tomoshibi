@@ -95,6 +95,7 @@ const zhHans: Dictionary = {
 	"You can't hear anyone yet": "现在还听不到声音",
 	"Your browser needs one click first.": "浏览器需要你先点一下。",
 	"Turn on sound": "打开声音",
+	"Dismiss": "关闭",
 
 	"Connecting…": "正在连接…",
 	"Reconnecting…": "正在重连…",

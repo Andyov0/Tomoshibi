@@ -121,6 +121,7 @@ const en = {
 	"Your browser needs one click first.":
 		"Your browser needs one click first.",
 	"Turn on sound": "Turn on sound",
+	"Dismiss": "Dismiss",
 
 	// The connection, while it is not there.
 	"Connecting…": "Connecting…",

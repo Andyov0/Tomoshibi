@@ -95,6 +95,7 @@ const ja: Dictionary = {
 	"You can't hear anyone yet": "まだ誰の声も聞こえません",
 	"Your browser needs one click first.": "ブラウザが最初のクリックを待っています。",
 	"Turn on sound": "音を出す",
+	"Dismiss": "閉じる",
 
 	"Connecting…": "接続しています…",
 	"Reconnecting…": "再接続しています…",

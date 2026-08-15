@@ -43,7 +43,7 @@ export interface Choices {
 export interface PreJoinProps {
 	room: string;
 	onRoomChange: (room: string) => void;
-	onJoin: (choices: Choices) => void;
+	onJoin: (choices: Choices) => Promise<void>;
 }
 
 export function PreJoin({ room, onRoomChange, onJoin }: PreJoinProps) {
@@ -198,7 +198,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	const { name: display, passphrase: written } = parseName(name);
 	const passphrase = secret || written;
 
-	const submit = () => {
+	const submit = async () => {
 		if (!display || joining) return;
 
 		// The name is written down here; the passphrase is offered to the
@@ -210,7 +210,28 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 		void remember(display, passphrase);
 
 		setJoining(true);
-		onJoin({ name: display, passphrase, ...devices });
+
+		try {
+			await onJoin({ name: display, passphrase, ...devices });
+		} catch {
+			// Reported by whoever tried, which holds the room object that has to
+			// be torn down and the words for what went wrong. Caught here all the
+			// same, because a rejection nobody catches is a red line in a console
+			// and nothing at all on the screen.
+		} finally {
+			/*
+			 * Put back whether it worked or not, which it was not doing at all.
+			 * A join that was refused — a room only administrators may open, a
+			 * name the server would not have — left the button reading "Joining"
+			 * for ever, with a notice beside it saying why and no way to act on
+			 * it. The only way out of this screen was to reload it.
+			 *
+			 * On success this runs into a screen that has already been replaced,
+			 * which costs nothing: the room is mounted by then and nobody is
+			 * looking at this button.
+			 */
+			setJoining(false);
+		}
 	};
 
 	return (
@@ -263,7 +284,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 					className="flex flex-col justify-center gap-5 md:landscape:min-w-[17rem] md:landscape:flex-1"
 					onSubmit={(event) => {
 						event.preventDefault();
-						submit();
+						void submit();
 					}}
 				>
 					<RoomTitle room={room} onChange={onRoomChange} />
@@ -282,7 +303,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 						<p className="text-fg-muted text-xs leading-snug">
 							{passphrase
 								? t("Only you can join as {name}", { name: display || "?" })
-								: t("Stops anyone else using your name.")}
+								: t("Add a passphrase so nobody else can use your name.")}
 						</p>
 					</div>
 
@@ -308,7 +329,7 @@ function Unavailable({ reason }: { reason: string }) {
 		<Page>
 			<div className="w-full max-w-md space-y-4 text-center">
 				<ShieldAlert className="mx-auto size-10 text-fg-muted" />
-				<h1 className="font-semibold text-2xl tracking-tight">{t("Cannot reach your devices")}</h1>
+				<h1 className="font-semibold text-2xl tracking-tight">{t("Can't use your camera or microphone")}</h1>
 				<p className="text-fg-muted text-sm">{reason}</p>
 			</div>
 		</Page>

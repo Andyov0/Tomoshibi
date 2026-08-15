@@ -114,7 +114,7 @@ export function ChatPanel({
 					rows={1}
 					value={draft}
 					disabled={offline}
-					placeholder={offline ? t("Waiting for the connection") : t("Say something")}
+					placeholder={offline ? t("Reconnecting…") : t("Say something")}
 					aria-label={t("Say something")}
 					maxLength={2000}
 					onChange={(event) => {

@@ -66,7 +66,7 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
 	// Two whole phrases rather than one with the device substituted in. A
 	// sentence built around a noun has to agree with it in most languages, and
 	// the one place that would break is the one nobody tests: the error.
-	toast.error(kind === "camera" ? t("Cannot reach your camera") : t("Cannot reach your microphone"), {
+	toast.error(kind === "camera" ? t("Can't use your camera") : t("Can't use your microphone"), {
 		description: t("Allow access from the icon in the address bar."),
 		duration: Number.POSITIVE_INFINITY,
 	});

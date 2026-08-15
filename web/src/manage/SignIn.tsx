@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { passphraseOf } from "@/live/name";
 import { actionFailed } from "@/live/notices";
@@ -27,6 +27,7 @@ import { api } from "./api";
  */
 export function SignIn({ onIn }: { onIn: () => void }) {
 	const [passphrase, setPassphrase] = useState("");
+	const [shown, setShown] = useState(false);
 	const [busy, setBusy] = useState(false);
 
 	const submit = async (event: FormEvent) => {
@@ -60,17 +61,38 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 					</p>
 				</header>
 
-				<Input
-					type="password"
-					value={passphrase}
-					onChange={(event) => setPassphrase(event.target.value)}
-					placeholder="Passphrase"
-					aria-label="Passphrase"
-					autoComplete="current-password"
-					// biome-ignore lint/a11y/noAutofocus: the page exists to be typed into
-					autoFocus
-					maxLength={200}
-				/>
+				{/*
+				  * An administrator's passphrase is generated rather than chosen,
+				  * so it is eleven characters of nothing memorable read out of a
+				  * password manager. Being able to see what was typed is the
+				  * difference between one attempt and three.
+				  */}
+				<div className="relative">
+					<Input
+						type={shown ? "text" : "password"}
+						value={passphrase}
+						onChange={(event) => setPassphrase(event.target.value)}
+						placeholder="Passphrase"
+						aria-label="Passphrase"
+						autoComplete="current-password"
+						// biome-ignore lint/a11y/noAutofocus: the page exists to be typed into
+						autoFocus
+						maxLength={200}
+						className={passphrase ? "pr-10" : undefined}
+					/>
+
+					{passphrase && (
+						<button
+							type="button"
+							onClick={() => setShown((was) => !was)}
+							aria-label={shown ? "Hide passphrase" : "Show passphrase"}
+							aria-pressed={shown}
+							className="-translate-y-1/2 absolute top-1/2 right-2 grid size-7 place-items-center rounded text-fg-muted outline-none transition-colors hover:text-fg focus-visible:ring-2 focus-visible:ring-fg/70"
+						>
+							{shown ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+						</button>
+					)}
+				</div>
 
 				<Button type="submit" size="lg" disabled={!passphrase || busy}>
 					{busy ? "Signing in…" : "Sign in"}

@@ -27,3 +27,6 @@ node_modules/
 /web/package-lock.json
 /web/yarn.lock
 /web/bun.lock
+
+# Finder's own bookkeeping, which follows anybody who opens a folder on a Mac.
+.DS_Store

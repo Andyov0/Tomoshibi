@@ -134,7 +134,7 @@ function explain(reason: string | undefined, room: string): string {
 		case "rate_limited":
 			return t("Too many attempts. Try again in a moment.");
 		case "invalid_room":
-			return t("Room names can use lowercase letters, numbers and dashes.");
+			return t("Room names can only use lowercase letters, numbers and dashes.");
 		// Said as a fact about the room and never as a fact about the person
 		// reading it. They were not judged and nothing about them was found
 		// wanting: the name has simply never been used, and on this deployment

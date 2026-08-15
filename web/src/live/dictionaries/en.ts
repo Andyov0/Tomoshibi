@@ -14,8 +14,10 @@ const en = {
 	// Joining.
 	"Your name": "Your name",
 	"Passphrase": "Passphrase",
-	"Stops anyone else using your name.":
-		"Stops anyone else using your name.",
+	"Show passphrase": "Show passphrase",
+	"Hide passphrase": "Hide passphrase",
+	"Add a passphrase so nobody else can use your name.":
+		"Add a passphrase so nobody else can use your name.",
 	"Anyone who guesses this name can join.":
 		"Anyone who guesses this name can join.",
 	"Only administrators can start new rooms. Enter the name you were given.":
@@ -26,7 +28,7 @@ const en = {
 		"Only you can join as {name}",
 
 	// A page that cannot reach a device at all.
-	"Cannot reach your devices": "Cannot reach your devices",
+	"Can't use your camera or microphone": "Can't use your camera or microphone",
 	"This browser blocks camera and microphone access.":
 		"This browser blocks camera and microphone access.",
 	"Cameras and microphones need HTTPS, and {host} is not secure.":
@@ -79,17 +81,16 @@ const en = {
 	"{name} (screen)": "{name} (screen)",
 	"{name} (you)": "{name} (you)",
 	unverified: "unverified",
-	"This person proved their name": "This person proved their name",
-	"Random, just for this call":
-		"Random, just for this call",
-	"This person has not proved this name":
-		"This person has not proved this name",
+	"Only this person can use this name": "Only this person can use this name",
+	"Anyone could use this name":
+		"Anyone could use this name",
+	"Someone else has proved this name":
+		"Someone else has proved this name",
 
 	// Messages.
 	Messages: "Messages",
 	"Close messages": "Close messages",
 	"Say something": "Say something",
-	"Waiting for the connection": "Waiting for the connection",
 	Send: "Send",
 	"Messages disappear when the call ends.":
 		"Messages disappear when the call ends.",
@@ -98,8 +99,8 @@ const en = {
 	"{name} joined": "{name} joined",
 	"{name} left": "{name} left",
 	"{name} started sharing": "{name} started sharing",
-	"Cannot reach your camera": "Cannot reach your camera",
-	"Cannot reach your microphone": "Cannot reach your microphone",
+	"Can't use your camera": "Can't use your camera",
+	"Can't use your microphone": "Can't use your microphone",
 	"Allow access from the icon in the address bar.":
 		"Allow access from the icon in the address bar.",
 	// Sound, which is one person's own decision about everybody else.
@@ -129,8 +130,8 @@ const en = {
 	// The server sends a code; the sentence belongs here, with the others.
 	"Too many attempts. Try again in a moment.":
 		"Too many attempts. Try again in a moment.",
-	"Room names can use lowercase letters, numbers and dashes.":
-		"Room names can use lowercase letters, numbers and dashes.",
+	"Room names can only use lowercase letters, numbers and dashes.":
+		"Room names can only use lowercase letters, numbers and dashes.",
 	"Something went wrong. Try again.": "Something went wrong. Try again.",
 	"Could not join {room}.": "Could not join {room}.",
 	"{room} isn't open. Ask the organiser for the link.":

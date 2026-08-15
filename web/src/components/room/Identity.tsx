@@ -1,6 +1,7 @@
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
-import { KeyRound } from "lucide-react";
+import { Eye, EyeOff, KeyRound } from "lucide-react";
+import { useState } from "react";
 
 /**
  * Who somebody is, as one control.
@@ -30,6 +31,7 @@ export function Identity({
 	onPassphrase: (passphrase: string) => void;
 }) {
 	const t = useT();
+	const [shown, setShown] = useState(false);
 
 	return (
 		<div
@@ -57,7 +59,7 @@ export function Identity({
 				)}
 			/>
 
-			<label className="relative flex min-w-0 items-center border-border border-l">
+			<div className="relative flex min-w-0 items-center border-border border-l">
 				{/*
 				 * The one place on this screen the signal colour appears, and it
 				 * means what it means everywhere else in this application: this is
@@ -72,7 +74,7 @@ export function Identity({
 				/>
 
 				<input
-					type="password"
+					type={shown ? "text" : "password"}
 					value={passphrase}
 					onChange={(event) => onPassphrase(event.target.value)}
 					placeholder={t("Passphrase")}
@@ -80,11 +82,36 @@ export function Identity({
 					autoComplete="current-password"
 					maxLength={200}
 					className={cn(
-						"h-11 min-w-0 w-full bg-transparent pr-3 pl-8.5 text-fg text-sm outline-none",
+						"h-11 min-w-0 w-full bg-transparent pl-8.5 text-fg text-sm outline-none",
 						"placeholder:text-fg-muted",
+						// Room for the eye only while there is one.
+						passphrase ? "pr-9" : "pr-3",
 					)}
 				/>
-			</label>
+
+				{/*
+				 * Only once there is something to look at. A passphrase generated
+				 * by the server is eleven characters of nothing memorable, and the
+				 * one thing anybody wants while typing it is to check they typed
+				 * it — but an eye beside an empty field is a control offering to
+				 * reveal nothing.
+				 */}
+				{passphrase && (
+					<button
+						type="button"
+						onClick={() => setShown((was) => !was)}
+						aria-label={shown ? t("Hide passphrase") : t("Show passphrase")}
+						aria-pressed={shown}
+						className={cn(
+							"absolute right-2 grid size-6 place-items-center rounded text-fg-muted",
+							"transition-colors hover:text-fg",
+							"outline-none focus-visible:ring-2 focus-visible:ring-fg/70",
+						)}
+					>
+						{shown ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+					</button>
+				)}
+			</div>
 		</div>
 	);
 }

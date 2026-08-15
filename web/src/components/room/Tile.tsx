@@ -130,8 +130,8 @@ export function Tile({
 					<span
 						title={
 							signature.proven
-								? t("This person proved their name")
-								: t("Random, just for this call")
+								? t("Only this person can use this name")
+								: t("Anyone could use this name")
 						}
 						className={cn(
 							"readout shrink-0 text-[10px]",
@@ -145,7 +145,7 @@ export function Tile({
 
 				{unverified && (
 					<span
-						title={t("This person has not proved this name")}
+						title={t("Someone else has proved this name")}
 						className="silk shrink-0 rounded bg-danger px-1 py-px text-[9px] text-danger-fg"
 					>
 						{t("unverified")}

@@ -1,3 +1,4 @@
+import { useMirrored } from "@/hooks/useMirrored";
 import { useSteady } from "@/hooks/useSteady";
 import { useT } from "@/hooks/useT";
 import { type Surface, label, owner, signature } from "@/live/surface";
@@ -57,10 +58,13 @@ export function SurfaceTile({
 	// shown whole with bars when the shapes disagree.
 	const fit = camera ? "object-cover" : "object-contain";
 
-	// Mirrored only for our own camera. An unmirrored view of yourself makes
-	// reaching for something on screen feel backwards; everybody else sees the
-	// unmirrored picture, and a mirrored screen share would be unreadable.
-	const mirror = surface.local && camera;
+	// Mirrored only for our own camera, and only while it is pointed at us. An
+	// unmirrored view of yourself makes reaching for something on screen feel
+	// backwards; a mirrored view of whatever a back camera is aimed at is a
+	// world with its writing reversed. Everybody else sees the unmirrored
+	// picture, and a mirrored screen share would be unreadable.
+	const facing = useMirrored(publication?.track);
+	const mirror = surface.local && camera && facing;
 
 	return (
 		<Tile

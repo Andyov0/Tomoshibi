@@ -1,3 +1,5 @@
+import { useMirrored } from "@/hooks/useMirrored";
+import { cn } from "@/lib/utils";
 import { VideoOff } from "lucide-react";
 import type { LocalVideoTrack } from "livekit-client";
 import { type ReactNode, useEffect, useRef } from "react";
@@ -16,8 +18,11 @@ import { type ReactNode, useEffect, useRef } from "react";
  * phone turned on its side is as wide as a laptop. The camera sends the same
  * picture either way; what changes is how much of it is worth keeping.
  *
- * Mirrored, because an unmirrored view of yourself makes reaching for something
- * on screen feel backwards. Everybody else sees the unmirrored picture.
+ * Mirrored while the camera is pointed at the person looking at it, because an
+ * unmirrored view of yourself makes reaching for something on screen feel
+ * backwards. Not mirrored when it is pointed away, where the same flip puts every
+ * sign and every hand on the wrong side. Everybody else sees it unmirrored either
+ * way.
  */
 export function SelfView({
 	track,
@@ -28,6 +33,7 @@ export function SelfView({
 	children?: ReactNode;
 }) {
 	const ref = useRef<HTMLVideoElement>(null);
+	const mirrored = useMirrored(track);
 
 	useEffect(() => {
 		const element = ref.current;
@@ -50,7 +56,7 @@ export function SelfView({
 				autoPlay
 				playsInline
 				muted
-				className="-scale-x-100 absolute inset-0 size-full object-cover"
+				className={cn("absolute inset-0 size-full object-cover", mirrored && "-scale-x-100")}
 			/>
 
 			{!track && (

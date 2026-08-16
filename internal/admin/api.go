@@ -914,3 +914,16 @@ func secureRequest(r *http.Request, trustProxy bool) bool {
 
 	return trustProxy && r.Header.Get("X-Forwarded-Proto") == "https"
 }
+
+// SessionOf says whether a request carries a live management session.
+//
+// For the parts of the application outside these pages that have to know: the
+// relay list is published to everybody and holds back the relays reserved for
+// administrators, and an administrator reading it should see their own.
+func (a *API) SessionOf(r *http.Request) (Session, bool) {
+	if a == nil || a.sessions == nil {
+		return Session{}, false
+	}
+
+	return a.sessions.Of(r)
+}

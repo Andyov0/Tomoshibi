@@ -18,11 +18,25 @@ import (
 	"tomoshibi/internal/room"
 )
 
-// How long a session lasts without being renewed.
+// How long a session lasts without being used.
 //
-// Half an hour, which is long enough to watch a call go wrong and short enough
-// that a laptop left open in a meeting room is not a standing grant.
-const sessionTTL = 30 * time.Minute
+// Renewed on every request that carries it, which it was not before: the half
+// hour used to run from signing in, so somebody in the middle of working was
+// signed out mid-action and read it as the page breaking. What a timeout should
+// measure is time away from it, not time spent in it.
+//
+// Twelve hours of that, which covers a working day with an interruption in it.
+const sessionIdle = 12 * time.Hour
+
+// And how long one may last however busy it is kept.
+//
+// Renewal without a ceiling is not a timeout — the management pages poll while
+// they are open, so a tab left open would hold a session for as long as the
+// browser ran, which is the laptop-in-a-meeting-room case the original half
+// hour existed to prevent. A week is the compromise: long enough never to
+// interrupt anybody working, short enough that a forgotten tab is not a
+// standing grant.
+const sessionMax = 7 * 24 * time.Hour
 
 // The cookie carrying a session.
 //
@@ -34,10 +48,13 @@ const cookieName = "meet-live.admin"
 
 // Signed in, and what they may do.
 type Session struct {
-	Trip    string
-	Name    string
-	Can     []string
+	Trip string
+	Name string
+	Can  []string
+	// Expires moves forward each time the session is used.
 	Expires time.Time
+	// Opened does not, and is what the ceiling is measured from.
+	Opened time.Time
 }
 
 // Allows reports whether this session holds a capability.
@@ -94,11 +111,14 @@ func (s *Sessions) Open(passphrase room.Passphrase) (Session, string, bool) {
 		return Session{}, "", false
 	}
 
+	now := time.Now()
+
 	session := Session{
 		Trip:    found.Trip,
 		Name:    found.Name,
 		Can:     found.Can,
-		Expires: time.Now().Add(sessionTTL),
+		Opened:  now,
+		Expires: now.Add(sessionIdle),
 	}
 
 	token := secret()
@@ -126,10 +146,20 @@ func (s *Sessions) Of(r *http.Request) (Session, bool) {
 		return Session{}, false
 	}
 
-	if time.Now().After(session.Expires) {
+	now := time.Now()
+
+	// Idle for too long, or open for too long however busy. Both are checked
+	// here rather than only at sign-in, because this is the only place a
+	// session is ever looked at.
+	if now.After(session.Expires) || now.Sub(session.Opened) > sessionMax {
 		delete(s.open, cookie.Value)
 		return Session{}, false
 	}
+
+	// Pushed forward by being used. Written back rather than only returned, or
+	// the renewal would last exactly as long as this request.
+	session.Expires = now.Add(sessionIdle)
+	s.open[cookie.Value] = session
 
 	return session, true
 }
@@ -152,7 +182,7 @@ func Grant(w http.ResponseWriter, token string, secure bool) {
 		Name:     cookieName,
 		Value:    token,
 		Path:     "/",
-		MaxAge:   int(sessionTTL.Seconds()),
+		MaxAge:   int(sessionIdle.Seconds()),
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,

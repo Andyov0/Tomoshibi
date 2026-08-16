@@ -60,7 +60,7 @@ func withReach(t *testing.T, list []store.Relay, up map[string]bool) *relays {
 func TestARelayThatDoesNotAnswerIsNotOffered(t *testing.T) {
 	chosen := withReach(t, []store.Relay{near, far}, map[string]bool{far.URL: true})
 
-	offered := chosen.offered()
+	offered := chosen.offered(false)
 	if len(offered) != 1 || offered[0].Name != "tokyo" {
 		t.Fatalf("offered %v; a relay the control node cannot open a connection to must "+
 			"not be measured, because the browser cannot tell it from a slow one and it "+
@@ -74,7 +74,7 @@ func TestARelayThatDoesNotAnswerIsNotChosen(t *testing.T) {
 	// Named by the client, which is the path that trusts a measurement. Even
 	// asked for outright, a relay known not to answer is not where a call goes.
 	for _, room := range []string{"standup", "retro", "one-to-one", "all-hands"} {
-		if got := chosen.pick(room, "", nil, false); got.Name != "tokyo" {
+		if got := chosen.pick(room, "", nil, false, false); got.Name != "tokyo" {
 			t.Fatalf("room %q went to %q; only one relay answered", room, got.Name)
 		}
 	}
@@ -86,13 +86,13 @@ func TestARelayThatDoesNotAnswerIsNotChosen(t *testing.T) {
 func TestNothingAnsweringIsNotAnOutage(t *testing.T) {
 	chosen := withReach(t, []store.Relay{near, far}, map[string]bool{})
 
-	if got := len(chosen.offered()); got != 2 {
+	if got := len(chosen.offered(false)); got != 2 {
 		t.Errorf("offered %d relays when none answered, wanted all %d: a control node that "+
 			"has lost its own network sees exactly this, and naming no relay turns its bad "+
 			"minute into everybody's", got, 2)
 	}
 
-	if got := chosen.pick("standup", "", nil, false); got.Name == "" {
+	if got := chosen.pick("standup", "", nil, false, false); got.Name == "" {
 		t.Error("no relay was chosen when none answered; a call has to be held somewhere")
 	}
 }
@@ -102,7 +102,7 @@ func TestNothingAnsweringIsNotAnOutage(t *testing.T) {
 func TestTheReserveIsUsedWhenTheOrdinaryOneIsUnreachable(t *testing.T) {
 	chosen := withReach(t, []store.Relay{near, held}, map[string]bool{held.URL: true})
 
-	if got := chosen.pick("standup", "", nil, false); got.Name != "hongkong" {
+	if got := chosen.pick("standup", "", nil, false, false); got.Name != "hongkong" {
 		t.Fatalf("chose %q; the only relay answering was the reserve, and a reserve exists "+
 			"for exactly this", got.Name)
 	}
@@ -114,7 +114,7 @@ func TestTheReserveIsLeftAloneWhileTheOrdinaryOneAnswers(t *testing.T) {
 	chosen := withReach(t, []store.Relay{near, held}, map[string]bool{near.URL: true, held.URL: true})
 
 	for _, room := range []string{"standup", "retro", "one-to-one", "all-hands"} {
-		if got := chosen.pick(room, "", nil, false); got.Name != "guangzhou" {
+		if got := chosen.pick(room, "", nil, false, false); got.Name != "guangzhou" {
 			t.Fatalf("room %q went to the reserve while the ordinary relay was answering", room)
 		}
 	}
@@ -130,7 +130,7 @@ func TestARelayNobodyHasLookedAtYetIsOffered(t *testing.T) {
 	// Nothing has been checked. A relay added a moment ago has not been looked
 	// at, and hiding it until a ticker comes round looks like a broken save to
 	// whoever just added it.
-	if got := len(chosen.offered()); got != 2 {
+	if got := len(chosen.offered(false)); got != 2 {
 		t.Errorf("offered %d of 2 relays before any had been checked", got)
 	}
 }

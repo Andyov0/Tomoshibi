@@ -191,6 +191,19 @@ const zhHant: Dictionary = {
 	"Europe": "歐洲",
 	"America": "美洲",
 	"Measure again": "重新測量",
+	"cn-east": "華東",
+	"cn-south": "華南",
+	"cn-north": "華北",
+	"cn-west": "西部",
+	"Shanghai": "上海",
+	"Guangzhou": "廣州",
+	"Beijing": "北京",
+	"Japan": "日本",
+	"Singapore": "新加坡",
+	"Taiwan": "台灣",
+	"Korea": "韓國",
+	"United States": "美國",
+	"Administrators only": "僅管理員可用",
 };
 
 export default zhHant;

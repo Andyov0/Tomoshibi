@@ -45,10 +45,10 @@ func TestStickyKeepsARoomTogether(t *testing.T) {
 	r := relaysOf(config.PickSticky, sh, hk, jp)
 
 	for _, name := range []string{"standup", "one-on-one", "退屈", "a"} {
-		first := r.pick(name, "", nil, false)
+		first := r.pick(name, "", nil, false, false)
 
 		for i := 0; i < 50; i++ {
-			if got := r.pick(name, "", nil, false); got.URL != first.URL {
+			if got := r.pick(name, "", nil, false, false); got.URL != first.URL {
 				t.Fatalf("room %q went to %s then %s: a meeting cannot be split",
 					name, first.URL, got.URL)
 			}
@@ -100,7 +100,7 @@ func TestStickySpreadsRoomsAcrossRelays(t *testing.T) {
 		"alpha", "bravo", "charlie", "delta", "echo", "foxtrot",
 		"golf", "hotel", "india", "juliet", "kilo", "lima",
 	} {
-		used[r.pick(name, "", nil, false).URL]++
+		used[r.pick(name, "", nil, false, false).URL]++
 	}
 
 	if len(used) != 3 {
@@ -122,7 +122,7 @@ func TestNearestPrefersAMatchingRegion(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/rooms/x/join", nil)
 		req.Header.Set(headerRegion, tc.region)
 
-		if got := r.pick("x", "", req, true); got.URL != tc.want {
+		if got := r.pick("x", "", req, true, false); got.URL != tc.want {
 			t.Errorf("region %q went to %s, wanted %s", tc.region, got.URL, tc.want)
 		}
 	}
@@ -140,7 +140,7 @@ func TestNearestFallsBackToSticky(t *testing.T) {
 	sticky := relaysOf(config.PickSticky, sh, hk, jp)
 
 	for _, name := range []string{"standup", "retro", "alpha"} {
-		if got, want := r.pick(name, "", req, true), sticky.pick(name, "", nil, false); got.URL != want.URL {
+		if got, want := r.pick(name, "", req, true, false), sticky.pick(name, "", nil, false, false); got.URL != want.URL {
 			t.Errorf("room %q with an unknown region went to %s, wanted the sticky choice %s",
 				name, got.URL, want.URL)
 		}
@@ -158,7 +158,7 @@ func TestRegionIsIgnoredWithoutTrustProxy(t *testing.T) {
 
 	sticky := relaysOf(config.PickSticky, sh, hk, jp)
 
-	if got, want := r.pick("standup", "", req, false), sticky.pick("standup", "", nil, false); got.URL != want.URL {
+	if got, want := r.pick("standup", "", req, false, false), sticky.pick("standup", "", nil, false, false); got.URL != want.URL {
 		t.Fatalf("an untrusted region header chose %s; without trust_proxy it should be "+
 			"ignored and give the sticky choice %s", got.URL, want.URL)
 	}
@@ -170,7 +170,7 @@ func TestCloudflareCountryIsAccepted(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/rooms/x/join", nil)
 	req.Header.Set(headerCountry, "jp")
 
-	if got := r.pick("x", "", req, true); got.URL != jp.URL {
+	if got := r.pick("x", "", req, true, false); got.URL != jp.URL {
 		t.Fatalf("CF-IPCountry jp went to %s, wanted %s", got.URL, jp.URL)
 	}
 }
@@ -180,7 +180,7 @@ func TestRoundRobinVisitsEveryRelayInTurn(t *testing.T) {
 
 	seen := map[string]int{}
 	for i := 0; i < 9; i++ {
-		seen[r.pick("same-room-every-time", "", nil, false).URL]++
+		seen[r.pick("same-room-every-time", "", nil, false, false).URL]++
 	}
 
 	for _, relay := range []store.Relay{sh, hk, jp} {
@@ -195,7 +195,7 @@ func TestProbeHonoursWhatTheClientMeasured(t *testing.T) {
 	r := relaysOf(config.PickProbe, sh, hk, jp)
 
 	for _, relay := range []store.Relay{sh, hk, jp} {
-		if got := r.pick("standup", relay.Name, nil, false); got.URL != relay.URL {
+		if got := r.pick("standup", relay.Name, nil, false, false); got.URL != relay.URL {
 			t.Errorf("client measured %s as fastest and was sent to %s", relay.Name, got.URL)
 		}
 	}
@@ -219,9 +219,9 @@ func TestProbeIgnoresARelayWeDoNotHave(t *testing.T) {
 		"shanghai ",
 		"",
 	} {
-		want := sticky.pick("standup", "", nil, false)
+		want := sticky.pick("standup", "", nil, false, false)
 
-		if got := r.pick("standup", claimed, nil, false); got.URL != want.URL {
+		if got := r.pick("standup", claimed, nil, false, false); got.URL != want.URL {
 			t.Errorf("a client claiming relay %q was sent to %s, wanted the sticky choice %s",
 				claimed, got.URL, want.URL)
 		}
@@ -236,7 +236,7 @@ func TestOtherPoliciesIgnoreAMeasurement(t *testing.T) {
 		r := relaysOf(policy, sh, hk, jp)
 		sticky := relaysOf(config.PickSticky, sh, hk, jp)
 
-		want := sticky.pick("standup", "", nil, false)
+		want := sticky.pick("standup", "", nil, false, false)
 
 		// Naming the relay the sticky hash did not choose, so that a policy
 		// which wrongly honoured it would visibly differ.
@@ -245,7 +245,7 @@ func TestOtherPoliciesIgnoreAMeasurement(t *testing.T) {
 			other = jp.Name
 		}
 
-		if got := r.pick("standup", other, nil, false); got.URL != want.URL {
+		if got := r.pick("standup", other, nil, false, false); got.URL != want.URL {
 			t.Errorf("policy %q honoured a measurement naming %s and chose %s, wanted %s",
 				policy, other, got.URL, want.URL)
 		}
@@ -258,7 +258,7 @@ func TestASingleRelayIsAlwaysChosen(t *testing.T) {
 	for _, policy := range []string{config.PickSticky, config.PickNearest, config.PickRoundRobin, config.PickProbe} {
 		r := relaysOf(policy, sh)
 
-		if got := r.pick("anything", "", nil, false); got.URL != sh.URL {
+		if got := r.pick("anything", "", nil, false, false); got.URL != sh.URL {
 			t.Errorf("policy %q with one relay chose %s", policy, got.URL)
 		}
 	}
@@ -284,11 +284,11 @@ func TestDisabledRelaysAreNotOffered(t *testing.T) {
 
 	r := &relays{source: &listed{relays: []store.Relay{sh, hk, off}}, policy: config.PickProbe}
 
-	if got := r.pick("standup", "tokyo", nil, false); got.URL == jp.URL {
+	if got := r.pick("standup", "tokyo", nil, false, false); got.URL == jp.URL {
 		t.Error("a client that measured a disabled relay was sent there anyway")
 	}
 
-	for _, relay := range r.offered() {
+	for _, relay := range r.offered(false) {
 		if relay.Name == "tokyo" {
 			t.Error("a disabled relay was offered to a client to measure")
 		}
@@ -303,11 +303,11 @@ func TestTheListIsCachedAndDroppedOnChange(t *testing.T) {
 	source := &listed{relays: []store.Relay{sh, hk}}
 	r := &relays{source: source, policy: config.PickSticky}
 
-	r.pick("standup", "", nil, false)
+	r.pick("standup", "", nil, false, false)
 	afterFirst := source.reads
 
 	for i := 0; i < 20; i++ {
-		r.pick("standup", "", nil, false)
+		r.pick("standup", "", nil, false, false)
 	}
 
 	if source.reads != afterFirst {
@@ -319,7 +319,7 @@ func TestTheListIsCachedAndDroppedOnChange(t *testing.T) {
 	r.forget()
 
 	found := false
-	for _, relay := range r.offered() {
+	for _, relay := range r.offered(false) {
 		if relay.Name == "tokyo" {
 			found = true
 		}
@@ -337,7 +337,7 @@ func TestAFailingStoreKeepsTheLastList(t *testing.T) {
 	source := &listed{relays: []store.Relay{sh, hk}}
 	r := &relays{source: source, policy: config.PickSticky}
 
-	first := r.pick("standup", "", nil, false)
+	first := r.pick("standup", "", nil, false, false)
 	if first.URL == "" {
 		t.Fatal("nothing was chosen from a working store")
 	}
@@ -345,7 +345,7 @@ func TestAFailingStoreKeepsTheLastList(t *testing.T) {
 	source.err = errors.New("the database is busy")
 	r.forget()
 
-	if got := r.pick("standup", "", nil, false); got.URL != first.URL {
+	if got := r.pick("standup", "", nil, false, false); got.URL != first.URL {
 		t.Errorf("a failing store changed the choice from %s to %q; the last known list "+
 			"should stand", first.URL, got.URL)
 	}

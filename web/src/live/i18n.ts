@@ -171,7 +171,21 @@ export type Values = Record<string, string | number>;
 export function say(text: string): string {
 	const dictionary = DICTIONARIES[current] as Record<string, string | undefined>;
 
-	return dictionary[text] ?? text;
+	const exact = dictionary[text];
+	if (exact !== undefined) return exact;
+
+	// Then ignoring case, because this text was typed by a person into a field
+	// and "CN-East", "cn-east" and "CN-EAST" are the same place. Requiring them
+	// to have typed it exactly as the dictionary spells it would make the
+	// translation a trick you had to know, and the untranslated half only shows
+	// up for readers of the other languages — which is to say, not for whoever
+	// typed it.
+	const folded = text.toLowerCase();
+	for (const key of Object.keys(dictionary)) {
+		if (key.toLowerCase() === folded) return dictionary[key] ?? text;
+	}
+
+	return text;
 }
 
 export function t(phrase: Phrase, values?: Values): string {

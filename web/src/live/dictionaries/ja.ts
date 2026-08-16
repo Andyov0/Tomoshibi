@@ -191,6 +191,19 @@ const ja: Dictionary = {
 	"Europe": "ヨーロッパ",
 	"America": "アメリカ",
 	"Measure again": "再計測",
+	"cn-east": "華東",
+	"cn-south": "華南",
+	"cn-north": "華北",
+	"cn-west": "西部",
+	"Shanghai": "上海",
+	"Guangzhou": "広州",
+	"Beijing": "北京",
+	"Japan": "日本",
+	"Singapore": "シンガポール",
+	"Taiwan": "台湾",
+	"Korea": "韓国",
+	"United States": "アメリカ",
+	"Administrators only": "管理者のみ",
 };
 
 export default ja;

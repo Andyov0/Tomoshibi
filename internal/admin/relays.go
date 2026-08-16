@@ -39,13 +39,14 @@ type Reachable interface {
 // relayView is one relay as a page sees it: what was configured, plus whether
 // it is answering.
 type relayView struct {
-	Name     string `json:"name"`
-	URL      string `json:"url"`
-	Region   string `json:"region,omitempty"`
-	Label    string `json:"label,omitempty"`
-	Fallback bool   `json:"fallback,omitempty"`
-	Enabled  bool   `json:"enabled"`
-	Added    string `json:"added,omitempty"`
+	Name      string `json:"name"`
+	URL       string `json:"url"`
+	Region    string `json:"region,omitempty"`
+	Label     string `json:"label,omitempty"`
+	Fallback  bool   `json:"fallback,omitempty"`
+	AdminOnly bool   `json:"adminOnly,omitempty"`
+	Enabled   bool   `json:"enabled"`
+	Added     string `json:"added,omitempty"`
 
 	// Reachable and Latency are measured when the page is drawn, from this
 	// machine. A client's own measurement may differ and usually will — this is
@@ -78,7 +79,7 @@ func (a *API) listRelays(_ Session, w http.ResponseWriter, r *http.Request) {
 	for i, relay := range list {
 		views[i] = relayView{
 			Name: relay.Name, URL: relay.URL, Region: relay.Region,
-			Label: relay.Label, Fallback: relay.Fallback,
+			Label: relay.Label, Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Enabled: relay.Enabled,
 		}
 		if !relay.Added.IsZero() {
@@ -118,12 +119,13 @@ func (a *API) addRelay(session Session, w http.ResponseWriter, r *http.Request) 
 	}
 
 	var body struct {
-		Name     string `json:"name"`
-		URL      string `json:"url"`
-		Region   string `json:"region"`
-		Label    string `json:"label"`
-		Fallback bool   `json:"fallback"`
-		Enabled  *bool  `json:"enabled"`
+		Name      string `json:"name"`
+		URL       string `json:"url"`
+		Region    string `json:"region"`
+		Label     string `json:"label"`
+		Fallback  bool   `json:"fallback"`
+		AdminOnly bool   `json:"adminOnly"`
+		Enabled   *bool  `json:"enabled"`
 	}
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
@@ -132,13 +134,14 @@ func (a *API) addRelay(session Session, w http.ResponseWriter, r *http.Request) 
 	}
 
 	relay := store.Relay{
-		Name:     strings.TrimSpace(body.Name),
-		URL:      strings.TrimSpace(body.URL),
-		Region:   strings.TrimSpace(body.Region),
-		Label:    strings.TrimSpace(body.Label),
-		Fallback: body.Fallback,
-		Enabled:  body.Enabled == nil || *body.Enabled,
-		Added:    time.Now().UTC(),
+		Name:      strings.TrimSpace(body.Name),
+		URL:       strings.TrimSpace(body.URL),
+		Region:    strings.TrimSpace(body.Region),
+		Label:     strings.TrimSpace(body.Label),
+		Fallback:  body.Fallback,
+		AdminOnly: body.AdminOnly,
+		Enabled:   body.Enabled == nil || *body.Enabled,
+		Added:     time.Now().UTC(),
 	}
 
 	if err := a.relays.AddRelay(relay); err != nil {
@@ -174,12 +177,13 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	// Pointers throughout, so that clearing a field and leaving it alone are
 	// different requests. An empty string is a thing somebody meant.
 	var body struct {
-		Name     *string `json:"name"`
-		URL      string  `json:"url"`
-		Region   *string `json:"region"`
-		Label    *string `json:"label"`
-		Fallback *bool   `json:"fallback"`
-		Enabled  *bool   `json:"enabled"`
+		Name      *string `json:"name"`
+		URL       string  `json:"url"`
+		Region    *string `json:"region"`
+		Label     *string `json:"label"`
+		Fallback  *bool   `json:"fallback"`
+		AdminOnly *bool   `json:"adminOnly"`
+		Enabled   *bool   `json:"enabled"`
 	}
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
@@ -225,6 +229,9 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	}
 	if body.Fallback != nil {
 		found.Fallback = *body.Fallback
+	}
+	if body.AdminOnly != nil {
+		found.AdminOnly = *body.AdminOnly
 	}
 
 	// The name last, and separately, because it is the key. Everything else is a

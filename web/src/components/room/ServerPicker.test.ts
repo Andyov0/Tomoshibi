@@ -73,9 +73,11 @@ describe("grouping the relays", () => {
 		expect(loose).toMatchObject({ depth: 0 });
 	});
 
-	// Somebody returning to a group further down the list. The heading has to be
-	// printed again, or those relays appear under whatever came before them.
-	it("reopens a group that comes back after another", () => {
+	// The one somebody notices immediately. A group interrupted by another must
+	// gather rather than print its heading twice with the interloper between:
+	// the whole promise of a grouped list is that looking in one place finds all
+	// of them.
+	it("gathers a group that is interrupted in the list", () => {
 		const rows = grouped([
 			relay("shct", "China Mainland"),
 			relay("tokyo", "Oversea/Asia"),
@@ -83,7 +85,22 @@ describe("grouping the relays", () => {
 		]);
 
 		const headings = rows.filter((row) => row.kind === "heading").map((row) => row.text);
-		expect(headings).toEqual(["China Mainland", "Oversea", "Asia", "China Mainland"]);
+		expect(headings).toEqual(["China Mainland", "Oversea", "Asia"]);
+
+		const order = rows.filter((row) => row.kind === "relay").map((row) => row.relay.name);
+		expect(order).toEqual(["shct", "gzbgp", "tokyo"]);
+	});
+
+	// Gathering must not become sorting. Where a group first appears is where it
+	// goes, so moving a relay to the top moves its group to the top.
+	it("orders the groups by where each first appears", () => {
+		const rows = grouped([
+			relay("tokyo", "Oversea/Asia"),
+			relay("shct", "China Mainland"),
+		]);
+
+		const headings = rows.filter((row) => row.kind === "heading").map((row) => row.text);
+		expect(headings).toEqual(["Oversea", "Asia", "China Mainland"]);
 	});
 
 	it("ignores stray separators and spacing", () => {

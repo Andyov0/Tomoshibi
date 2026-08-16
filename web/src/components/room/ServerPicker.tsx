@@ -35,6 +35,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
  */
 const COOLDOWN_MS = 5000;
 
+/** How long the spinner turns for, however quickly the answer arrives. */
+const SPIN_AT_LEAST_MS = 550;
+
 export function ServerPicker({
 	relays,
 	value,
@@ -78,7 +81,16 @@ export function ServerPicker({
 		setReady(false);
 		setMeasuring(true);
 
-		void timings(relays).then((result) => {
+		// Held for a moment even when the answer comes back at once.
+		//
+		// A relay that answers in twelve milliseconds makes the spinner appear
+		// and vanish inside one frame, so the button reads as not having done
+		// anything — and somebody who pressed it and saw nothing presses it
+		// again. What is being shown is not how long the work took; it is that
+		// the press was received.
+		const shown = new Promise((settle) => setTimeout(settle, SPIN_AT_LEAST_MS));
+
+		void Promise.all([timings(relays), shown]).then(([result]) => {
 			if (!alive.current) return;
 
 			setMeasured(result);
@@ -128,15 +140,27 @@ export function ServerPicker({
 		<div ref={frame} className="relative flex flex-col gap-1.5">
 			<span className="text-fg-muted text-xs">{t("Server")}</span>
 
+			{/*
+			  * Drawn as a control rather than as a field. The first version was a
+			  * bordered box the same colour as the inputs above it, and nothing
+			  * about it said it opened — people read it as somewhere to type. So
+			  * it lifts on hover, the chevron sits in a well of its own to say
+			  * which end does the opening, and the whole thing presses when it is
+			  * open.
+			  */}
 			<button
 				type="button"
 				aria-haspopup="listbox"
 				aria-expanded={open}
 				onClick={() => setOpen(!open)}
 				className={cn(
-					"flex h-11 items-center gap-2 rounded-lg border border-border bg-surface-2 px-3",
-					"text-left text-fg text-sm outline-none transition-colors",
-					"hover:bg-surface-hi focus-visible:ring-2 focus-visible:ring-fg/40",
+					"group flex h-11 items-center gap-2 rounded-lg border bg-surface-2 pr-1.5 pl-3",
+					"text-left text-fg text-sm outline-none",
+					"transition-[background-color,border-color,box-shadow] duration-150",
+					"focus-visible:ring-2 focus-visible:ring-fg/40",
+					open
+						? "border-fg/25 bg-surface-hi shadow-inner"
+						: "border-border hover:border-fg/20 hover:bg-surface-hi hover:shadow-md",
 				)}
 			>
 				<span className="min-w-0 flex-1 truncate">
@@ -145,26 +169,37 @@ export function ServerPicker({
 
 				{chosen && <Latency ms={measured?.get(chosen.name)} known={measured !== undefined} />}
 
-				<ChevronDown
+				<span
 					className={cn(
-						"size-4 shrink-0 text-fg-muted transition-transform duration-200",
-						open && "rotate-180",
+						"flex size-7 shrink-0 items-center justify-center rounded-md",
+						"transition-colors duration-150",
+						open ? "bg-fg/10" : "group-hover:bg-fg/5",
 					)}
-				/>
+				>
+					<ChevronDown
+						className={cn(
+							"size-4 text-fg-muted transition-transform duration-200",
+							open && "rotate-180",
+						)}
+					/>
+				</span>
 			</button>
 
 			{open && (
 				<ul
 					role="listbox"
 					className={cn(
-						"absolute top-full right-0 left-0 z-20 mt-1.5 overflow-hidden rounded-lg",
-						"border border-border bg-surface-hi shadow-lg",
+						"absolute top-full right-0 left-0 z-20 mt-2 overflow-hidden rounded-xl",
+						// A ring as well as a border, and a real shadow. It has to
+						// read as a sheet above the page rather than as more page:
+						// on a dark interface a one-pixel border alone disappears.
+						"border border-fg/15 bg-surface-hi shadow-2xl ring-1 ring-black/40",
 						// Arrives from just under the control rather than appearing:
 						// a menu that fades in from nowhere reads as a page redraw.
 						"origin-top animate-arrive",
 					)}
 				>
-					<li className="flex items-center justify-between gap-2 border-border border-b px-3 py-1.5">
+					<li className="flex items-center justify-between gap-2 border-fg/10 border-b bg-black/15 px-3 py-2">
 						<span className="text-fg-muted text-[10.5px] uppercase tracking-wide">
 							{t("Round trip")}
 						</span>
@@ -179,7 +214,15 @@ export function ServerPicker({
 								"disabled:hover:bg-transparent disabled:hover:text-fg-muted",
 							)}
 						>
-							<RotateCw className={cn("size-3", measuring && "animate-spin")} />
+							<RotateCw
+								className={cn(
+									"size-3 transition-transform duration-300",
+									measuring && "animate-spin",
+									// Nudged round on the way back to still, so the icon
+									// settles rather than snapping to where it started.
+									!measuring && !ready && "rotate-180",
+								)}
+							/>
 							{t("Measure again")}
 						</button>
 					</li>
@@ -242,19 +285,24 @@ type Row =
 /**
  * Group the relays by their region, which is a path.
  *
- * "China Mainland" puts a relay directly under one heading; "Oversea/Asia" puts
- * it under two. A path rather than a second field, because the field already
- * existed, is already editable, and a deployment that wants no grouping simply
- * leaves it as it was — those relays come out at the top, ungrouped, which is
- * exactly the list this replaced.
+ * "China Mainland" puts a relay under one heading and "Oversea/Asia" under two.
+ * A path rather than a second field, because the field already existed, is
+ * already editable, and a deployment that has never touched it goes on reading
+ * as exactly the flat list it was.
  *
- * Headings appear in the order their first relay does, so an operator who has
- * ordered the relays has ordered the groups too. Sorting them would have quietly
- * overruled that.
+ * Relays in one group are gathered, wherever they sit in the list. The first
+ * version of this followed the list exactly, so a group interrupted by another
+ * printed its heading twice with the interloper between — which reads as a bug
+ * whatever the reasoning, because the entire promise of a grouped list is that
+ * looking in one place finds all of them.
+ *
+ * What the operator's ordering still decides is the order of the groups, by
+ * where each one first appears, and the order within them. So moving a relay to
+ * the top moves its group to the top, which is the useful half of following the
+ * list and the half that survives gathering.
  */
 export function grouped(relays: Relay[]): Row[] {
-	const rows: Row[] = [];
-	let open: string[] = [];
+	const paths = new Map<string, { path: string[]; relays: Relay[] }>();
 
 	for (const relay of relays) {
 		const path = (relay.region ?? "")
@@ -262,27 +310,51 @@ export function grouped(relays: Relay[]): Row[] {
 			.map((part) => part.trim())
 			.filter(Boolean);
 
-		// Only the headings that are not already open. A run of relays in one
-		// group prints its heading once.
+		const key = path.join("/");
+		const group = paths.get(key);
+
+		if (group) {
+			group.relays.push(relay);
+			continue;
+		}
+
+		// Insertion order is iteration order for a Map, which is what carries
+		// the operator's ordering into the groups.
+		paths.set(key, { path, relays: [relay] });
+	}
+
+	const rows: Row[] = [];
+	let open: string[] = [];
+
+	for (const group of paths.values()) {
+		// Only the levels that are not already open. Two groups under one parent
+		// print the parent once.
 		let shared = 0;
-		while (shared < path.length && shared < open.length && path[shared] === open[shared]) {
+		while (
+			shared < group.path.length &&
+			shared < open.length &&
+			group.path[shared] === open[shared]
+		) {
 			shared += 1;
 		}
 
-		for (let depth = shared; depth < path.length; depth += 1) {
-			const text = path[depth];
+		for (let depth = shared; depth < group.path.length; depth += 1) {
+			const text = group.path[depth];
 			if (text === undefined) continue;
 
 			rows.push({
 				kind: "heading",
 				text,
 				depth,
-				path: path.slice(0, depth + 1).join("/"),
+				path: group.path.slice(0, depth + 1).join("/"),
 			});
 		}
 
-		open = path;
-		rows.push({ kind: "relay", relay, depth: path.length });
+		open = group.path;
+
+		for (const relay of group.relays) {
+			rows.push({ kind: "relay", relay, depth: group.path.length });
+		}
 	}
 
 	return rows;
@@ -294,8 +366,10 @@ function Heading({ text, depth, delay }: { text: string; depth: number; delay: n
 			aria-hidden="true"
 			style={{ animationDelay: `${delay}ms`, paddingLeft: `${0.75 + depth * 0.75}rem` }}
 			className={cn(
-				"animate-arrive pt-2 pb-1 pr-3 font-medium text-fg-muted text-[10.5px] uppercase tracking-wide",
-				depth > 0 && "text-fg-muted/70 normal-case tracking-normal",
+				// A band rather than a line of text, so a heading is unmistakably
+				// not something to click.
+				"animate-arrive bg-black/20 py-1.5 pr-3 font-medium text-[10.5px] text-fg-muted uppercase tracking-wider",
+				depth > 0 && "bg-black/10 text-fg-muted/70 normal-case tracking-normal",
 			)}
 		>
 			{say(text)}
@@ -325,20 +399,40 @@ function Option({
 			<button
 				type="button"
 				onClick={onPick}
-				style={{ animationDelay: `${delay}ms`, paddingLeft: `${0.75 + depth * 0.75}rem` }}
+				style={{ animationDelay: `${delay}ms`, paddingLeft: `${0.5 + depth * 0.75}rem` }}
 				className={cn(
-					"flex w-full animate-arrive items-center gap-2.5 py-2.5 pr-3 text-left",
-					"transition-colors hover:bg-surface-2",
-					chosen && "bg-surface-2",
+					"group relative flex w-full animate-arrive items-center gap-2.5 py-3 pr-3 text-left",
+					"transition-colors duration-150",
+					// A line between rows, not around them. Without it the options
+					// run together into a paragraph and the gaps between them are
+					// invisible on a dark background.
+					"after:pointer-events-none after:absolute after:inset-x-3 after:bottom-0",
+					"after:h-px after:bg-fg/8 last:after:hidden",
+					chosen ? "bg-fg/8" : "hover:bg-fg/5",
 				)}
 			>
+				{/* A bar down the edge rather than a tick alone. The tick says which
+				    one is chosen to somebody reading; the bar says it to somebody
+				    glancing, which is how a menu is read. */}
+				<span
+					className={cn(
+						"absolute inset-y-1 left-0 w-[3px] rounded-r-full transition-all duration-150",
+						chosen ? "bg-tally opacity-100" : "bg-fg/30 opacity-0 group-hover:opacity-60",
+					)}
+				/>
+
 				<Check
-					className={cn("size-3.5 shrink-0 text-tally transition-opacity", !chosen && "opacity-0")}
+					className={cn(
+						"size-3.5 shrink-0 text-tally transition-opacity duration-150",
+						!chosen && "opacity-0",
+					)}
 				/>
 
 				<span className="min-w-0 flex-1">
 					<span className="block truncate text-fg text-sm">{label}</span>
-					{describes && <span className="block truncate text-fg-muted text-[11px]">{describes}</span>}
+					{describes && (
+						<span className="mt-0.5 block truncate text-fg-muted text-[11px]">{describes}</span>
+					)}
 				</span>
 
 				{latency}

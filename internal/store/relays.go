@@ -71,6 +71,19 @@ type Relay struct {
 	// and leaves the name to break the tie — exactly the order they had.
 	Order int `json:"order,omitempty"`
 
+	// AdminOnly keeps a relay off the list everybody else is offered.
+	//
+	// For a machine that is not for general use: an expensive line, a box being
+	// tried out, one paid for by somebody in particular. Distinct from Enabled,
+	// which takes it out of service, and from Fallback, which is about when to
+	// reach for it — this is about who may.
+	//
+	// Enforced where the relay is chosen and not only where the list is drawn.
+	// Hiding it from the picker stops it being picked by accident; refusing it
+	// at the join is what stops it being picked on purpose by somebody who read
+	// the name off a colleague's screen.
+	AdminOnly bool `json:"adminOnly,omitempty"`
+
 	// Fallback keeps a relay out of the ordinary rotation without taking it out
 	// of service.
 	//

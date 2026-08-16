@@ -191,6 +191,19 @@ const zhHans: Dictionary = {
 	"Europe": "欧洲",
 	"America": "美洲",
 	"Measure again": "重新测量",
+	"cn-east": "华东",
+	"cn-south": "华南",
+	"cn-north": "华北",
+	"cn-west": "西部",
+	"Shanghai": "上海",
+	"Guangzhou": "广州",
+	"Beijing": "北京",
+	"Japan": "日本",
+	"Singapore": "新加坡",
+	"Taiwan": "台湾",
+	"Korea": "韩国",
+	"United States": "美国",
+	"Administrators only": "仅管理员可用",
 };
 
 export default zhHans;

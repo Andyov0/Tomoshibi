@@ -224,6 +224,19 @@ const en = {
 	"Europe": "Europe",
 	"America": "America",
 	"Measure again": "Measure again",
+	"cn-east": "cn-east",
+	"cn-south": "cn-south",
+	"cn-north": "cn-north",
+	"cn-west": "cn-west",
+	"Shanghai": "Shanghai",
+	"Guangzhou": "Guangzhou",
+	"Beijing": "Beijing",
+	"Japan": "Japan",
+	"Singapore": "Singapore",
+	"Taiwan": "Taiwan",
+	"Korea": "Korea",
+	"United States": "United States",
+	"Administrators only": "Administrators only",
 } as const;
 
 export default en;

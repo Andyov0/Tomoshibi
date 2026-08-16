@@ -153,8 +153,21 @@ func (r *relays) byName(list []store.Relay, name string) (store.Relay, bool) {
 // somebody the moment they join. What is not here is anything about the shape
 // of the deployment — no counts, no health, no load — because this endpoint
 // answers to anybody who asks.
-func (r *relays) offered() []store.Relay {
-	return r.reach.keep(r.live())
+func (r *relays) offered(admin bool) []store.Relay {
+	list := r.live()
+
+	if !admin {
+		open := make([]store.Relay, 0, len(list))
+		for _, relay := range list {
+			if !relay.AdminOnly {
+				open = append(open, relay)
+			}
+		}
+
+		list = open
+	}
+
+	return r.reach.keep(list)
 }
 
 // preferred splits a list into the relays to use and the ones held in reserve.
@@ -183,8 +196,23 @@ func preferred(list []store.Relay) (ordinary, reserve []store.Relay) {
 // second person to join would land somewhere else.
 //
 // chosen is what a client measured and asked for, empty when it did not ask.
-func (r *relays) pick(room string, chosen string, req *http.Request, trustProxy bool) store.Relay {
+func (r *relays) pick(room string, chosen string, req *http.Request, trustProxy bool, admin bool) store.Relay {
 	all := r.live()
+
+	// A relay reserved for administrators is not among the ones anybody else is
+	// chosen from, and not one they can ask for by name either. Removed here
+	// rather than only from the list that is published, because the published
+	// list is a convenience and this is the rule.
+	if !admin {
+		open := make([]store.Relay, 0, len(all))
+		for _, relay := range all {
+			if !relay.AdminOnly {
+				open = append(open, relay)
+			}
+		}
+
+		all = open
+	}
 
 	// Two preferences, applied in order, and the order is the argument.
 	//

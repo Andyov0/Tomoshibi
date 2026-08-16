@@ -367,10 +367,12 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// the signature their passphrase produces, which is the one the token is
 	// about to carry anyway: the door needed no mechanism that was not already
 	// standing here, only for somebody to look at what it had already worked out.
-	mayOpen := a.opening() == room.ByAnyone
-	if !mayOpen {
-		_, mayOpen = config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
-	}
+	// Asked once and used twice: whether this passphrase belongs to an
+	// administrator decides both whether a room nobody has used may be opened
+	// and whether a relay reserved for administrators may be asked for.
+	_, isAdmin := config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
+
+	mayOpen := a.opening() == room.ByAnyone || isAdmin
 
 	// Before the token rather than after it, and waited for rather than sent
 	// off, because this is no longer only an observation: whether the name has
@@ -405,7 +407,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond(w, joinResponse{
-		URL:      a.signallingURLFor(name, body.Relay, r),
+		URL:      a.signallingURLFor(name, body.Relay, r, isAdmin),
 		Token:    grant.Token,
 		Identity: grant.Identity,
 		Room:     name,
@@ -450,8 +452,21 @@ type relayEntry struct {
 // Empty on a full deployment, which holds its own media and has nothing to
 // choose between. A client seeing an empty list measures nothing and joins as
 // it always did.
-func (a *App) relayList(w http.ResponseWriter, _ *http.Request) {
-	list := a.relays.offered()
+func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
+	// A relay reserved for administrators is not on the list anybody else is
+	// shown. Whoever is signed into the management pages sees them, because
+	// they are the person the reservation is for and because hiding a machine
+	// from its own operator is a page that lies.
+	//
+	// This is the convenience half. What actually stops one being used is the
+	// check at the join, which reads the passphrase rather than a cookie —
+	// somebody joining a call is not signed into anything.
+	admin := false
+	if a.admin != nil {
+		_, admin = a.admin.SessionOf(r)
+	}
+
+	list := a.relays.offered(admin)
 
 	entries := make([]relayEntry, 0, len(list))
 	for _, relay := range list {
@@ -562,7 +577,7 @@ func (a *App) administrators() []config.Admin {
 // address is frequently a wildcard and always the server's own view. A caller
 // reached us somehow, and that host is by definition one that works for them.
 func (a *App) signallingURL(r *http.Request) string {
-	return a.signallingURLFor("", "", r)
+	return a.signallingURLFor("", "", r, false)
 }
 
 // signallingURLFor is where a client joining this room should open its
@@ -577,9 +592,9 @@ func (a *App) signallingURL(r *http.Request) string {
 // media lives, and it outranks public_url — which on a control node describes
 // where the *client* is served and would send everybody to a machine running no
 // media server at all.
-func (a *App) signallingURLFor(name, chosen string, r *http.Request) string {
+func (a *App) signallingURLFor(name, chosen string, r *http.Request, admin bool) string {
 	if a.relays.any() {
-		return a.relays.pick(name, chosen, r, a.conf.Meet.TrustProxy).URL
+		return a.relays.pick(name, chosen, r, a.conf.Meet.TrustProxy, admin).URL
 	}
 
 	if a.conf.Meet.PublicURL != "" {

@@ -356,6 +356,7 @@ function Settings({
 		region?: string;
 		label?: string;
 		fallback?: boolean;
+		adminOnly?: boolean;
 	}) => void;
 }) {
 	const [name, setName] = useState(relay.name);
@@ -422,6 +423,21 @@ function Settings({
 						className="size-3.5 accent-tally"
 					/>
 					{t("Keep in reserve")}
+				</label>
+
+				{/* Distinct from taking it out of service, and from keeping it in
+				    reserve: those are about when to use it, this is about who may.
+				    Refused at the join as well as hidden from the list, or somebody
+				    who read the name off a colleague's screen could ask for it. */}
+				<label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+					<input
+						type="checkbox"
+						checked={relay.adminOnly ?? false}
+						disabled={busy}
+						onChange={(event) => onSave({ adminOnly: event.target.checked })}
+						className="size-3.5 accent-tally"
+					/>
+					{t("Administrators only")}
 				</label>
 
 				<button

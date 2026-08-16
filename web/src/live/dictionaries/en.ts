@@ -255,6 +255,7 @@ const en = {
 	"carried": "carried",
 	"out": "out",
 	"in": "in",
+	"Access denied. That server is for administrators.": "Access denied. That server is for administrators.",
 } as const;
 
 export default en;

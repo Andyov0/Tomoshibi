@@ -372,6 +372,17 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// and whether a relay reserved for administrators may be asked for.
 	_, isAdmin := config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
 
+	// A relay somebody may not use is refused rather than quietly swapped.
+	//
+	// The alternative was falling back to whichever relay the policy would have
+	// chosen, which leaves somebody looking at a call held somewhere they did
+	// not pick with nothing anywhere saying why — and, worse, no way to tell
+	// that from the picker having worked.
+	if !isAdmin && a.relays.reserved(body.Relay) {
+		fail(w, http.StatusForbidden, reasonRelayNotAllowed)
+		return
+	}
+
 	// Refused at the door, which is the only moment anybody asks to come in.
 	//
 	// Before the room is opened and before a token is minted, because a refusal
@@ -723,6 +734,9 @@ const (
 	// because a refusal dressed up as a server fault sends somebody to look for
 	// a problem that is not there.
 	reasonBlocked = "blocked"
+	// reasonRelayNotAllowed is a relay kept for administrators, asked for by
+	// somebody who is not one.
+	reasonRelayNotAllowed = "relay_not_allowed"
 )
 
 func fail(w http.ResponseWriter, status int, reason string) {

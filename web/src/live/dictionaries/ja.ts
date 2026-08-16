@@ -222,6 +222,7 @@ const ja: Dictionary = {
 	"carried": "転送量",
 	"out": "送信",
 	"in": "受信",
+	"Access denied. That server is for administrators.": "アクセスが拒否されました。このサーバーは管理者専用です。",
 };
 
 export default ja;

@@ -165,6 +165,11 @@ function explain(reason: string | undefined, room: string): string {
 		// It is the only thing this server recognises anybody by, and somebody
 		// who is reading this may well not know why — telling them to ask is
 		// more use than an apology.
+		// Named rather than swapped, so somebody who picked a server they may not
+		// use finds out they picked it, instead of ending up somewhere else and
+		// wondering whether the picker did anything.
+		case "relay_not_allowed":
+			return t("Access denied. That server is for administrators.");
 		case "blocked":
 			return t("This passphrase cannot join. Ask the organiser.");
 		case "server_error":

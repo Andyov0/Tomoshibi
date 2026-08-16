@@ -422,3 +422,35 @@ func TestARelayForAdministratorsCannotBeAskedForByName(t *testing.T) {
 		t.Errorf("an administrator asking for their own reserved relay got %q", got.Name)
 	}
 }
+
+// Asked for by somebody who may not use it, a reserved relay is refused rather
+// than swapped. Falling back silently leaves somebody looking at a call held
+// somewhere they did not pick, with no way to tell that from the picker having
+// worked.
+func TestAReservedRelayIsRefusedByNameAndNotSwapped(t *testing.T) {
+	conf := &config.Config{}
+	conf.Meet.RelayPolicy = config.PickProbe
+
+	open := store.Relay{Name: "public", URL: "wss://a.example:1", Enabled: true}
+	kept := store.Relay{Name: "private", URL: "wss://b.example:1", Enabled: true, AdminOnly: true}
+
+	chosen := newRelays(conf, &listed{relays: []store.Relay{open, kept}})
+
+	if !chosen.reserved("private") {
+		t.Error("a relay kept for administrators was not recognised as reserved")
+	}
+
+	if chosen.reserved("public") {
+		t.Error("an ordinary relay was treated as reserved")
+	}
+
+	// A name nobody has is a different case and must stay one: it is ignored,
+	// and the caller gets whichever relay the policy chooses.
+	if chosen.reserved("a-relay-that-was-removed") {
+		t.Error("a name nobody has was refused rather than ignored")
+	}
+
+	if chosen.reserved("") {
+		t.Error("asking for nothing was treated as asking for something reserved")
+	}
+}

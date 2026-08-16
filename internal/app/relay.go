@@ -207,6 +207,28 @@ func preferred(list []store.Relay) (ordinary, reserve []store.Relay) {
 	return ordinary, reserve
 }
 
+// reserved reports whether a name belongs to a relay only administrators may
+// use.
+//
+// Asked before the choosing rather than folded into it, because the two answers are
+// different actions: a name nobody has is ignored and the caller gets whichever
+// relay the policy chooses, and a name they may not use is refused out loud.
+// Falling back silently in the second case leaves somebody looking at a call on
+// a machine they did not pick, with nothing anywhere saying why.
+func (r *relays) reserved(name string) bool {
+	if name == "" {
+		return false
+	}
+
+	for _, relay := range r.all() {
+		if relay.Name == name {
+			return relay.AdminOnly
+		}
+	}
+
+	return false
+}
+
 // pick returns the relay for this room and this client.
 //
 // Room first and client second, because the room is what the policies are

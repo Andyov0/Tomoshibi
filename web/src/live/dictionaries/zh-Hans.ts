@@ -222,6 +222,7 @@ const zhHans: Dictionary = {
 	"carried": "已承载",
 	"out": "出站",
 	"in": "入站",
+	"Access denied. That server is for administrators.": "拒绝访问:该服务器仅限管理员使用。",
 };
 
 export default zhHans;

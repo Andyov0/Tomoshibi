@@ -243,6 +243,15 @@ const en = {
 	"Not taking calls": "Not taking calls",
 	"Measured at": "Measured at",
 	"host:port where it answers STUN. Empty means time the socket instead": "host:port where it answers STUN. Empty means time the socket instead",
+	"blocked": "blocked",
+	"administrator": "administrator",
+	"Block": "Block",
+	"Let back in": "Let back in",
+	"Forget": "Forget",
+	"Why, for whoever reads this later": "Why, for whoever reads this later",
+	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.",
+	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.",
+	"This passphrase cannot join. Ask the organiser.": "This passphrase cannot join. Ask the organiser.",
 } as const;
 
 export default en;

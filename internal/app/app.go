@@ -372,6 +372,20 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// and whether a relay reserved for administrators may be asked for.
 	_, isAdmin := config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
 
+	// Refused at the door, which is the only moment anybody asks to come in.
+	//
+	// Before the room is opened and before a token is minted, because a refusal
+	// after either would leave a name recorded or a credential issued for
+	// somebody who is not getting in. An administrator is not checked against
+	// this: locking oneself out of one's own deployment by blocking one's own
+	// signature is a mistake with no way back from the page that made it.
+	if !isAdmin && !body.Passphrase.Empty() {
+		if a.store.Blocked(room.Trip(a.tripKey, strings.TrimSpace(string(body.Passphrase)))) {
+			fail(w, http.StatusForbidden, reasonBlocked)
+			return
+		}
+	}
+
 	// Three settings, and the middle one is the useful one. Anonymous visitors
 	// have a signature drawn from nothing that changes on every tab, so under
 	// BySigned they can join any room they are told about and cannot make one —
@@ -417,6 +431,19 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Recorded after the token is minted and before it is handed over, so the
+	// register reflects the joins that were actually authorised. Only where the
+	// signature was earned: an anonymous visitor's is drawn from nothing and
+	// differs in every tab, and writing those down would be a list of tabs.
+	if mark, ok := room.SignatureOf(grant.Identity); ok && mark.Proven {
+		if err := a.store.Seen(mark.Trip, body.Name, time.Now().UTC()); err != nil {
+			// Not a reason to refuse somebody a call. A register that cannot be
+			// written is a page that is out of date, which is a smaller problem
+			// than a meeting that did not happen.
+			slog.Error("failed to record who joined", "error", err)
+		}
+	}
+
 	respond(w, joinResponse{
 		URL:      a.signallingURLFor(name, body.Relay, r, isAdmin),
 		Token:    grant.Token,
@@ -432,8 +459,20 @@ type relayEntry struct {
 	// can only ever select one of ours.
 	Name string `json:"name"`
 
-	// URL is the WebSocket origin to measure and, if chosen, to dial.
-	URL string `json:"url"`
+	// URL is where a browser dials, and it is sent only to an administrator.
+	//
+	// Everybody else is given a name, a label and somewhere to measure, which is
+	// everything the picker needs: the measurement is a STUN exchange over UDP
+	// and the address it goes to is a name, not the machine. The address a call
+	// is actually held at arrives in the join, for the one relay that was
+	// chosen — so what a page reveals is where this person is being sent, not
+	// where everybody could be sent.
+	//
+	// It is a deterrent and not a wall, and it is worth being clear about which:
+	// anybody who joins learns one address, and anybody who watches their own
+	// traffic learns it whatever this does. What it stops is the whole list
+	// being readable by anybody who opens the page.
+	URL string `json:"url,omitempty"`
 
 	// Region is the deployment's own label, shown to somebody who wants to know
 	// where their call is being held. Never used to choose under this policy —
@@ -499,12 +538,20 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 
 	entries := make([]relayEntry, 0, len(list))
 	for _, relay := range list {
-		entries = append(entries, relayEntry{
-			Name: relay.Name, URL: relay.URL, Region: relay.Region,
+		entry := relayEntry{
+			Name: relay.Name, Region: relay.Region,
 			Label: relay.Shown(), Probe: relay.Probe,
 			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Maintenance: !relay.Enabled,
-		})
+		}
+
+		// The address only for somebody who is already trusted with the list of
+		// machines, which is what a management session is.
+		if admin {
+			entry.URL = relay.URL
+		}
+
+		entries = append(entries, entry)
 	}
 
 	respond(w, relayListResponse{
@@ -678,6 +725,11 @@ const (
 	reasonNotOpen        = "room_not_open"
 	reasonServerError    = "server_error"
 	reasonNoSuchEndpoint = "no_such_endpoint"
+	// reasonBlocked is somebody an administrator has refused. A code like every
+	// other, so the page says it in the reader's own language — and a plain one,
+	// because a refusal dressed up as a server fault sends somebody to look for
+	// a problem that is not there.
+	reasonBlocked = "blocked"
 )
 
 func fail(w http.ResponseWriter, status int, reason string) {

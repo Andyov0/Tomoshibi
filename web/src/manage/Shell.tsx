@@ -1,17 +1,18 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Activity, Clock, LayoutGrid, ScrollText, Server, Users } from "lucide-react";
+import { Activity, Clock, LayoutGrid, ScrollText, Server, Users, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Who } from "./api";
 import { rate } from "./units";
 
 /** The panels, in the order somebody works through them. */
-export const PANELS = ["Now", "Rooms", "Relays", "Admins", "Runtime", "Audit"] as const;
+export const PANELS = ["Now", "Rooms", "People", "Relays", "Admins", "Runtime", "Audit"] as const;
 export type Panel = (typeof PANELS)[number];
 
 const ICONS: Record<Panel, typeof Activity> = {
 	Now: Activity,
 	Rooms: LayoutGrid,
+	People: UsersRound,
 	Relays: Server,
 	Admins: Users,
 	Runtime: ScrollText,

@@ -303,9 +303,18 @@ func TestTheRelayListIsWhatAClientNeedsToMeasure(t *testing.T) {
 	}
 
 	for _, relay := range body.Relays {
-		if relay.Name == "" || relay.URL == "" {
-			t.Errorf("relay %+v is missing what a client needs to measure it and name it back",
-				relay)
+		// The name, which is what a client sends back after measuring — and
+		// nothing more. The address is deliberately absent: an ordinary
+		// visitor's page holds the machine they were sent to, in the join, and
+		// not the six they might have been.
+		if relay.Name == "" {
+			t.Errorf("relay %+v has no name, so a client could not name it back", relay)
+		}
+
+		if relay.URL != "" {
+			t.Errorf("relay %+v carries its address to somebody who is not an "+
+				"administrator; the whole list of machines should not be readable by "+
+				"anybody who opens the page", relay)
 		}
 	}
 }

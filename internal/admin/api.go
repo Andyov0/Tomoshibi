@@ -75,6 +75,7 @@ type API struct {
 	media    Media
 	store    Names
 	roster   Roster
+	register Register
 	relays   Relays
 	probe    Reachable
 	// fleet reads the counters of the relays this node does not run. Nil on a
@@ -120,6 +121,7 @@ func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte
 	if st != nil {
 		api.relays = st
 		api.roster = st
+		api.register = st
 
 		// So that restarting the process does not sign everybody out. It used
 		// to, and during an afternoon of deployments that reads as the sign-in
@@ -330,6 +332,13 @@ func (a *API) Mount(mux *http.ServeMux) {
 	// after their own credential, and requiring moderate for it would mean an
 	// observer could never rotate theirs.
 	mux.HandleFunc("POST /api/admin/admins/me/passphrase", a.observe(a.changeOwnPassphrase))
+
+	// The register of people who keep coming back, and the door. Reading needs
+	// observe; the door needs moderate, because it decides whether somebody
+	// gets into a call at all.
+	mux.HandleFunc("GET /api/admin/people", a.observe(a.people))
+	mux.HandleFunc("PATCH /api/admin/people/{trip}", a.moderate(a.blockPerson))
+	mux.HandleFunc("DELETE /api/admin/people/{trip}", a.moderate(a.forgetPerson))
 
 	mux.HandleFunc("PUT /api/admin/policy", a.moderate(a.setPolicy))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))

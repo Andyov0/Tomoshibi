@@ -210,6 +210,15 @@ const ja: Dictionary = {
 	"Not taking calls": "メンテナンス中",
 	"Measured at": "計測先",
 	"host:port where it answers STUN. Empty means time the socket instead": "STUN に応答する host:port。空欄ならソケットの計測に戻ります(実測の約 3 倍になります)",
+	"blocked": "ブロック済み",
+	"administrator": "管理者",
+	"Block": "ブロック",
+	"Let back in": "解除する",
+	"Forget": "記録から削除",
+	"Why, for whoever reads this later": "理由(後で読む人のために)",
+	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "パスフレーズ付きで参加した人はまだいません。匿名の参加者はここには出ません。署名がタブごとに変わるためです。",
+	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "ブロックは次回の参加を拒否します。進行中の通話は終了させませんし、別のパスフレーズを選ばれれば止められません。止められるのはその署名だけで、それがこのサーバーに識別できる唯一のものです。",
+	"This passphrase cannot join. Ask the organiser.": "このパスフレーズでは参加できません。主催者にお問い合わせください。",
 };
 
 export default ja;

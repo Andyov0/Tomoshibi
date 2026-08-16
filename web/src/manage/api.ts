@@ -132,6 +132,19 @@ export interface Administrator {
 	self?: boolean;
 }
 
+/** Somebody who has joined with a passphrase, as the register knows them. */
+export interface Person {
+	trip: string;
+	name?: string;
+	rooms: number;
+	firstSeen?: string;
+	lastSeen?: string;
+	blocked?: boolean;
+	note?: string;
+	/** Also an administrator, and so not blockable from here. */
+	administrator?: boolean;
+}
+
 export interface Entry {
 	at: string;
 	trip: string;
@@ -372,6 +385,18 @@ export const api = {
 			method: "PUT",
 			body: JSON.stringify({ names }),
 		}),
+
+	/** Everybody who keeps coming back, most recently seen first. */
+	people: () => call<Person[]>("/people"),
+
+	blockPerson: (trip: string, blocked: boolean, note: string) =>
+		call<{ trip: string; blocked: boolean }>(`/people/${encodeURIComponent(trip)}`, {
+			method: "PATCH",
+			body: JSON.stringify({ blocked, note }),
+		}),
+
+	forgetPerson: (trip: string) =>
+		call<{ forgotten: string }>(`/people/${encodeURIComponent(trip)}`, { method: "DELETE" }),
 
 	relayCommand: () => call<{ command: string; domain: string; port: number }>("/relays/command"),
 

@@ -210,6 +210,15 @@ const zhHant: Dictionary = {
 	"Not taking calls": "維護中,暫不接受通話",
 	"Measured at": "測速位址",
 	"host:port where it answers STUN. Empty means time the socket instead": "它回應 STUN 的 host:連接埠。留空則退回計時 WebSocket(數字約為真實值三倍)",
+	"blocked": "已封鎖",
+	"administrator": "管理員",
+	"Block": "封鎖",
+	"Let back in": "解除封鎖",
+	"Forget": "從名單移除",
+	"Why, for whoever reads this later": "原因,寫給以後看這條記錄的人",
+	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "還沒有人帶通行語加入過。匿名訪客不會出現在這裡——他們的簽名每開一個分頁都不一樣。",
+	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "封鎖會拒絕他們下一次加入。不會中斷他們已經在進行的通話,也攔不住對方換一個通行語——它封的是那個簽名,而簽名是這台伺服器唯一能認出的東西。",
+	"This passphrase cannot join. Ask the organiser.": "該通行語已被禁止加入,請聯絡主辦者。",
 };
 
 export default zhHant;

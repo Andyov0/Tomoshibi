@@ -210,6 +210,15 @@ const zhHans: Dictionary = {
 	"Not taking calls": "维护中,暂不接受通话",
 	"Measured at": "测速地址",
 	"host:port where it answers STUN. Empty means time the socket instead": "它回应 STUN 的 host:端口。留空则退回计时 WebSocket(数字约为真实值三倍)",
+	"blocked": "已封禁",
+	"administrator": "管理员",
+	"Block": "封禁",
+	"Let back in": "解除封禁",
+	"Forget": "从名单移除",
+	"Why, for whoever reads this later": "原因,写给以后看这条记录的人",
+	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "还没有人带口令加入过。匿名访客不会出现在这里——他们的签名每开一个标签页都不一样。",
+	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "封禁会拒绝他们下一次加入。不会中断他们已经在进行的通话,也拦不住对方换一个口令——它封的是那个签名,而签名是这台服务器唯一能认出的东西。",
+	"This passphrase cannot join. Ask the organiser.": "该口令已被禁止加入,请联系组织者。",
 };
 
 export default zhHans;

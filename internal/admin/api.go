@@ -67,16 +67,30 @@ type API struct {
 }
 
 // New assembles it.
+//
+// media is nil on a control node, which starts no media server of its own: the
+// calls it authorises are held on relays elsewhere, and there is nothing on this
+// machine to ask about them. The interfaces are left nil rather than filled with
+// something that pretends, so that a page which needs one says it cannot find
+// out — see [API.attached].
 func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte) *API {
 	api := &API{
 		conf:     conf,
 		sessions: NewSessions(conf.Meet.Admins, tripKey),
-		control:  media.Manage(conf.Key, conf.Secret),
-		media:    media,
 		store:    st,
 		log:      NewLog(),
 		history:  NewHistory(),
 		stop:     make(chan struct{}),
+	}
+
+	// Assigned inside the guard and never outside it. A nil *rtc.Server put
+	// into an interface field is an interface that is not nil — it carries the
+	// type — so `api.media != nil` would be true and the first method call on
+	// it would be a nil dereference at the far end of a request. Left unset,
+	// the field is genuinely nil and [API.attached] can be trusted.
+	if media != nil {
+		api.media = media
+		api.control = media.Manage(conf.Key, conf.Secret)
 	}
 
 	// Sampled on its own schedule rather than when a page asks. A trend with a
@@ -100,6 +114,12 @@ func (a *API) Close() {
 
 // sample reads one moment for the history.
 func (a *API) sample() Sample {
+	// A control node has nothing to sample. Watch is not started there either,
+	// so this is belt and braces for anybody who calls it directly.
+	if !a.attached() {
+		return Sample{At: time.Now().UTC()}
+	}
+
 	stats := a.media.Stats()
 	in, out, _ := a.media.Throughput()
 
@@ -113,6 +133,33 @@ func (a *API) sample() Sample {
 // Configured reports whether this deployment has a management surface at all.
 func (a *API) Configured() bool {
 	return a.sessions.Configured()
+}
+
+// attached says whether there is a media server on this machine to ask about.
+//
+// False on a control node. The calls it authorises are held on relays
+// elsewhere, and what those relays are doing is not visible from here: every
+// figure on these pages comes from the embedded server's own counters, and
+// there is no embedded server.
+//
+// Both halves are checked because they are set together and a future caller
+// should not have to know that. Neither is ever a nil pointer inside a non-nil
+// interface — see the guard in New, which is what makes this test meaningful.
+func (a *API) attached() bool {
+	return a.media != nil && a.control != nil
+}
+
+// detached answers a page that wanted a media server on a node that has none.
+//
+// 503 rather than 404. The distinction is the honest one — the endpoint exists
+// and this deployment is configured for it, but the thing it reports on is on
+// another machine — and it is the difference between an operator concluding
+// they mistyped an address and concluding they are looking at the wrong half of
+// a deployment.
+func (a *API) detached(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": "no_media_here"})
 }
 
 // Mount registers the endpoints.
@@ -255,6 +302,11 @@ func (a *API) trend(_ Session, w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *API) now(_ Session, w http.ResponseWriter, _ *http.Request) {
+	if !a.attached() {
+		a.detached(w)
+		return
+	}
+
 	stats := a.media.Stats()
 	in, out, window := a.media.Throughput()
 	id, ip := a.media.Node()
@@ -282,6 +334,11 @@ func (a *API) now(_ Session, w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *API) rooms(_ Session, w http.ResponseWriter, r *http.Request) {
+	if !a.attached() {
+		a.detached(w)
+		return
+	}
+
 	live, err := a.control.Rooms(r.Context())
 	if err != nil {
 		slog.Error("failed to list rooms", "error", err)
@@ -334,6 +391,11 @@ func liveRooms(rooms []*livekit.Room) []map[string]any {
 
 func (a *API) participants(_ Session, w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("room")
+
+	if !a.attached() {
+		a.detached(w)
+		return
+	}
 
 	people, err := a.control.Participants(r.Context(), name)
 	if err != nil {
@@ -397,6 +459,11 @@ func tracksOf(one *livekit.ParticipantInfo) []map[string]any {
 }
 
 func (a *API) health(_ Session, w http.ResponseWriter, _ *http.Request) {
+	if !a.attached() {
+		a.detached(w)
+		return
+	}
+
 	_, ip := a.media.Node()
 	respond(w, Health(a.conf, ip))
 }
@@ -532,6 +599,11 @@ func (a *API) setPolicy(session Session, w http.ResponseWriter, r *http.Request)
 func (a *API) closeRoom(session Session, w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("room")
 
+	if !a.attached() {
+		a.detached(w)
+		return
+	}
+
 	if err := a.control.Close(r.Context(), name); err != nil {
 		a.record(session, "close room", name, "", err)
 		refuse(w, statusOf(err), reasonOf(err))
@@ -544,6 +616,11 @@ func (a *API) closeRoom(session Session, w http.ResponseWriter, r *http.Request)
 
 func (a *API) removeOne(session Session, w http.ResponseWriter, r *http.Request) {
 	name, identity := r.PathValue("room"), r.PathValue("identity")
+
+	if !a.attached() {
+		a.detached(w)
+		return
+	}
 
 	if err := a.control.Remove(r.Context(), name, identity); err != nil {
 		a.record(session, "remove participant", name, identity, err)
@@ -565,6 +642,11 @@ func (a *API) muteOne(session Session, w http.ResponseWriter, r *http.Request) {
 
 	if body.Track == "" {
 		refuse(w, http.StatusBadRequest, "no_track")
+		return
+	}
+
+	if !a.attached() {
+		a.detached(w)
 		return
 	}
 

@@ -231,6 +231,13 @@ func (a *App) Handler() http.Handler {
 	if a.enrolment != nil {
 		a.admin.MountEnrolment(mux)
 		mux.HandleFunc("GET /download/tomoshibi", a.binary)
+
+		// The install script, without a session and without the secret in it,
+		// so that bringing a relay up is one command copied onto a fresh
+		// machine rather than a file carried onto it. What authorises the
+		// enrolment is the secret the operator passes in the environment, which
+		// this never sees.
+		mux.HandleFunc("GET /install", a.admin.PublicInstall)
 	}
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

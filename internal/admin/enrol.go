@@ -319,14 +319,64 @@ func (a *API) installScript(_ Session, w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Disposition", `attachment; filename="add-relay.sh"`)
+
+	a.writeInstall(w, a.enrolment.Secret)
+}
+
+// installCommand is the one line somebody types on the new machine.
+//
+// The script is still there to be read — anything about to run as root should
+// be readable first, and it is what the download beside this serves. What this
+// gives is the shape that gets used: one command, copied, pasted, done. Moving
+// a file onto a machine that has no keys on it yet is the step this whole path
+// exists to remove, and leaving it as the only option left it half removed.
+//
+// Behind a session, because the command carries the enrolment secret.
+func (a *API) installCommand(_ Session, w http.ResponseWriter, _ *http.Request) {
+	if !a.enrolment.Configured() {
+		refuse(w, http.StatusServiceUnavailable, "no_enrolment")
+		return
+	}
+
+	control := strings.TrimRight(a.enrolment.PublicURL, "/")
+
+	respond(w, map[string]any{
+		"command": fmt.Sprintf("bash <(curl -fLSs %s/install) <prefix> %s", control, a.enrolment.Secret),
+		"domain":  a.enrolment.Domain,
+		"port":    a.enrolment.ListenPort,
+	})
+}
+
+// PublicInstall serves the same script to anybody, without the secret in it.
+//
+// So that bringing a relay up is one command copied onto a fresh machine rather
+// than a file moved onto it by hand. The secret is not in what is served and not
+// in the address either — it travels in the operator's own command, as ENROL, so
+// that no proxy log, no CDN, and no shell history on a machine that has not been
+// enrolled yet ever holds it.
+//
+// Public on purpose. What is served is a shell script with this deployment's
+// address and ports in it, which is not a secret: the addresses are handed to
+// every client that joins, and without the enrolment secret the script can do
+// nothing but ask and be refused.
+func (a *API) PublicInstall(w http.ResponseWriter, _ *http.Request) {
+	if a.enrolment == nil || !a.enrolment.Configured() {
+		refuse(w, http.StatusServiceUnavailable, "no_enrolment")
+		return
+	}
+
+	a.writeInstall(w, "")
+}
+
+func (a *API) writeInstall(w http.ResponseWriter, secret string) {
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Disposition", `attachment; filename="add-relay.sh"`)
 
 	fmt.Fprintf(w, installTemplate,
 		strings.TrimRight(a.enrolment.PublicURL, "/"),
-		a.enrolment.Secret,
 		a.enrolment.Domain,
+		secret,
 		a.enrolment.ListenPort, a.enrolment.UDPPort, a.enrolment.TCPPort)
 }
 

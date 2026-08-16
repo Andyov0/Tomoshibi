@@ -37,6 +37,7 @@ export function RelaysPanel({
 
 	const [adding, setAdding] = useState(false);
 	const [script, setScript] = useState<string>();
+	const [command, setCommand] = useState<string>();
 	const [busy, setBusy] = useState<string>();
 
 	const act = useCallback(
@@ -78,7 +79,15 @@ export function RelaysPanel({
 								type="button"
 								onClick={async () => {
 									try {
-										setScript(await api.relayScript());
+										// Both, in one press. The command is what gets
+										// used and the script is what makes it readable
+										// before it is run as root.
+										const [text, ready] = await Promise.all([
+											api.relayScript(),
+											api.relayCommand(),
+										]);
+										setCommand(ready.command);
+										setScript(text);
 									} catch {
 										actionFailed(t("This deployment cannot bring up relays from a script."));
 									}
@@ -102,7 +111,14 @@ export function RelaysPanel({
 				}
 			>
 				{script !== undefined ? (
-					<AddByScript script={script} onDone={() => setScript(undefined)} />
+					<AddByScript
+						script={script}
+						command={command}
+						onDone={() => {
+							setScript(undefined);
+							setCommand(undefined);
+						}}
+					/>
 				) : adding ? (
 					<AddRelay
 						onDone={async () => {
@@ -338,6 +354,42 @@ function AddRelay({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 }
 
 /**
+ * The one line, laid out to be copied rather than read.
+ *
+ * Wrapped rather than scrolled sideways: a command that runs off the edge gets
+ * copied in half by anybody selecting it by hand, and the half that goes missing
+ * is the end, which is where the secret is.
+ */
+function Command({ command }: { command: string }) {
+	const [copied, setCopied] = useState(false);
+
+	return (
+		<div className="relative">
+			<pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-2 p-3 pr-20 text-[11.5px] leading-relaxed">
+				<code>{command}</code>
+			</pre>
+
+			<button
+				type="button"
+				onClick={async () => {
+					try {
+						await navigator.clipboard.writeText(command);
+						setCopied(true);
+						setTimeout(() => setCopied(false), 2000);
+					} catch {
+						actionFailed(t("Could not copy. Select the text and copy it."));
+					}
+				}}
+				className="absolute top-2 right-2 flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] hover:bg-surface-2"
+			>
+				{copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+				{copied ? t("Copied") : t("Copy")}
+			</button>
+		</div>
+	);
+}
+
+/**
  * The script that brings a machine up as a relay.
  *
  * Shown rather than run: this is somebody else's machine, and the only thing
@@ -348,13 +400,23 @@ function AddRelay({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
  * The warning is not decoration. The script carries the enrolment secret, and
  * that secret buys the credential every relay in this deployment signs with.
  */
-function AddByScript({ script, onDone }: { script: string; onDone: () => void }) {
+function AddByScript({
+	script,
+	command,
+	onDone,
+}: { script: string; command?: string; onDone: () => void }) {
 	const [copied, setCopied] = useState(false);
 
 	return (
 		<div className="flex flex-col gap-3 px-4 py-3">
 			<p className="text-fg-muted text-xs">
-				{t("Paste this into the new machine as root. It asks for a prefix, then does the rest: fetches the binary, takes this deployment's certificate and credentials, points a name at the machine, and starts the relay.")}
+				{t("Run this on the new machine as root. Replace <prefix> with the name it should answer to. It does the rest: fetches the binary, takes this deployment's certificate and credentials, points a name at the machine, and starts the relay.")}
+			</p>
+
+			{command && <Command command={command} />}
+
+			<p className="text-fg-muted text-xs">
+				{t("What that runs, in full. Worth reading before running anything as root.")}
 			</p>
 
 			<div className="relative">

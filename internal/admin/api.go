@@ -258,6 +258,7 @@ func (a *API) Mount(mux *http.ServeMux) {
 	// The install script, served to somebody signed in because it carries the
 	// enrolment secret.
 	mux.HandleFunc("GET /api/admin/relays/script", a.moderate(a.installScript))
+	mux.HandleFunc("GET /api/admin/relays/command", a.moderate(a.installCommand))
 
 	mux.HandleFunc("PUT /api/admin/policy", a.moderate(a.setPolicy))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))

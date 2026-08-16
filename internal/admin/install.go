@@ -16,18 +16,40 @@ package admin
 const installTemplate = `#!/bin/sh
 # Add this machine to the meeting deployment as a relay.
 #
-# Paste it in, answer the prompt, and this does the five things that otherwise
+# One command on a fresh machine, and this does the five things that otherwise
 # have to agree by hand: fetch the binary, claim the deployment's credentials
 # and certificate, write the configuration, point a DNS name at this machine,
 # and start the service.
 #
-# It carries the enrolment secret. Anybody holding a copy can add a relay to
-# this deployment, so treat it as the credential it is.
+#     bash <(curl -fLSs https://example/install) <prefix> <secret>
+#
+# The prefix may be left off, in which case it is asked for.
+#
+# The copy downloaded from the management pages carries the enrolment secret, and
+# anybody holding that copy can add a relay to this deployment — treat it as the
+# credential it is. The copy served at the public address carries none, and reads
+# the secret from ENROL instead.
 set -eu
 
 CONTROL="%s"
-SECRET="%s"
 DOMAIN="%s"
+
+# Both of the things this needs, in the order somebody would type them:
+#
+#     bash <(curl -fLSs $CONTROL/install) <prefix> <secret>
+#
+# Process substitution rather than a pipe, and that is not a style choice. A
+# script read from a pipe has the download on its standard input, so the prompt
+# below reads the rest of itself and the whole thing goes wrong in a way that
+# looks like the prompt was skipped. This way stdin is still the terminal, which
+# is what makes the interactive form work at all.
+#
+# The secret falls back to what was built in. The copy downloaded from the
+# management pages has it, because those are behind a session; the copy served
+# at the public address does not, so it travels in the operator's own command
+# and nothing that logs a URL ever sees it.
+PREFIX="${1:-${PREFIX:-}}"
+SECRET="${2:-${ENROL:-%s}}"
 LISTEN_PORT=%d
 UDP_PORT=%d
 TCP_PORT=%d
@@ -37,6 +59,7 @@ die() { printf '\nerror: %%s\n' "$1" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "run this as root"
 command -v curl >/dev/null 2>&1 || die "curl is needed and is not installed"
+[ -n "$SECRET" ] || die "this needs the deployment's enrolment secret as its second argument; the management pages print the whole command"
 
 # The prefix names this relay: in the zone above, and on the management pages.
 #

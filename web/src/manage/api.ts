@@ -280,6 +280,16 @@ export const api = {
 		return response.text();
 	},
 
+	/**
+	 * The one line to type on the new machine.
+	 *
+	 * Separate from the script rather than derived from it in the page, because
+	 * the address and the secret are the server's to know: composing the command
+	 * here would mean the client holding a second, quietly diverging idea of
+	 * where this deployment lives.
+	 */
+	relayCommand: () => call<{ command: string; domain: string; port: number }>("/relays/command"),
+
 	dropRelay: (name: string) =>
 		call<{ removed: string }>(`/relays/${encodeURIComponent(name)}`, { method: "DELETE" }),
 

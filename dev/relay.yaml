@@ -1,0 +1,45 @@
+# A relay: media and signalling, nothing else.
+#
+# Deployed on each machine that should be able to hold a call. It serves no
+# client and no join endpoint — the control node does that, and signs the tokens
+# this verifies with the credentials below.
+
+port: 7880
+bind_addresses: ["127.0.0.1"]
+
+rtc:
+  udp_port: 7882
+  tcp_port: 7881
+  # True here, unlike the development file. A relay's whole purpose is being
+  # dialled from elsewhere, and this is where the address it advertises comes
+  # from: left false it hands out one only this machine can reach, and every
+  # connection fails after appearing to succeed.
+  use_external_ip: true
+
+# The same pair on every relay and on the control node. This is what lets the
+# control node sign a token that this relay will accept, with no second secret
+# to distribute and nothing to keep in step.
+keys:
+  APIreplaceme: replace-this-with-the-output-of-tomoshibi-keygen
+
+# What lets the relays route between themselves, so a meeting whose
+# participants landed on different relays can still hear itself. Every relay and
+# the control node point at one instance.
+#
+# Without it each relay is an island: a call works only if everybody in it
+# reached the same one, which the sticky policy arranges but the probe policy
+# deliberately does not.
+redis:
+  address: "redis.internal:6379"
+  # username: ""
+  # password: ""
+  # db: 0
+
+logging:
+  level: info
+
+meet:
+  role: relay
+  # The port facing the network for TCP. Signalling arrives here and is
+  # forwarded to the media server on loopback.
+  listen: ":8080"

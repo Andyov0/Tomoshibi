@@ -7,6 +7,7 @@ import { useT } from "@/hooks/useT";
 import { deployment } from "@/live/api";
 import { devicesAvailable, insecureReason } from "@/live/context";
 import { parseName } from "@/live/name";
+import { type Relay as OfferedRelay, relays } from "@/live/relays";
 import { remember } from "@/live/remember";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { Mic, MicOff, ShieldAlert, Video, VideoOff } from "lucide-react";
@@ -56,6 +57,17 @@ export interface Choices {
 	passphrase: string;
 	camera: boolean;
 	microphone: boolean;
+	/**
+	 * Which relay to hold the call on, or empty for whichever measures fastest.
+	 *
+	 * Offered because the measurement is a guess made in a second and a half,
+	 * and somebody who has just had a bad call on the relay it keeps choosing
+	 * knows something it does not. Empty is the default and stays the default:
+	 * the automatic answer is right nearly always, and a picker that opened
+	 * pre-set to a machine would be asking everybody to have an opinion about
+	 * infrastructure.
+	 */
+	relay: string;
 }
 
 /**
@@ -168,6 +180,12 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	const [track, setTrack] = useState<LocalVideoTrack>();
 	const [joining, setJoining] = useState(false);
 
+	// Empty means whichever measures fastest, which is what nearly everybody
+	// wants and what nobody should have to choose.
+	const [relay, setRelay] = useState("");
+	const [servers, setServers] = useState<OfferedRelay[]>([]);
+	const [offerChoice, setOfferChoice] = useState(false);
+
 	/*
 	 * What the password manager was last offered, so it is not offered again.
 	 *
@@ -221,6 +239,29 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 		};
 	}, [devices.camera]);
 
+	// Asked once. The list changes when a machine is brought up or taken away,
+	// which is not a thing that happens while somebody is looking at a join
+	// screen — and asking again on a timer would be a request per visitor per
+	// minute for an answer that does not move.
+	useEffect(() => {
+		let live = true;
+
+		void relays().then((offered) => {
+			if (!live) return;
+
+			setServers(offered.relays);
+
+			// Only where there is a choice to make. One relay is not a choice,
+			// and a deployment that will not act on a preference would be
+			// offering a control that does nothing.
+			setOfferChoice(offered.measure && offered.relays.length > 1);
+		});
+
+		return () => {
+			live = false;
+		};
+	}, []);
+
 	// Stopped only when the screen goes away for good. The track itself is handed
 	// to the room on join, so tearing it down on every render would drop the
 	// preview and prompt again a moment later.
@@ -267,7 +308,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 		setJoining(true);
 
 		try {
-			await onJoin({ name: display, passphrase, ...devices });
+			await onJoin({ name: display, passphrase, relay, ...devices });
 		} catch {
 			// Reported by whoever tried, which holds the room object that has to
 			// be torn down and the words for what went wrong. Caught here all the
@@ -361,6 +402,32 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 								: t("Add a passphrase so nobody else can use your name.")}
 						</p>
 					</div>
+
+					{/* Below the identity and above the button, because it is the
+					    last thing anybody would change and the first thing nobody
+					    should have to. Absent entirely where there is nothing to
+					    choose between. */}
+					{offerChoice && (
+						<label className="flex flex-col gap-1.5">
+							<span className="text-fg-muted text-xs">{t("Server")}</span>
+							<select
+								value={relay}
+								onChange={(event) => setRelay(event.target.value)}
+								className="h-11 rounded-lg border border-border bg-surface-2 px-3 text-fg text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+							>
+								<option value="">{t("Automatic")}</option>
+								{servers.map((one) => (
+									<option key={one.name} value={one.name}>
+										{one.label || one.name}
+										{/* A reserve relay is a working relay a long way
+										    away. Somebody may want it and should know
+										    what they are asking for. */}
+										{one.fallback ? ` — ${t("reserve")}` : ""}
+									</option>
+								))}
+							</select>
+						</label>
+					)}
 
 					<Button type="submit" variant="primary" size="lg" className="w-full" disabled={!display || joining}>
 						{joining ? t("Joining…") : t("Join")}

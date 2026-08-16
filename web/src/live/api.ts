@@ -95,14 +95,25 @@ export interface Join {
  * every tab on the origin, so two of them would claim one identity and the
  * second would evict the first from the room.
  */
-export async function join(room: string, name: string, passphrase = ""): Promise<Join> {
+export async function join(
+	room: string,
+	name: string,
+	passphrase = "",
+	chosen = "",
+): Promise<Join> {
 	const previous = sessionStorage.getItem(IDENTITY_KEY) ?? undefined;
 
 	// Which relay answered fastest, on a deployment that spreads its media over
 	// several. Empty everywhere else, and empty here if measuring failed: the
 	// server treats it as a preference and falls back to keeping the room
 	// together, so a call still happens either way.
-	const relay = await preferred();
+	//
+	// Unless somebody said which one, in which case no measurement is taken at
+	// all. Not because it would be wrong, but because it would be a second and
+	// a half of waiting to produce an answer already overruled — and because
+	// somebody who picks a relay by hand usually does so precisely when the
+	// measurement is telling them the wrong thing.
+	const relay = chosen || (await preferred());
 
 	const response = await fetch(`/api/rooms/${encodeURIComponent(room)}/join`, {
 		method: "POST",

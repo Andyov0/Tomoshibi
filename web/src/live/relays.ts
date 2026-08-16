@@ -26,6 +26,10 @@ export interface Relay {
 	name: string;
 	url: string;
 	region?: string;
+	/** What a person is shown instead of the name, which is a key and not a word. */
+	label?: string;
+	/** Held in reserve: it works, and every byte of a call on it goes the long way. */
+	fallback?: boolean;
 }
 
 interface RelayList {

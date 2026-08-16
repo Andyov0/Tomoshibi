@@ -242,6 +242,10 @@ export interface Relay {
 	name: string;
 	url: string;
 	region?: string;
+	/** What people are shown instead of the name, which is a key and not a word. */
+	label?: string;
+	/** Held back for when nothing else can be reached. */
+	fallback?: boolean;
 	enabled: boolean;
 	added?: string;
 	/** Whether it answered when this page was drawn, from the control node. */
@@ -276,7 +280,16 @@ export const api = {
 	addRelay: (relay: { name: string; url: string; region?: string; enabled?: boolean }) =>
 		call<{ added: string }>("/relays", { method: "POST", body: JSON.stringify(relay) }),
 
-	editRelay: (name: string, change: { url?: string; region?: string; enabled?: boolean }) =>
+	editRelay: (
+		name: string,
+		change: {
+			url?: string;
+			region?: string;
+			enabled?: boolean;
+			label?: string;
+			fallback?: boolean;
+		},
+	) =>
 		call<{ updated: string }>(`/relays/${encodeURIComponent(name)}`, {
 			method: "PATCH",
 			body: JSON.stringify(change),

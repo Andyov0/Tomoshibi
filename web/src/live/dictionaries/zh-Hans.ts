@@ -151,6 +151,22 @@ const zhHans: Dictionary = {
 	"The last administrator who can change things cannot be removed": "最后一个可做修改的管理员不能被移除",
 	"Signature": "签名",
 	"Add": "添加",
+	"Good connection": "连接良好",
+	"Fair connection": "连接一般",
+	"Poor connection": "连接较差",
+	"Connection lost": "连接已断开",
+	"Round trip": "往返延迟",
+	"Lost": "丢包",
+	"Jitter": "抖动",
+	"Sending": "上行",
+	"Receiving": "下行",
+	"Measuring…": "测量中…",
+	"Shown to people as": "显示给用户的名称",
+	"Keep in reserve": "仅作兜底",
+	"Save": "保存",
+	"Server": "服务器",
+	"Automatic": "自动选择",
+	"reserve": "兜底",
 };
 
 export default zhHans;

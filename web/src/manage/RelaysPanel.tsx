@@ -144,6 +144,7 @@ export function RelaysPanel({
 						act(relay.name, () => api.editRelay(relay.name, { enabled: !relay.enabled }))
 					}
 					onDrop={() => act(relay.name, () => api.dropRelay(relay.name))}
+					onEdit={(change) => act(relay.name, () => api.editRelay(relay.name, change))}
 				/>
 			))}
 		</div>
@@ -156,17 +157,19 @@ function RelayRow({
 	busy,
 	onToggle,
 	onDrop,
+	onEdit,
 }: {
 	relay: Relay;
 	canModerate: boolean;
 	busy: boolean;
 	onToggle: () => void;
 	onDrop: () => void;
+	onEdit: (change: { label?: string; fallback?: boolean }) => void;
 }) {
 	const [confirming, setConfirming] = useState(false);
 
 	return (
-		<Card title={relay.name} note={relay.region}>
+		<Card title={relay.label || relay.name} note={relay.label ? relay.name : relay.region}>
 			<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
@@ -249,6 +252,14 @@ function RelayRow({
 				)}
 			</div>
 
+			{canModerate && (
+				<Settings
+					relay={relay}
+					busy={busy}
+					onSave={(change) => onEdit(change)}
+				/>
+			)}
+
 			{confirming && (
 				<p className="px-4 pb-3 text-fg-muted text-xs">
 					{t(
@@ -257,6 +268,67 @@ function RelayRow({
 				</p>
 			)}
 		</Card>
+	);
+}
+
+/**
+ * What this relay is called, and whether it is held in reserve.
+ *
+ * Two settings that answer different questions and are grouped because they are
+ * both "how should this machine be used", as against the buttons above, which
+ * are "is it in service at all".
+ *
+ * The name is not among them. It is the key a client sends back after measuring,
+ * so renaming would orphan every browser that had measured the old one — which
+ * is exactly why a label exists to be changed instead.
+ */
+function Settings({
+	relay,
+	busy,
+	onSave,
+}: {
+	relay: Relay;
+	busy: boolean;
+	onSave: (change: { label?: string; fallback?: boolean }) => void;
+}) {
+	const [label, setLabel] = useState(relay.label ?? "");
+
+	const dirty = label !== (relay.label ?? "");
+
+	return (
+		<div className="flex flex-wrap items-end gap-3 border-border border-t px-4 py-3">
+			<label className="flex min-w-40 flex-1 flex-col gap-1">
+				<span className="text-fg-muted text-[11px]">{t("Shown to people as")}</span>
+				<input
+					value={label}
+					onChange={(event) => setLabel(event.target.value)}
+					placeholder={relay.name}
+					maxLength={64}
+					className="rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+				/>
+			</label>
+
+
+			<label className="flex items-center gap-1.5 pb-2 text-[12px] text-fg-muted">
+				<input
+					type="checkbox"
+					checked={relay.fallback ?? false}
+					disabled={busy}
+					onChange={(event) => onSave({ fallback: event.target.checked })}
+					className="size-3.5 accent-tally"
+				/>
+				{t("Keep in reserve")}
+			</label>
+
+			<button
+				type="button"
+				disabled={busy || !dirty}
+				onClick={() => onSave({ label })}
+				className="rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+			>
+				{t("Save")}
+			</button>
+		</div>
 	);
 }
 

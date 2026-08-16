@@ -69,12 +69,12 @@ export function App() {
 	}, []);
 
 	const onJoin = useCallback(
-		async ({ name, passphrase, camera, microphone }: Choices) => {
+		async ({ name, passphrase, camera, microphone, relay }: Choices) => {
 
 			const made = create();
 
 			try {
-				const grant = await requestJoin(room, name, passphrase);
+				const grant = await requestJoin(room, name, passphrase, relay);
 				await connect(made, grant);
 
 				// After connecting rather than before, so somebody appears in the

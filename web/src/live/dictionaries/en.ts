@@ -184,6 +184,22 @@ const en = {
 	"The last administrator who can change things cannot be removed": "The last administrator who can change things cannot be removed",
 	"Signature": "Signature",
 	"Add": "Add",
+	"Good connection": "Good connection",
+	"Fair connection": "Fair connection",
+	"Poor connection": "Poor connection",
+	"Connection lost": "Connection lost",
+	"Round trip": "Round trip",
+	"Lost": "Lost",
+	"Jitter": "Jitter",
+	"Sending": "Sending",
+	"Receiving": "Receiving",
+	"Measuring…": "Measuring…",
+	"Shown to people as": "Shown to people as",
+	"Keep in reserve": "Keep in reserve",
+	"Save": "Save",
+	"Server": "Server",
+	"Automatic": "Automatic",
+	"reserve": "reserve",
 } as const;
 
 export default en;

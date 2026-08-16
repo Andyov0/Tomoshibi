@@ -426,6 +426,18 @@ type relayEntry struct {
 	// where their call is being held. Never used to choose under this policy —
 	// that is what the measurement is for.
 	Region string `json:"region,omitempty"`
+
+	// Label is what a person is shown instead of the name.
+	//
+	// Sent because this list is now offered to somebody choosing, not only to a
+	// script measuring. "sh" is a fine key and a poor thing to put in front of
+	// a person deciding where to hold a meeting.
+	Label string `json:"label,omitempty"`
+
+	// Fallback marks a relay the deployment keeps in reserve. Sent so that a
+	// picker can say so rather than presenting it as an equal choice — a person
+	// who picks it should know they are asking for the long way round.
+	Fallback bool `json:"fallback,omitempty"`
 }
 
 // relayList is what a client measures before it joins.
@@ -443,7 +455,10 @@ func (a *App) relayList(w http.ResponseWriter, _ *http.Request) {
 
 	entries := make([]relayEntry, 0, len(list))
 	for _, relay := range list {
-		entries = append(entries, relayEntry{Name: relay.Name, URL: relay.URL, Region: relay.Region})
+		entries = append(entries, relayEntry{
+			Name: relay.Name, URL: relay.URL, Region: relay.Region,
+			Label: relay.Shown(), Fallback: relay.Fallback,
+		})
 	}
 
 	respond(w, relayListResponse{

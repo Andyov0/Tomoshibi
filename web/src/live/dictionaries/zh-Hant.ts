@@ -151,6 +151,22 @@ const zhHant: Dictionary = {
 	"The last administrator who can change things cannot be removed": "最後一個可做修改的管理員不能被移除",
 	"Signature": "簽名",
 	"Add": "新增",
+	"Good connection": "連線良好",
+	"Fair connection": "連線一般",
+	"Poor connection": "連線較差",
+	"Connection lost": "連線已中斷",
+	"Round trip": "往返延遲",
+	"Lost": "丟包",
+	"Jitter": "抖動",
+	"Sending": "上行",
+	"Receiving": "下行",
+	"Measuring…": "測量中…",
+	"Shown to people as": "顯示給使用者的名稱",
+	"Keep in reserve": "僅作備援",
+	"Save": "儲存",
+	"Server": "伺服器",
+	"Automatic": "自動選擇",
+	"reserve": "備援",
 };
 
 export default zhHant;

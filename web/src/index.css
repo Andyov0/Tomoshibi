@@ -27,6 +27,14 @@
 	--color-tally: oklch(0.79 0.157 64);
 	--color-tally-fg: oklch(0.2 0.03 64);
 
+	/* The only place a second signal colour appears, and it earns it by being
+	   read rather than noticed. A connection light says one of three things and
+	   people already know which colour means which — a light that used the amber
+	   above for "well" and for "not well" would be a light nobody could read at a
+	   glance, which is the only way anybody reads one. Matched to the amber's
+	   lightness and chroma so it sits in the same palette rather than beside it. */
+	--color-good: oklch(0.79 0.157 152);
+
 	--color-danger: oklch(0.627 0.185 31);
 	--color-danger-fg: oklch(0.99 0 0);
 

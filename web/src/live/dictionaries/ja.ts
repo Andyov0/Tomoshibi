@@ -151,6 +151,22 @@ const ja: Dictionary = {
 	"The last administrator who can change things cannot be removed": "変更できる最後の管理者は削除できません",
 	"Signature": "署名",
 	"Add": "追加",
+	"Good connection": "接続は良好",
+	"Fair connection": "接続はまずまず",
+	"Poor connection": "接続が不安定",
+	"Connection lost": "接続が切れました",
+	"Round trip": "往復遅延",
+	"Lost": "パケット損失",
+	"Jitter": "ジッター",
+	"Sending": "送信",
+	"Receiving": "受信",
+	"Measuring…": "計測中…",
+	"Shown to people as": "利用者に表示する名前",
+	"Keep in reserve": "予備として保持",
+	"Save": "保存",
+	"Server": "サーバー",
+	"Automatic": "自動",
+	"reserve": "予備",
 };
 
 export default ja;

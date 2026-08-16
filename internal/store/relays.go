@@ -38,6 +38,16 @@ type Relay struct {
 	// against a client's, never interpreted.
 	Region string `json:"region,omitempty"`
 
+	// Label is what a person is shown instead of the name.
+	//
+	// The name is a key: immutable, because a client that measured it will send
+	// it back at the join, and short, because it is typed at a prompt on a
+	// machine being brought up. Neither of those makes it good to read. "sh" is
+	// a fine key and a poor thing to offer somebody choosing where to hold a
+	// call, and the fix is not to rename the key — a rename orphans every client
+	// that had measured the old one.
+	Label string `json:"label,omitempty"`
+
 	// Enabled is whether clients are sent here.
 	//
 	// The reason this is a flag rather than a deletion: taking a relay out of
@@ -77,6 +87,8 @@ var (
 	ErrRelayLongTag  = errors.New("a relay region is at most 64 characters")
 	ErrRelayExists   = errors.New("a relay with that name is already here")
 	ErrNoSuchRelay   = errors.New("no relay by that name is here")
+
+	ErrRelayLongLabel = errors.New("a relay label is at most 64 characters")
 )
 
 // Valid reports whether a relay is one this deployment can use.
@@ -100,6 +112,10 @@ func (r Relay) Valid() error {
 
 	case len(r.Region) > 64:
 		return ErrRelayLongTag
+
+	case len(r.Label) > 64:
+		return ErrRelayLongLabel
+
 	}
 
 	return nil
@@ -154,6 +170,7 @@ func (s *Store) AddRelay(relay Relay) error {
 	relay.Name = strings.TrimSpace(relay.Name)
 	relay.URL = strings.TrimSpace(relay.URL)
 	relay.Region = strings.TrimSpace(relay.Region)
+	relay.Label = strings.TrimSpace(relay.Label)
 
 	if relay.Added.IsZero() {
 		relay.Added = time.Now().UTC()
@@ -190,6 +207,7 @@ func (s *Store) UpdateRelay(relay Relay) error {
 
 	relay.URL = strings.TrimSpace(relay.URL)
 	relay.Region = strings.TrimSpace(relay.Region)
+	relay.Label = strings.TrimSpace(relay.Label)
 
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(relaysBucket)
@@ -285,4 +303,16 @@ func (s *Store) AdoptRelays(configured []Relay) (adopted bool, err error) {
 	}
 
 	return adopted, nil
+}
+
+// Shown is what a person should see this relay called.
+//
+// The label where there is one and the key where there is not, so that a
+// deployment which never set a label reads exactly as it did before.
+func (r Relay) Shown() string {
+	if r.Label != "" {
+		return r.Label
+	}
+
+	return r.Name
 }

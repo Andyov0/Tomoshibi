@@ -5,6 +5,8 @@ import { EmptyRoom } from "@/components/room/EmptyRoom";
 import { PictureMenu } from "@/components/room/PictureMenu";
 import { Plane } from "@/components/room/Plane";
 import { RoomMenu } from "@/components/room/RoomMenu";
+import { Signal } from "@/components/room/Signal";
+import { useConnectionQuality } from "@/live/connection";
 import { ShareCard } from "@/components/room/ShareCard";
 import { SoundPanel } from "@/components/room/SoundPanel";
 import { SaidInCorner, SaidOnTile } from "@/components/room/Said";
@@ -121,6 +123,10 @@ function Stage({
 	const heard = useHearing();
 	const participants = useRoster(room);
 	const state = useConnection(room);
+
+	// Measured in the browser rather than reported by the server, because the
+	// question it answers is about this end of the call.
+	const connection = useConnectionQuality(room);
 	const [measure, size] = useMeasure();
 
 	// Whoever has spoken recently comes forward, but only once there are more
@@ -254,6 +260,15 @@ function Stage({
 
 	return (
 		<main className="relative h-full">
+			{/* Top left, out of the way of the room's own name in the middle and of
+			    anything a menu opens on the right. Pointer events off on the frame so
+			    it never eats a click meant for a picture underneath. */}
+			{state === ConnectionState.Connected && (
+				<div className="pointer-events-none absolute top-3 left-3 z-10">
+					<Signal reading={connection} />
+				</div>
+			)}
+
 			{/* The element that fills the screen. It holds the pictures and nothing
 			    else, so a fullscreen stage is a stage rather than a room with its
 			    chrome still attached. */}

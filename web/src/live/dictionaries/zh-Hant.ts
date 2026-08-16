@@ -208,6 +208,8 @@ const zhHant: Dictionary = {
 	"The last administrator who can change things cannot be removed": "最後一個可做修改的管理員不能被移除",
 	"Settings": "設定",
 	"Not taking calls": "維護中,暫不接受通話",
+	"Measured at": "測速位址",
+	"host:port where it answers STUN. Empty means time the socket instead": "它回應 STUN 的 host:連接埠。留空則退回計時 WebSocket(數字約為真實值三倍)",
 };
 
 export default zhHant;

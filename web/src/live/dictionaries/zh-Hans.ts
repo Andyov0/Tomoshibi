@@ -208,6 +208,8 @@ const zhHans: Dictionary = {
 	"The last administrator who can change things cannot be removed": "最后一个可做修改的管理员不能被移除",
 	"Settings": "设置",
 	"Not taking calls": "维护中,暂不接受通话",
+	"Measured at": "测速地址",
+	"host:port where it answers STUN. Empty means time the socket instead": "它回应 STUN 的 host:端口。留空则退回计时 WebSocket(数字约为真实值三倍)",
 };
 
 export default zhHans;

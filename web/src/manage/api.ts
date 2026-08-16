@@ -248,6 +248,8 @@ export interface Relay {
 	fallback?: boolean;
 	/** Not offered to, or usable by, anybody who is not an administrator. */
 	adminOnly?: boolean;
+	/** Where it answers STUN binding requests, as host:port. */
+	probe?: string;
 	enabled: boolean;
 	added?: string;
 	/** Whether it answered when this page was drawn, from the control node. */
@@ -298,6 +300,7 @@ export const api = {
 			region?: string;
 			enabled?: boolean;
 			label?: string;
+			probe?: string;
 			fallback?: boolean;
 			adminOnly?: boolean;
 		},

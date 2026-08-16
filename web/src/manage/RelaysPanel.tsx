@@ -13,7 +13,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { type Relay, api } from "./api";
 import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
@@ -430,6 +430,7 @@ function Settings({
 		url?: string;
 		region?: string;
 		label?: string;
+		probe?: string;
 		fallback?: boolean;
 		adminOnly?: boolean;
 	}) => void;
@@ -438,12 +439,34 @@ function Settings({
 	const [url, setUrl] = useState(relay.url);
 	const [region, setRegion] = useState(relay.region ?? "");
 	const [label, setLabel] = useState(relay.label ?? "");
+	const [probe, setProbe] = useState(relay.probe ?? "");
+
+	// Reloaded when the relay changes underneath this form.
+	//
+	// It did not, and that lost work. The fields are filled once when the row is
+	// drawn and this page polls every fifteen seconds, so a relay whose address
+	// was changed elsewhere left a form still holding the old one — and saving a
+	// rename wrote that old address back over the new one, silently, as a side
+	// effect of editing a different field. Which is exactly how two relays ended
+	// up pointing at hostnames again after being moved to their addresses.
+	//
+	// Keyed on what is saved rather than on the whole record, so a poll that
+	// changed only the measured latency does not throw away half-typed text.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the record is the key, not the effect's input
+	useEffect(() => {
+		setName(relay.name);
+		setUrl(relay.url);
+		setRegion(relay.region ?? "");
+		setLabel(relay.label ?? "");
+		setProbe(relay.probe ?? "");
+	}, [relay.name, relay.url, relay.region, relay.label, relay.probe]);
 
 	const dirty =
 		name !== relay.name ||
 		url !== relay.url ||
 		region !== (relay.region ?? "") ||
-		label !== (relay.label ?? "");
+		label !== (relay.label ?? "") ||
+		probe !== (relay.probe ?? "");
 
 	return (
 		<div className="flex flex-col gap-3 border-border border-t px-4 py-3">
@@ -474,6 +497,15 @@ function Settings({
 						value={url}
 						onChange={(event) => setUrl(event.target.value)}
 						placeholder="wss://host:port"
+						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</Field>
+
+				<Field label={t("Measured at")} hint={t("host:port where it answers STUN. Empty means time the socket instead")}>
+					<input
+						value={probe}
+						onChange={(event) => setProbe(event.target.value)}
+						placeholder="host:39218"
 						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
@@ -518,7 +550,7 @@ function Settings({
 				<button
 					type="button"
 					disabled={busy || !dirty}
-					onClick={() => onSave({ name, url, region, label })}
+					onClick={() => onSave({ name, url, region, label, probe })}
 					className="ml-auto rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
 				>
 					{t("Save")}

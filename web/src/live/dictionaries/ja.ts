@@ -208,6 +208,8 @@ const ja: Dictionary = {
 	"The last administrator who can change things cannot be removed": "変更できる最後の管理者は削除できません",
 	"Settings": "設定",
 	"Not taking calls": "メンテナンス中",
+	"Measured at": "計測先",
+	"host:port where it answers STUN. Empty means time the socket instead": "STUN に応答する host:port。空欄ならソケットの計測に戻ります(実測の約 3 倍になります)",
 };
 
 export default ja;

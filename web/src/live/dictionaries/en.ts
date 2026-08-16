@@ -241,6 +241,8 @@ const en = {
 	"The last administrator who can change things cannot be removed": "The last administrator who can change things cannot be removed",
 	"Settings": "Settings",
 	"Not taking calls": "Not taking calls",
+	"Measured at": "Measured at",
+	"host:port where it answers STUN. Empty means time the socket instead": "host:port where it answers STUN. Empty means time the socket instead",
 } as const;
 
 export default en;

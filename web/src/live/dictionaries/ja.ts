@@ -226,7 +226,7 @@ const ja: Dictionary = {
 	"1440p": "1440p",
 	"4K": "4K",
 	"Sharing": "共有中",
-	"Media to": "メディア送信先",
+	"Your address": "あなたのアドレス",
 };
 
 export default ja;

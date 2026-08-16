@@ -226,7 +226,7 @@ const zhHans: Dictionary = {
 	"1440p": "1440p",
 	"4K": "4K",
 	"Sharing": "共享中",
-	"Media to": "媒体去向",
+	"Your address": "你的地址",
 };
 
 export default zhHans;

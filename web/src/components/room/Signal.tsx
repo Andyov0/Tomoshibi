@@ -117,9 +117,7 @@ function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
 			  * this says both.
 			  */}
 			{relay && <Figure label={t("Server")} value={relay} />}
-			{reading.mediaAddress && (
-				<Figure label={t("Media to")} value={reading.mediaAddress} />
-			)}
+			{reading.ownAddress && <Figure label={t("Your address")} value={reading.ownAddress} />}
 
 			<Figure
 				label={t("Round trip")}

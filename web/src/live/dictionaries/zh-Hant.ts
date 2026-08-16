@@ -226,7 +226,7 @@ const zhHant: Dictionary = {
 	"1440p": "1440p",
 	"4K": "4K",
 	"Sharing": "共享中",
-	"Media to": "媒體去向",
+	"Your address": "你的位址",
 };
 
 export default zhHant;

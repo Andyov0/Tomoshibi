@@ -55,17 +55,20 @@ export interface Reading {
 	 */
 	share?: { width: number; height: number; fps: number };
 	/**
-	 * Where the media is actually going, as the address it is going to.
+	 * This browser's own address, as the relay sees it.
 	 *
-	 * Read from the candidate pair in use rather than from anything this page
-	 * was told, because those two can differ and the difference is the thing
-	 * worth seeing. A meeting lives on one machine: somebody who picked a
-	 * different one has their signalling forwarded to it and their media sent
-	 * straight there, so the server they chose and the server carrying their
-	 * voice are not the same server — and nothing else on the screen would say
-	 * so.
+	 * Their own and nobody else's. It is the useful half of what a candidate
+	 * pair holds: somebody trying to work out why a call is bad wants to know
+	 * which network they are actually leaving from — a phone that fell back to
+	 * mobile data, a laptop that picked the guest wifi — and that is a question
+	 * about them.
+	 *
+	 * The other half, the relay's address, is deliberately not shown. It is not
+	 * a secret from anybody in the call, but putting it on screen makes it one
+	 * more thing to read off somebody's window, and the machine's name says
+	 * everything a person in a call needs.
 	 */
-	mediaAddress?: string;
+	ownAddress?: string;
 	/** Whether anything has been measured yet. */
 	measured: boolean;
 }
@@ -179,7 +182,7 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 				rttMs: stats.rttMs,
 				jitterMs: stats.jitterMs,
 				share: stats.share,
-				mediaAddress: stats.mediaAddress,
+				ownAddress: stats.ownAddress,
 				lossPercent,
 				upKbps,
 				downKbps,
@@ -233,7 +236,7 @@ export function grade(
 interface Gathered {
 	rttMs?: number;
 	jitterMs?: number;
-	mediaAddress?: string;
+	ownAddress?: string;
 	share?: { width: number; height: number; fps: number };
 	totals: {
 		bytesSent: number;
@@ -297,7 +300,7 @@ async function gather(room: Room): Promise<Gathered> {
 	// Collected as they are met and resolved afterwards, because the pair that
 	// names a candidate and the candidate itself arrive in whichever order the
 	// report happens to hold them.
-	const remotes = new Map<string, { address: string; port: number | undefined }>();
+	const locals = new Map<string, { address: string; kind: string }>();
 	let nominated: string | undefined;
 
 	for (const report of reports) {
@@ -307,14 +310,14 @@ async function gather(room: Room): Promise<Gathered> {
 			if (id) seen.add(id);
 
 			switch (entry.type) {
-				case "remote-candidate": {
+				case "local-candidate": {
 					// Kept by id so the pair below can name the one in use. Every
-					// candidate ever considered appears here, and most of them
-					// lost.
+					// candidate ever considered appears here and most of them
+					// lost, so which one won cannot be read from this alone.
 					if (typeof entry.id === "string" && typeof entry.address === "string") {
-						remotes.set(entry.id, {
+						locals.set(entry.id, {
 							address: entry.address,
-							port: numeric(entry.port),
+							kind: typeof entry.candidateType === "string" ? entry.candidateType : "",
 						});
 					}
 
@@ -330,8 +333,8 @@ async function gather(room: Room): Promise<Gathered> {
 					const rtt = numeric(entry.currentRoundTripTime);
 					if (rtt !== undefined) out.rttMs = Math.round(rtt * 1000);
 
-					if (typeof entry.remoteCandidateId === "string") {
-						nominated = entry.remoteCandidateId;
+					if (typeof entry.localCandidateId === "string") {
+						nominated = entry.localCandidateId;
 					}
 
 					return;
@@ -371,10 +374,13 @@ async function gather(room: Room): Promise<Gathered> {
 	}
 
 	if (nominated) {
-		const remote = remotes.get(nominated);
-		if (remote) {
-			out.mediaAddress = remote.port ? `${remote.address}:${remote.port}` : remote.address;
-		}
+		const local = locals.get(nominated);
+
+		// The reflexive one is the address the relay sees, which is the one
+		// worth showing. A host candidate is the private address of whatever
+		// network card won, and telling somebody they are 192.168.1.24 answers
+		// no question they had.
+		if (local && local.kind !== "host") out.ownAddress = local.address;
 	}
 
 	return out;

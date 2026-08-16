@@ -9,6 +9,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"crypto/tls"
 	"embed"
 	"encoding/hex"
 	"errors"
@@ -248,6 +249,22 @@ func serve(args []string) error {
 	server := &http.Server{
 		Addr:    conf.Meet.Listen,
 		Handler: application.Handler(),
+
+		// HTTP/2 off, and this is not a preference.
+		//
+		// ServeTLS turns it on by advertising h2 in ALPN, and a WebSocket
+		// cannot be opened over an HTTP/2 connection by anything here: the
+		// upgrade this server performs is the HTTP/1.1 one, and the extension
+		// that carries it over h2 is implemented by neither the standard
+		// library nor the media server's client. A browser negotiates h2,
+		// asks for the signalling path, and is answered 404 by a router whose
+		// upgrade handler was never reached.
+		//
+		// Which is exactly what happened the first time a relay was given a
+		// certificate: plaintext worked, TLS returned 404, and the difference
+		// was ALPN. An empty map is how the standard library is told not to
+		// offer it.
+		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){},
 		// Absent on purpose: a signalling WebSocket is meant to stay open for
 		// the length of a meeting, and a write timeout would cut it. Read
 		// headers are still bounded, which is what protects against a client

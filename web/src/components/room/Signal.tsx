@@ -104,8 +104,22 @@ function Bars({ grade }: { grade: Grade }) {
 function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
 	const t = useT();
 
+	// Both known and not the same machine. Where either is missing there is
+	// nothing to compare, and claiming a call is relayed on the strength of one
+	// name would be worse than saying nothing.
+	const relayed = Boolean(relay && reading.holding && relay !== reading.holding);
+
 	return (
-		<dl className="mt-1.5 flex min-w-44 flex-col gap-1 rounded-lg bg-surface-hi/90 px-3 py-2 text-[11px] shadow backdrop-blur">
+		<dl
+			className={cn(
+				"mt-1.5 flex min-w-44 flex-col gap-1 rounded-lg px-3 py-2 text-[11px]",
+				"bg-surface-hi/90 shadow-lg ring-1 ring-black/30 backdrop-blur",
+				// From under the bars it belongs to, rather than appearing: a panel
+				// that is simply there on the next frame reads as the page having
+				// redrawn itself.
+				"origin-top animate-arrive",
+			)}
+		>
 			{/*
 			  * Where this call was sent, and where its media is actually going.
 			  *
@@ -116,21 +130,44 @@ function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
 			  * the picker says one thing and the packets do another, and only
 			  * this says both.
 			  */}
-			{relay && <Figure label={t("Server")} value={relay} />}
-			{reading.ownAddress && <Figure label={t("Your address")} value={reading.ownAddress} />}
+			{/*
+			  * One line where the call is on the machine that was dialled, and
+			  * two where it is not. A meeting lives on one server: somebody who
+			  * picked a different one has their signalling forwarded to it, so
+			  * the machine they chose and the machine carrying the call are two
+			  * different machines — and there is nowhere else that says so.
+			  *
+			  * Named on both sides rather than addressed. The relay reports what
+			  * it calls itself, so nothing here has to hold a map from addresses
+			  * to names, and no address reaches the screen.
+			  */}
+			{relayed ? (
+				<>
+					<Figure label={t("Relay server")} value={relay ?? "—"} delay={0} />
+					<Figure label={t("Original server")} value={reading.holding ?? "—"} delay={30} />
+				</>
+			) : (
+				(relay || reading.holding) && (
+					<Figure label={t("Server")} value={relay ?? reading.holding ?? "—"} delay={0} />
+				)
+			)}
+			{reading.ownAddress && <Figure label={t("Your address")} value={reading.ownAddress} delay={60} />}
 
 			<Figure
 				label={t("Round trip")}
 				value={reading.rttMs === undefined ? "—" : `${reading.rttMs} ms`}
+				delay={90}
 			/>
 			<Figure
 				label={t("Lost")}
 				value={reading.lossPercent === undefined ? "—" : `${reading.lossPercent.toFixed(1)}%`}
 				warn={(reading.lossPercent ?? 0) > 2}
+				delay={120}
 			/>
 			<Figure
 				label={t("Jitter")}
 				value={reading.jitterMs === undefined ? "—" : `${reading.jitterMs} ms`}
+				delay={150}
 			/>
 			{/* Only while something is being shared, so the row is not a
 			    permanent dash — and read from the encoder rather than from the
@@ -138,14 +175,19 @@ function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
 			    4K at sixty and is getting nineteen has nowhere else to find out. */}
 			{reading.share && (
 				<Figure
-					label={t("Sharing")}
-					value={`${reading.share.height}p · ${reading.share.fps} fps`}
-					warn={reading.share.fps < 10}
+					label={reading.share.sending ? t("Sharing") : t("Watching")}
+					value={
+						reading.share.height && reading.share.fps
+							? `${reading.share.height}p · ${reading.share.fps} fps`
+							: t("Measuring…")
+					}
+					warn={reading.share.fps !== undefined && reading.share.fps < 10}
+					delay={180}
 				/>
 			)}
 
-			<Figure label={t("Sending")} value={rate(reading.upKbps)} />
-			<Figure label={t("Receiving")} value={rate(reading.downKbps)} />
+			<Figure label={t("Sending")} value={rate(reading.upKbps)} delay={210} />
+			<Figure label={t("Receiving")} value={rate(reading.downKbps)} delay={240} />
 
 			{!reading.measured && (
 				<span className="pt-0.5 text-fg-muted">{t("Measuring…")}</span>
@@ -154,11 +196,34 @@ function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
 	);
 }
 
-function Figure({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+/**
+ * One line of the detail.
+ *
+ * The value transitions colour rather than snapping, because these numbers
+ * change while somebody is reading them: a round trip that crosses a band would
+ * otherwise flick between two colours on every poll, which reads as a fault
+ * rather than as a measurement.
+ */
+function Figure({
+	label,
+	value,
+	warn,
+	delay = 0,
+}: { label: string; value: string; warn?: boolean; delay?: number }) {
 	return (
-		<div className="flex items-baseline justify-between gap-4">
+		<div
+			style={{ animationDelay: `${delay}ms` }}
+			className="flex animate-arrive items-baseline justify-between gap-4"
+		>
 			<dt className="text-fg-muted">{label}</dt>
-			<dd className={cn("readout tabular-nums", warn ? "text-tally" : "text-fg")}>{value}</dd>
+			<dd
+				className={cn(
+					"readout tabular-nums transition-colors duration-300",
+					warn ? "text-tally" : "text-fg",
+				)}
+			>
+				{value}
+			</dd>
 		</div>
 	);
 }

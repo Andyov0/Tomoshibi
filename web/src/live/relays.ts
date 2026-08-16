@@ -237,7 +237,19 @@ function overSignalling(relay: Relay): Promise<number | undefined> {
  * right trade for a measurement that did not come back.
  */
 export async function fastest(list: Relay[]): Promise<string | undefined> {
-	if (list.length < 2) return list[0]?.name;
+	// Never the ones kept for administrators, and never one out of service.
+	//
+	// Automatic is for somebody who did not choose, so choosing something they
+	// will be refused at the door is worse than not choosing at all — the
+	// measurement would land on a relay reserved for somebody else and the join
+	// would come back Access denied, for a machine they never asked for.
+	//
+	// An administrator who wants one asks for it by name, which is honoured.
+	const usable = list.filter((relay) => !relay.adminOnly && !relay.maintenance);
+
+	if (usable.length < 2) return usable[0]?.name;
+
+	list = usable;
 
 	const now = Date.now();
 	if (cached && now - cached.at < CACHE_MS && list.some((relay) => relay.name === cached?.name)) {

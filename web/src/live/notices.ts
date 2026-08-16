@@ -28,6 +28,23 @@ const BRIEFLY = 2200;
 const A_MOMENT = 3000;
 
 /**
+ * The longest any notice stays.
+ *
+ * Some of these used to stay for good, on the reasoning that something still
+ * true is not an event: a refused camera is a state, and a state that fades
+ * leaves somebody looking at a working-looking page with no camera in it.
+ *
+ * The reasoning was sound and the result was not. A notice that never leaves
+ * sits in the corner through a whole meeting, over the pictures, long after the
+ * person read it and either dealt with it or decided not to — and by the third
+ * one nobody reads any of them. Ten seconds has been seen; forever has been
+ * ignored. The ones worth acting on keep their close button so they can go
+ * sooner.
+ */
+const AT_MOST = 10_000;
+
+
+/**
  * Watch a room and report the handful of things worth reporting.
  *
  * Returns a function that stops watching. Nothing is queued: a notice missed
@@ -75,7 +92,7 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
 	// the one place that would break is the one nobody tests: the error.
 	toast.error(kind === "camera" ? t("Can't use your camera") : t("Can't use your microphone"), {
 		description: t("Allow access from the icon in the address bar."),
-		duration: Number.POSITIVE_INFINITY,
+		duration: AT_MOST,
 		closeButton: true,
 	});
 }
@@ -93,7 +110,7 @@ export function deviceRefused(kind: "camera" | "microphone"): void {
  * while they are reading it.
  */
 export function joinFailed(reason: string): void {
-	toast.error(reason, { duration: Number.POSITIVE_INFINITY, closeButton: true });
+	toast.error(reason, { duration: AT_MOST, closeButton: true });
 }
 
 /**
@@ -113,7 +130,7 @@ export function joinFailed(reason: string): void {
  * second place for the same message to drift.
  */
 export function actionFailed(reason: string): void {
-	toast.error(reason, { duration: A_MOMENT + 2000 });
+	toast.error(reason, { duration: AT_MOST });
 }
 
 /**
@@ -131,7 +148,7 @@ export function actionFailed(reason: string): void {
 export function audioBlocked(resume: () => void): () => void {
 	const id = toast(t("You can't hear anyone yet"), {
 		description: t("Your browser needs one click first."),
-		duration: Number.POSITIVE_INFINITY,
+		duration: AT_MOST,
 		closeButton: true,
 		action: { label: t("Turn on sound"), onClick: resume },
 	});

@@ -227,6 +227,9 @@ const zhHant: Dictionary = {
 	"4K": "4K",
 	"Sharing": "共享中",
 	"Your address": "你的位址",
+	"Relay server": "中繼伺服器",
+	"Original server": "來源伺服器",
+	"Watching": "觀看中",
 };
 
 export default zhHant;

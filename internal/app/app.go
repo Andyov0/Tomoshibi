@@ -385,7 +385,14 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// chosen, which leaves somebody looking at a call held somewhere they did
 	// not pick with nothing anywhere saying why — and, worse, no way to tell
 	// that from the picker having worked.
-	if !isAdmin && a.relays.reserved(body.Relay) {
+	//
+	// Except into a meeting that is already there. Reserving a relay is about
+	// who may start a call on it, not about keeping out the people they invited:
+	// an administrator who opened a room on their own machine and sent the link
+	// round meant for those people to arrive. So a room already held on that
+	// relay lets anybody with the link in — to that room, on that relay, and
+	// nowhere else.
+	if !isAdmin && a.relays.reserved(body.Relay) && a.store.HeldOn(name) != body.Relay {
 		fail(w, http.StatusForbidden, reasonRelayNotAllowed)
 		return
 	}
@@ -465,7 +472,29 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// Picked once and used twice: the address to dial and the name to call it.
 	// Asking twice would be two independent choices, and under round robin they
 	// would not be the same one.
+	//
+	// A room already being held somewhere goes back there, whoever is asking and
+	// whatever they measured. That is not a preference — a meeting lives on one
+	// server, and sending the second person somewhere else means their
+	// signalling is forwarded and their measurement was spent on a machine that
+	// will not carry their call. It is also what lets somebody into a reserved
+	// relay they were invited to.
 	chosen := a.relays.pick(name, body.Relay, r, a.conf.Meet.TrustProxy, isAdmin)
+
+	if held := a.store.HeldOn(name); held != "" && held != chosen.Name {
+		if there, ok := a.relays.named(held); ok {
+			chosen = there
+		}
+	}
+
+	// Noted after everything that could refuse this join has not. A room
+	// recorded as being somewhere nobody was actually sent would send the next
+	// person there for no reason.
+	if chosen.Name != "" {
+		if err := a.store.HoldRoom(name, chosen.Name); err != nil {
+			slog.Error("failed to note where a room is held", "room", name, "error", err)
+		}
+	}
 
 	respond(w, joinResponse{
 		URL:      a.signallingURLFor(chosen, r),

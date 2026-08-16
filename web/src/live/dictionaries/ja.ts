@@ -227,6 +227,9 @@ const ja: Dictionary = {
 	"4K": "4K",
 	"Sharing": "共有中",
 	"Your address": "あなたのアドレス",
+	"Relay server": "中継サーバー",
+	"Original server": "元のサーバー",
+	"Watching": "視聴中",
 };
 
 export default ja;

@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/livekit/livekit-server/pkg/config"
@@ -39,7 +40,33 @@ type Server struct {
 	// upstream is where this process reaches the media server's own HTTP,
 	// which is loopback and nowhere else.
 	upstream string
+
+	// The throughput this server has actually moved, measured here rather than
+	// read from the media server.
+	//
+	// Its own figures come as a list of rates over windows it chooses, and the
+	// shortest of them — which is the only current one — is noisy where it is
+	// not simply empty. What a page wants is one number that means bytes a
+	// second and is the same number every time it is asked, so the counters are
+	// sampled on a ticker and the difference divided by the time between.
+	rate struct {
+		mu     sync.Mutex
+		in     float64
+		out    float64
+		window time.Duration
+
+		lastIn  uint64
+		lastOut uint64
+		lastAt  time.Time
+	}
 }
+
+// How often the byte counters are sampled.
+//
+// Five seconds. Short enough that a page redrawn every five reflects what is
+// happening now, long enough that a call starting mid-sample does not read as a
+// spike ten times its real rate.
+const throughputEvery = 5 * time.Second
 
 // Start builds and starts the media server, returning once it is accepting
 // connections.
@@ -84,12 +111,16 @@ func Start(conf *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("address the media server: %w", err)
 	}
 
-	return &Server{
+	server := &Server{
 		inner:    inner,
 		proxy:    httputil.NewSingleHostReverseProxy(upstream),
 		node:     node,
 		upstream: address,
-	}, nil
+	}
+
+	go server.watchThroughput()
+
+	return server, nil
 }
 
 // Stats is what the media server knows about its own load.
@@ -123,20 +154,46 @@ func (s *Server) Stats() *livekit.NodeStats {
 // alongside: ten seconds of mean is not an instantaneous reading, and a figure
 // that does not say which it is will be read as the wrong one.
 func (s *Server) Throughput() (in, out float64, window time.Duration) {
-	rates := s.Stats().GetRates()
-	if len(rates) == 0 {
-		return 0, 0, 0
-	}
+	s.rate.mu.Lock()
+	defer s.rate.mu.Unlock()
 
-	best := rates[0]
-	for _, rate := range rates[1:] {
-		if rate.GetDuration() > 0 && rate.GetDuration() < best.GetDuration() {
-			best = rate
+	return s.rate.in, s.rate.out, s.rate.window
+}
+
+// watchThroughput samples the counters and works out the rate between samples.
+//
+// Runs for the life of the process. There is no stopping it, and nothing to
+// stop: it reads two integers every five seconds and writes two floats, and a
+// process on its way down has no use for a shutdown path that could itself go
+// wrong.
+func (s *Server) watchThroughput() {
+	ticker := time.NewTicker(throughputEvery)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		stats := s.Stats()
+
+		in := stats.GetBytesIn()
+		out := stats.GetBytesOut()
+		now := time.Now()
+
+		s.rate.mu.Lock()
+
+		// The first sample establishes the baseline and reports nothing, because
+		// a rate needs two. Counters that went backwards mean the media server
+		// restarted underneath us, which is the same case.
+		if !s.rate.lastAt.IsZero() && in >= s.rate.lastIn && out >= s.rate.lastOut {
+			seconds := now.Sub(s.rate.lastAt).Seconds()
+			if seconds > 0 {
+				s.rate.in = float64(in-s.rate.lastIn) / seconds
+				s.rate.out = float64(out-s.rate.lastOut) / seconds
+				s.rate.window = now.Sub(s.rate.lastAt)
+			}
 		}
-	}
 
-	return float64(best.GetBytesIn()), float64(best.GetBytesOut()),
-		time.Duration(best.GetDuration()) * time.Second
+		s.rate.lastIn, s.rate.lastOut, s.rate.lastAt = in, out, now
+		s.rate.mu.Unlock()
+	}
 }
 
 // Node identifies this server, for a page that has to say which one it is

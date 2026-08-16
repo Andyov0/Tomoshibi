@@ -229,6 +229,25 @@ func (r *relays) reserved(name string) bool {
 	return false
 }
 
+// named finds a relay by name, and says whether it is one of ours and usable.
+//
+// Out of service counts as not usable: a room recorded as held on a machine
+// that has since been taken down should go wherever the policy sends it, not to
+// the machine somebody stopped.
+func (r *relays) named(name string) (store.Relay, bool) {
+	if r == nil || name == "" {
+		return store.Relay{}, false
+	}
+
+	for _, relay := range r.live() {
+		if relay.Name == name {
+			return relay, true
+		}
+	}
+
+	return store.Relay{}, false
+}
+
 // pick returns the relay for this room and this client.
 //
 // Room first and client second, because the room is what the policies are

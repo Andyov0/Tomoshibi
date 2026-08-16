@@ -260,6 +260,9 @@ const en = {
 	"4K": "4K",
 	"Sharing": "Sharing",
 	"Your address": "Your address",
+	"Relay server": "Relay server",
+	"Original server": "Original server",
+	"Watching": "Watching",
 } as const;
 
 export default en;

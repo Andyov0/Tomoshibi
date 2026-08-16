@@ -119,27 +119,28 @@ export function Tile({
 				</span>
 
 				{/*
-				  * Everybody carries a mark, so the two kinds have to look
-				  * different or the earned one means nothing: an impostor would
-				  * point at their own and claim it. An earned mark leads with a
-				  * dot and sits at reading weight; an issued one is dimmer and
-				  * has none, which reads as a serial number rather than as a
-				  * claim about who somebody is.
+				  * A dot for a name somebody proved, and nothing for one they did
+				  * not.
+				  *
+				  * The signature itself used to be printed here, ten characters of
+				  * it, beside every name in the room. It is what makes a name
+				  * meaningful — it is the thing an impostor cannot copy — but a
+				  * meeting is not a place where anybody reads one, and it made
+				  * every label twice as long for a string nobody looked at. It is
+				  * still there to be read where somebody wants it: the menu on a
+				  * picture copies it.
+				  *
+				  * The mark that survives is the difference, which is the part
+				  * that matters at a glance: a proven name has a dot and an
+				  * issued one has nothing, and the badge below still says outright
+				  * when somebody is wearing a name that belongs to another.
 				  */}
-				{signature && (
+				{signature?.proven && (
 					<span
-						title={
-							signature.proven
-								? t("Only this person can use this name")
-								: t("Anyone could use this name")
-						}
-						className={cn(
-							"readout shrink-0 text-[10px]",
-							signature.proven ? "text-fg-muted" : "text-fg-muted/45",
-						)}
+						title={t("Only this person can use this name")}
+						className="shrink-0 text-[10px] text-fg-muted"
 					>
-						{signature.proven ? "·" : ""}
-						{signature.trip}
+						·
 					</span>
 				)}
 

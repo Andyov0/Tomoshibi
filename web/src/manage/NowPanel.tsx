@@ -136,16 +136,24 @@ function Fleet({ now }: { now: Now }) {
 					>
 						<span className="flex items-center gap-2">
 							{/*
-							  * Amber rather than red for a relay that did not answer.
-							  * Red is for what cannot be undone, and a relay coming
-							  * back is the ordinary case — it is worth looking at,
-							  * which is what amber means everywhere else here.
+							  * A light rather than a dot.
+							  *
+							  * The dot was the same grey whatever the relay was doing,
+							  * which made it decoration: it took the place where a
+							  * status belongs and reported nothing. This says the three
+							  * things worth knowing at a glance — answering and quiet,
+							  * answering and working hard, not answering — and says
+							  * them in the same colours the connection light in a call
+							  * uses, so one habit reads both.
+							  *
+							  * Amber rather than red for a relay that is busy, and red
+							  * only for one that did not answer. Busy is a machine
+							  * doing its job near its limit; silent is a machine that
+							  * cannot do it at all.
 							  */}
-							<span
-								className={cn(
-									"size-1.5 rounded-full",
-									one.reachable ? "bg-fg-muted" : "bg-tally",
-								)}
+							<Light
+								ok={one.reachable}
+								busy={(one.load ?? 0) > 0.8 || (one.outPerSec ?? 0) * 8 > LINK_BITS * 0.66}
 							/>
 							<span className="text-fg text-sm">{one.name}</span>
 						</span>
@@ -194,6 +202,30 @@ function ThisServer({ now }: { now?: Now }) {
 				<Figure label="Address given to clients" value={now?.node?.ip ?? "\u2014"} mono />
 			</dl>
 		</Card>
+	);
+}
+
+/**
+ * A relay's state, in one dot.
+ *
+ * Pulsing while it is working, because a still light and a busy one should not
+ * look the same at a glance — and not pulsing when it is quiet, because a page
+ * of things blinking at each other is a page nobody can read.
+ */
+function Light({ ok, busy }: { ok: boolean; busy: boolean }) {
+	return (
+		<span className="relative flex size-2 shrink-0 items-center justify-center">
+			{ok && busy && (
+				<span className="absolute inline-flex size-full animate-ping rounded-full bg-tally/60" />
+			)}
+
+			<span
+				className={cn(
+					"relative inline-flex size-2 rounded-full transition-colors duration-300",
+					!ok ? "bg-danger" : busy ? "bg-tally" : "bg-good",
+				)}
+			/>
+		</span>
 	);
 }
 

@@ -53,7 +53,7 @@ export interface Reading {
 	 *
 	 * Absent when nothing is being shared, so the row is not a permanent dash.
 	 */
-	share?: { width: number; height: number; fps: number };
+	share?: { width?: number; height?: number; fps?: number; sending: boolean };
 	/**
 	 * This browser's own address, as the relay sees it.
 	 *
@@ -69,6 +69,14 @@ export interface Reading {
 	 * everything a person in a call needs.
 	 */
 	ownAddress?: string;
+	/**
+	 * What the machine holding this call calls itself.
+	 *
+	 * Reported by the node that answered the join, which is the node the room
+	 * lives on rather than necessarily the one this browser dialled. Empty on a
+	 * relay that has not been given a name to report.
+	 */
+	holding?: string;
 	/** Whether anything has been measured yet. */
 	measured: boolean;
 }
@@ -119,6 +127,9 @@ interface Previous {
 export function useConnectionQuality(room: Room | undefined): Reading {
 	const [reading, setReading] = useState<Reading>({ grade: "good", measured: false });
 	const previous = useRef<Previous>();
+	// The last numbers a share reported, so a sample that lacks them does not
+	// empty the row.
+	const held = useRef<{ width?: number; height?: number; fps?: number; sending: boolean }>();
 
 	// The server's own verdict, kept apart from the numbers because it arrives
 	// on an event rather than on the clock.
@@ -127,6 +138,7 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 	useEffect(() => {
 		if (!room) {
 			previous.current = undefined;
+			held.current = undefined;
 			setReading({ grade: "good", measured: false });
 			return;
 		}
@@ -177,11 +189,29 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 				if (sent > 0) lossPercent = Math.max(0, Math.min(100, (lost / (sent + lost)) * 100));
 			}
 
+			const server = (room as { serverInfo?: { region?: string } }).serverInfo;
+
+			// Carried forward. The size and rate blink out of the report from time
+			// to time — a sample taken while the encoder was reconfiguring — and
+			// a row that empties and refills is read as a fault rather than as a
+			// gap in the measurement.
+			const share = stats.share
+				? {
+						sending: stats.share.sending,
+						fps: stats.share.fps ?? held.current?.fps,
+						width: stats.share.width ?? held.current?.width,
+						height: stats.share.height ?? held.current?.height,
+					}
+				: undefined;
+
+			held.current = share;
+
 			setReading({
 				grade: grade(published.current, stats.rttMs, lossPercent),
+				holding: server?.region || undefined,
 				rttMs: stats.rttMs,
 				jitterMs: stats.jitterMs,
-				share: stats.share,
+				share,
 				ownAddress: stats.ownAddress,
 				lossPercent,
 				upKbps,
@@ -237,7 +267,7 @@ interface Gathered {
 	rttMs?: number;
 	jitterMs?: number;
 	ownAddress?: string;
-	share?: { width: number; height: number; fps: number };
+	share?: { width?: number; height?: number; fps?: number; sending: boolean };
 	totals: {
 		bytesSent: number;
 		bytesReceived: number;
@@ -271,24 +301,28 @@ async function gather(room: Room): Promise<Gathered> {
 		// rate is not a thing that can be added up. A camera at thirty beside a
 		// share at fifteen would otherwise read as forty-five.
 		if (publication.source === Track.Source.ScreenShare) {
-			report.forEach((entry: Record<string, unknown> & { type?: string }) => {
-				if (entry.type !== "outbound-rtp") return;
-
-				const fps = numeric(entry.framesPerSecond);
-				const width = numeric(entry.frameWidth);
-				const height = numeric(entry.frameHeight);
-
-				if (fps === undefined || width === undefined || height === undefined) return;
-
-				out.share = { width, height, fps: Math.round(fps) };
-			});
+			readShare(report, "outbound-rtp", true, out);
 		}
 	}
 
 	for (const participant of room.remoteParticipants.values()) {
 		for (const publication of participant.trackPublications.values()) {
 			const report = await publication.track?.getRTCStatsReport?.();
-			if (report) reports.push(report);
+			if (!report) continue;
+
+			reports.push(report);
+
+			// Somebody else's share, read the same way and reported the same
+			// way. The person watching has the same question as the person
+			// sharing — is this as smooth as it should be — and until now only
+			// the sharer could answer it. Which is the wrong way round: the
+			// watcher is the one seeing it go wrong.
+			//
+			// Not overwritten if this browser is sending one. Somebody sharing
+			// their own screen is asking about their own encoder.
+			if (publication.source === Track.Source.ScreenShare && !out.share?.sending) {
+				readShare(report, "inbound-rtp", false, out);
+			}
 		}
 	}
 
@@ -384,6 +418,44 @@ async function gather(room: Room): Promise<Gathered> {
 	}
 
 	return out;
+}
+
+/**
+ * Read a screen share's size and frame rate out of one track's report.
+ *
+ * The same two numbers whichever direction it is going, from a different entry:
+ * what an encoder produced, or what a decoder received. Read per publication
+ * rather than from the pooled figures below, because a frame rate is not a thing
+ * that can be added up — a camera at thirty beside a share at fifteen would
+ * otherwise read as forty-five.
+ */
+function readShare(
+	report: RTCStatsReport,
+	kind: "outbound-rtp" | "inbound-rtp",
+	sending: boolean,
+	out: Gathered,
+): void {
+	report.forEach((entry: Record<string, unknown> & { type?: string }) => {
+		if (entry.type !== kind) return;
+
+		// Taken one field at a time, and the row exists as soon as the track
+		// does.
+		//
+		// Requiring all three together is why the line used to come and go while
+		// a share was running: `framesPerSecond` is a rate and is simply absent
+		// until two samples have been taken, and the frame size is absent until
+		// the encoder has produced one. Both fill in within a second or two, and
+		// insisting on them meant a share that was plainly on screen had no line
+		// at all — which reads as the reading being broken rather than as it
+		// still arriving.
+		out.share = {
+			sending,
+			fps: numeric(entry.framesPerSecond),
+			width: numeric(entry.frameWidth),
+			height: numeric(entry.frameHeight),
+			...(out.share?.sending === sending ? {} : {}),
+		};
+	});
 }
 
 /** A stats field, where it is a number and not something else. */

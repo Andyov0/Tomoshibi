@@ -227,6 +227,9 @@ const zhHans: Dictionary = {
 	"4K": "4K",
 	"Sharing": "共享中",
 	"Your address": "你的地址",
+	"Relay server": "中继服务器",
+	"Original server": "源服务器",
+	"Watching": "观看中",
 };
 
 export default zhHans;

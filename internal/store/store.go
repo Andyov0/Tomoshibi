@@ -68,6 +68,19 @@ type Room struct {
 	Seen time.Time `json:"seen"`
 	// Joins counts every join since the beginning.
 	Joins uint64 `json:"joins"`
+
+	// Relay is the machine this room was last held on.
+	//
+	// Recorded because a meeting lives on one server and the rule about who may
+	// use a reserved one is about starting a call there, not about the people
+	// invited to it: a room an administrator opened on their own relay has to
+	// let in everybody they sent the link to. Knowing where it is is the whole
+	// of what that needs.
+	//
+	// Last rather than first, so a room that emptied and came back somewhere
+	// else is recorded where it now is. It is a note about where to find a
+	// meeting, not a claim of ownership.
+	Relay string `json:"relay,omitempty"`
 }
 
 // Store is the database.
@@ -378,4 +391,68 @@ func (s *Store) Rooms() ([]Named, error) {
 	})
 
 	return found, nil
+}
+
+// HoldRoom records which relay a room is being held on.
+//
+// Written after a join is authorised, so it reflects where somebody was
+// actually sent. Failure is not reported upward: this is a note that makes a
+// later join tidier, and a call should not be refused because a note could not
+// be kept.
+func (s *Store) HoldRoom(name, relay string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		raw := bucket.Get([]byte(name))
+		if raw == nil {
+			return nil
+		}
+
+		var tally Room
+		if err := json.Unmarshal(raw, &tally); err != nil {
+			return nil
+		}
+
+		if tally.Relay == relay {
+			return nil
+		}
+
+		tally.Relay = relay
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(name), encoded)
+	})
+}
+
+// HeldOn says which relay a room was last held on, if any.
+func (s *Store) HeldOn(name string) string {
+	var relay string
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		raw := bucket.Get([]byte(name))
+		if raw == nil {
+			return nil
+		}
+
+		var tally Room
+		if err := json.Unmarshal(raw, &tally); err == nil {
+			relay = tally.Relay
+		}
+
+		return nil
+	})
+
+	return relay
 }

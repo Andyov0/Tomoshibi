@@ -1,0 +1,165 @@
+package rtc
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/livekit/protocol/auth"
+)
+
+// StatsPath is where a relay reports on itself.
+//
+// Under /twirp rather than beside it, so that it is covered by whatever already
+// protects the media server's own API: a deployment that restricts those paths
+// to its control node gets this for free rather than having to be told about a
+// second one.
+const StatsPath = "/twirp/relay.stats"
+
+// Stats is what one relay knows about itself.
+//
+// Read from the media server's own counters, which only the process holding
+// them can see. This is why a control node cannot simply work these out: it has
+// no media server, and no amount of asking redis produces a CPU load.
+type Stats struct {
+	Node      string `json:"node"`
+	IP        string `json:"ip"`
+	Rooms     int32  `json:"rooms"`
+	Clients   int32  `json:"clients"`
+	TracksIn  int32  `json:"tracksIn"`
+	TracksOut int32  `json:"tracksOut"`
+
+	BytesIn  uint64 `json:"bytesIn"`
+	BytesOut uint64 `json:"bytesOut"`
+
+	// InPerSec and OutPerSec are means over Window, not instantaneous. Sent
+	// with the window rather than without it, because a rate that does not say
+	// what it is averaged over is read as the wrong one.
+	InPerSec  float64 `json:"inPerSec"`
+	OutPerSec float64 `json:"outPerSec"`
+	Window    float64 `json:"window"`
+
+	NackTotal  uint64  `json:"nackTotal"`
+	NackPerSec float32 `json:"nackPerSec"`
+
+	CPUs uint32  `json:"cpus"`
+	Load float32 `json:"load"`
+
+	// StartedAt is when this relay came up, so a control node can say which of
+	// its relays was restarted without asking anybody.
+	StartedAt time.Time `json:"startedAt"`
+}
+
+// Read takes one reading from the embedded media server.
+func (s *Server) Read(started time.Time) Stats {
+	stats := s.Stats()
+	in, out, window := s.Throughput()
+	id, ip := s.Node()
+
+	return Stats{
+		Node: id, IP: ip,
+		Rooms: stats.GetNumRooms(), Clients: stats.GetNumClients(),
+		TracksIn: stats.GetNumTracksIn(), TracksOut: stats.GetNumTracksOut(),
+		BytesIn: stats.GetBytesIn(), BytesOut: stats.GetBytesOut(),
+		InPerSec: in, OutPerSec: out, Window: window.Seconds(),
+		NackTotal: stats.GetNackTotal(), NackPerSec: stats.GetNackPerSec(),
+		CPUs: stats.GetNumCpus(), Load: stats.GetCpuLoad(),
+		StartedAt: started.UTC(),
+	}
+}
+
+// StatsHandler serves one relay's own counters to whoever holds the
+// deployment's credentials.
+//
+// Behind the same token the management API is behind, and for the same reason.
+// These figures say how many people are in calls here and how much is flowing,
+// which is not a secret worth much on its own and is exactly the shape of thing
+// that should not be readable by anybody who finds the port.
+func StatsHandler(server *Server, key, secret string, started time.Time) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !authorised(r, key, secret) {
+			// The same answer an unauthenticated twirp call gets, so this path
+			// does not stand out from the ones beside it.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(server.Read(started))
+	})
+}
+
+// authorised checks the bearer token a control node signs.
+//
+// Verified with the same secret the media server verifies join tokens with, so
+// there is no second credential: whoever can sign a join for this deployment
+// can read this, and nobody else can.
+func authorised(r *http.Request, key, secret string) bool {
+	header := r.Header.Get("Authorization")
+	if len(header) < 8 || header[:7] != "Bearer " {
+		return false
+	}
+
+	verifier, err := auth.ParseAPIToken(header[7:])
+	if err != nil {
+		return false
+	}
+
+	if verifier.APIKey() != key {
+		return false
+	}
+
+	// Any grant this deployment signs will do: the token proves its holder has
+	// the secret, which is the whole of what is being checked here. Requiring a
+	// particular grant would mean minting a second kind of token for a caller
+	// that has already proved everything there is to prove.
+	if _, _, err := verifier.Verify(secret); err != nil {
+		return false
+	}
+
+	return true
+}
+
+// AskStats reads one relay's counters over the network.
+func (c *Cluster) AskStats(ctx context.Context, relay string) (Stats, error) {
+	var stats Stats
+
+	control := c.controlFor(relay)
+
+	// The same shape of token the management calls carry, minted per request
+	// and valid for a minute. Nothing here needs a particular grant — the token
+	// proves its holder has this deployment's secret, which is the whole check.
+	token, err := auth.NewAccessToken(control.key, control.secret).
+		SetIdentity("tomoshibi").
+		SetVideoGrant(&auth.VideoGrant{RoomList: true}).
+		SetValidFor(time.Minute).
+		ToJWT()
+	if err != nil {
+		return stats, fmt.Errorf("mint a token for the relay stats: %w", err)
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, control.upstream+StatsPath, nil)
+	if err != nil {
+		return stats, err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+
+	response, err := c.client.Do(request)
+	if err != nil {
+		return stats, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return stats, fmt.Errorf("relay %s answered %d", relay, response.StatusCode)
+	}
+
+	if err := json.NewDecoder(response.Body).Decode(&stats); err != nil {
+		return stats, err
+	}
+
+	return stats, nil
+}

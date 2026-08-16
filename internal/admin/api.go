@@ -62,6 +62,9 @@ type API struct {
 	store    Names
 	relays   Relays
 	probe    Reachable
+	// fleet reads the counters of the relays this node does not run. Nil on a
+	// full deployment, which reads its own.
+	fleet Fleet
 	// onRelaysChanged lets the choosing side drop its cache the moment this
 	// list moves, so a relay added here is used by the very next join.
 	onRelaysChanged func()
@@ -159,6 +162,7 @@ func (a *API) UseCluster(cluster *rtc.Cluster) {
 
 	a.control = cluster
 	a.probe = cluster
+	a.fleet = cluster
 }
 
 // OnRelaysChanged registers what to run when the relay list moves.
@@ -356,9 +360,37 @@ func (a *API) trend(_ Session, w http.ResponseWriter, _ *http.Request) {
 	respond(w, a.history.Since())
 }
 
-func (a *API) now(_ Session, w http.ResponseWriter, _ *http.Request) {
+func (a *API) now(_ Session, w http.ResponseWriter, r *http.Request) {
+	// A control node holds no media and reads its relays instead. The shape
+	// differs because the thing being described differs: one process has a node
+	// identity and a load, and a fleet has a list of them and a sum.
 	if !a.local() {
-		a.detached(w)
+		if a.fleet == nil {
+			a.detached(w)
+			return
+		}
+
+		reading := readFleet(r.Context(), a.fleet, a.relayNames())
+
+		respond(w, map[string]any{
+			"since":    Started.UTC(),
+			"fleet":    true,
+			"nodes":    reading.Nodes,
+			"asked":    reading.Asked,
+			"answered": reading.Answered,
+			"rooms":    reading.Totals.Rooms,
+			"clients":  reading.Totals.Clients,
+			"tracks":   map[string]int32{"in": reading.Totals.TracksIn, "out": reading.Totals.TracksOut},
+			"bytes": map[string]any{
+				"in": reading.Totals.BytesIn, "out": reading.Totals.BytesOut,
+				"inPerSec": reading.Totals.InPerSec, "outPerSec": reading.Totals.OutPerSec,
+				"window": reading.Totals.Window,
+			},
+			"packets": map[string]any{
+				"nackTotal": reading.Totals.NackTotal, "nackPerSec": reading.Totals.NackPerSec,
+			},
+			"cpu": map[string]any{"count": reading.Totals.CPUs, "load": reading.Totals.Load},
+		})
 		return
 	}
 
@@ -513,9 +545,47 @@ func tracksOf(one *livekit.ParticipantInfo) []map[string]any {
 	return out
 }
 
-func (a *API) health(_ Session, w http.ResponseWriter, _ *http.Request) {
+func (a *API) health(_ Session, w http.ResponseWriter, r *http.Request) {
+	// On a control node the checks that ask about a media server are asked of
+	// each relay instead, and the answer is one list per machine. Reporting
+	// this node's own configuration alone would be describing the one machine
+	// in the deployment that holds no calls.
 	if !a.local() {
-		a.detached(w)
+		if a.fleet == nil {
+			a.detached(w)
+			return
+		}
+
+		reading := readFleet(r.Context(), a.fleet, a.relayNames())
+
+		checks := make([]map[string]any, 0, len(reading.Nodes))
+		for _, node := range reading.Nodes {
+			name := node.Name
+			if name == "" {
+				name = node.URL
+			}
+
+			checks = append(checks, map[string]any{
+				"name":      name,
+				"url":       node.URL,
+				"ok":        node.Reachable,
+				"detail":    node.Detail,
+				"node":      node.Node,
+				"ip":        node.IP,
+				"rooms":     node.Rooms,
+				"clients":   node.Clients,
+				"load":      node.Load,
+				"cpus":      node.CPUs,
+				"startedAt": node.StartedAt,
+			})
+		}
+
+		respond(w, map[string]any{
+			"fleet":    true,
+			"relays":   checks,
+			"asked":    reading.Asked,
+			"answered": reading.Answered,
+		})
 		return
 	}
 

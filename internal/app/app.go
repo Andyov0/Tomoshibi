@@ -187,6 +187,13 @@ func (a *App) Handler() http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 		})
 
+		// This relay's own counters, for a control node's dashboard. Behind the
+		// deployment's credentials: the figures say how many people are in calls
+		// here and how much is flowing, which is exactly the shape of thing that
+		// should not be readable by whoever finds the port.
+		mux.Handle("GET "+rtc.StatsPath,
+			rtc.StatsHandler(a.media, a.conf.Key, a.conf.Secret, admin.Started))
+
 		// The preflight a browser sends before a timed request that carries
 		// anything but the simplest headers.
 		mux.HandleFunc("OPTIONS /api/health", func(w http.ResponseWriter, _ *http.Request) {

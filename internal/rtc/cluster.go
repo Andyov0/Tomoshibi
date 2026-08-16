@@ -272,3 +272,12 @@ func (c *Cluster) Mute(ctx context.Context, room, identity, track string) error 
 func (c *Cluster) Close(ctx context.Context, room string) error {
 	return c.ask(ctx, func(control *Control) error { return control.Close(ctx, room) })
 }
+
+// Relays is the addresses this cluster knows about, read live.
+//
+// Exported for the management pages, which read every relay's counters rather
+// than asking one of them: rooms are cluster-wide and any relay can answer for
+// all, but a load average belongs to one machine and has to be asked of it.
+func (c *Cluster) Relays() []string {
+	return c.relays()
+}

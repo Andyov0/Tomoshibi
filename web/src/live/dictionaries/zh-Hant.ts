@@ -176,7 +176,6 @@ const zhHant: Dictionary = {
 	"Left empty, the name is used": "留空則顯示上面的名字",
 	"What a browser dials": "瀏覽器實際連線的位址",
 	"Region": "區域",
-	"This deployment's own label": "本部署自訂的區域標籤",
 	"Your passphrase": "你的通行語",
 	"Current passphrase": "目前通行語",
 	"New passphrase": "新通行語",
@@ -185,6 +184,13 @@ const zhHant: Dictionary = {
 	"Done. Your signature is now": "已修改。你的簽名現在是",
 	"Whichever answers fastest": "自動選擇回應最快的一台",
 	"no answer": "無回應",
+	"Groups the picker. A slash nests: Oversea/Asia": "決定選擇框裡的分組。用斜線巢狀:Oversea/Asia",
+	"China Mainland": "中國大陸",
+	"Oversea": "海外",
+	"Asia": "亞洲",
+	"Europe": "歐洲",
+	"America": "美洲",
+	"Measure again": "重新測量",
 };
 
 export default zhHant;

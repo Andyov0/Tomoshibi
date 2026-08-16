@@ -176,7 +176,6 @@ const zhHans: Dictionary = {
 	"Left empty, the name is used": "留空则显示上面的名字",
 	"What a browser dials": "浏览器实际连接的地址",
 	"Region": "区域",
-	"This deployment's own label": "本部署自定义的区域标签",
 	"Your passphrase": "你的口令",
 	"Current passphrase": "当前口令",
 	"New passphrase": "新口令",
@@ -185,6 +184,13 @@ const zhHans: Dictionary = {
 	"Done. Your signature is now": "已修改。你的签名现在是",
 	"Whichever answers fastest": "自动选择响应最快的一台",
 	"no answer": "无响应",
+	"Groups the picker. A slash nests: Oversea/Asia": "决定选择框里的分组。用斜杠嵌套:Oversea/Asia",
+	"China Mainland": "中国大陆",
+	"Oversea": "海外",
+	"Asia": "亚洲",
+	"Europe": "欧洲",
+	"America": "美洲",
+	"Measure again": "重新测量",
 };
 
 export default zhHans;

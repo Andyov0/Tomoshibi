@@ -402,7 +402,7 @@ function Settings({
 					/>
 				</Field>
 
-				<Field label={t("Region")} hint={t("This deployment's own label")}>
+				<Field label={t("Region")} hint={t("Groups the picker. A slash nests: Oversea/Asia")}>
 					<input
 						value={region}
 						onChange={(event) => setRegion(event.target.value)}

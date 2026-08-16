@@ -209,7 +209,6 @@ const en = {
 	"Left empty, the name is used": "Left empty, the name is used",
 	"What a browser dials": "What a browser dials",
 	"Region": "Region",
-	"This deployment's own label": "This deployment's own label",
 	"Your passphrase": "Your passphrase",
 	"Current passphrase": "Current passphrase",
 	"New passphrase": "New passphrase",
@@ -218,6 +217,13 @@ const en = {
 	"Done. Your signature is now": "Done. Your signature is now",
 	"Whichever answers fastest": "Whichever answers fastest",
 	"no answer": "no answer",
+	"Groups the picker. A slash nests: Oversea/Asia": "Groups the picker. A slash nests: Oversea/Asia",
+	"China Mainland": "China Mainland",
+	"Oversea": "Oversea",
+	"Asia": "Asia",
+	"Europe": "Europe",
+	"America": "America",
+	"Measure again": "Measure again",
 } as const;
 
 export default en;

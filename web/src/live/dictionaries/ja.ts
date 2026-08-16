@@ -176,7 +176,6 @@ const ja: Dictionary = {
 	"Left empty, the name is used": "空欄なら上の名前が使われます",
 	"What a browser dials": "ブラウザーが実際に接続する先",
 	"Region": "地域",
-	"This deployment's own label": "この配備が独自につける地域ラベル",
 	"Your passphrase": "あなたのパスフレーズ",
 	"Current passphrase": "現在のパスフレーズ",
 	"New passphrase": "新しいパスフレーズ",
@@ -185,6 +184,13 @@ const ja: Dictionary = {
 	"Done. Your signature is now": "変更しました。あなたの署名は",
 	"Whichever answers fastest": "応答が最も速いものを自動で選びます",
 	"no answer": "応答なし",
+	"Groups the picker. A slash nests: Oversea/Asia": "選択リストの分類に使われます。スラッシュで入れ子:Oversea/Asia",
+	"China Mainland": "中国本土",
+	"Oversea": "海外",
+	"Asia": "アジア",
+	"Europe": "ヨーロッパ",
+	"America": "アメリカ",
+	"Measure again": "再計測",
 };
 
 export default ja;

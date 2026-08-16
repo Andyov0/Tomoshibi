@@ -462,10 +462,13 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Picked once and used twice: the address to dial and the name to call it.
+	// Asking twice would be two independent choices, and under round robin they
+	// would not be the same one.
 	chosen := a.relays.pick(name, body.Relay, r, a.conf.Meet.TrustProxy, isAdmin)
 
 	respond(w, joinResponse{
-		URL:      a.signallingURLFor(name, body.Relay, r, isAdmin),
+		URL:      a.signallingURLFor(chosen, r),
 		Token:    grant.Token,
 		Identity: grant.Identity,
 		Room:     name,
@@ -680,7 +683,7 @@ func (a *App) administrators() []config.Admin {
 // address is frequently a wildcard and always the server's own view. A caller
 // reached us somehow, and that host is by definition one that works for them.
 func (a *App) signallingURL(r *http.Request) string {
-	return a.signallingURLFor("", "", r, false)
+	return a.signallingURLFor(store.Relay{}, r)
 }
 
 // signallingURLFor is where a client joining this room should open its
@@ -695,9 +698,9 @@ func (a *App) signallingURL(r *http.Request) string {
 // media lives, and it outranks public_url — which on a control node describes
 // where the *client* is served and would send everybody to a machine running no
 // media server at all.
-func (a *App) signallingURLFor(name, chosen string, r *http.Request, admin bool) string {
-	if a.relays.any() {
-		return a.relays.pick(name, chosen, r, a.conf.Meet.TrustProxy, admin).URL
+func (a *App) signallingURLFor(chosen store.Relay, r *http.Request) string {
+	if chosen.URL != "" {
+		return chosen.URL
 	}
 
 	if a.conf.Meet.PublicURL != "" {

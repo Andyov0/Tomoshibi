@@ -454,3 +454,21 @@ func TestAReservedRelayIsRefusedByNameAndNotSwapped(t *testing.T) {
 		t.Error("asking for nothing was treated as asking for something reserved")
 	}
 }
+
+// A deployment that holds its own media has no relay list, and asking it to
+// choose must be an answer rather than a crash.
+//
+// It became one when the join started asking for the chosen relay by name as
+// well as by address: the call moved out from behind the guard that had always
+// stood in front of it, and a nil list met a method that assumed one. The test
+// that caught it was a join on an ordinary single-machine deployment, which is
+// the commonest way this program is run.
+func TestChoosingWithNoRelaysIsAnAnswerAndNotACrash(t *testing.T) {
+	var none *relays
+
+	got := none.pick("standup", "", nil, false, false)
+
+	if got.URL != "" || got.Name != "" {
+		t.Errorf("a deployment with no relays chose %+v", got)
+	}
+}

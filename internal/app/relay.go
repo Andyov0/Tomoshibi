@@ -238,6 +238,14 @@ func (r *relays) reserved(name string) bool {
 //
 // chosen is what a client measured and asked for, empty when it did not ask.
 func (r *relays) pick(room string, chosen string, req *http.Request, trustProxy bool, admin bool) store.Relay {
+	// Nil where this deployment holds its own media and has no list to choose
+	// from. Guarded here rather than at each caller, because "there is nothing
+	// to choose" is an answer this function can give and every caller already
+	// handles: an empty relay means the deployment's own address is used.
+	if r == nil {
+		return store.Relay{}
+	}
+
 	all := r.live()
 
 	// A relay reserved for administrators is not among the ones anybody else is

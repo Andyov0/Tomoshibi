@@ -106,10 +106,15 @@ export function AdminsPanel({
 								act(one.trip, () => api.changeAdmin(one.trip, { name: one.name, can }))
 							}
 							onDrop={() => act(one.trip, () => api.dropAdmin(one.trip))}
+							onRename={(name) =>
+								act(one.trip, () => api.changeAdmin(one.trip, { name, can: one.can }))
+							}
 						/>
 					))}
 				</ul>
 			</Card>
+
+			<OwnPassphrase />
 
 			<p className="px-1 text-fg-muted text-[11.5px] leading-relaxed">
 				{t("A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.")}
@@ -125,6 +130,7 @@ function Row({
 	busy,
 	onChange,
 	onDrop,
+	onRename,
 }: {
 	admin: Administrator;
 	canModerate: boolean;
@@ -132,14 +138,31 @@ function Row({
 	busy: boolean;
 	onChange: (can: string[]) => void;
 	onDrop: () => void;
+	onRename: (name: string) => void;
 }) {
+	const [name, setName] = useState(admin.name);
 	const moderates = admin.can.includes("moderate");
 
 	return (
 		<li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-border border-b px-3 py-3 last:border-0 sm:px-4">
 			<div className="flex min-w-0 flex-col gap-0.5">
 				<span className="flex items-center gap-2">
-					<span className="truncate text-fg text-sm">{admin.name || t("Unnamed")}</span>
+					{canModerate ? (
+						<input
+							value={name}
+							onChange={(event) => setName(event.target.value)}
+							onBlur={() => {
+								// Saved on leaving the field rather than on every
+								// keystroke, which would save halfway through a word.
+								if (name.trim() !== admin.name) onRename(name.trim());
+							}}
+							placeholder={t("Unnamed")}
+							maxLength={64}
+							className="w-32 min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-fg text-sm outline-none hover:border-border focus:border-border focus:bg-surface-2"
+						/>
+					) : (
+						<span className="truncate text-fg text-sm">{admin.name || t("Unnamed")}</span>
+					)}
 					{admin.self && (
 						<span className="rounded-full border border-border px-1.5 text-[10px] text-fg-muted">
 							{t("you")}
@@ -262,5 +285,97 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 				</button>
 			</div>
 		</form>
+	);
+}
+
+/**
+ * Changing your own passphrase.
+ *
+ * There is no password on this server to change. The passphrase is never sent
+ * here in any form that is kept and never written down — what is stored is the
+ * signature it produces — so rotating one means being recognised by a new
+ * signature from now on. Which is why the new signature is shown afterwards: it
+ * is what prints beside this person's name in every room from then on, and they
+ * are the one person who has to know it moved.
+ *
+ * The current one is asked for even though the session already says who this is.
+ * A session proves somebody signed in; this asks whether the person at the
+ * keyboard now is that person, and an unattended laptop is exactly where those
+ * two differ.
+ */
+function OwnPassphrase() {
+	const [current, setCurrent] = useState("");
+	const [next, setNext] = useState("");
+	const [saving, setSaving] = useState(false);
+	const [changed, setChanged] = useState<string>();
+
+	const submit = async () => {
+		if (saving) return;
+
+		setSaving(true);
+
+		try {
+			const result = await api.changePassphrase(current, next);
+			setCurrent("");
+			setNext("");
+			setChanged(result.trip);
+		} catch (err) {
+			actionFailed(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<Card title="Your passphrase">
+			<form
+				className="flex flex-col gap-3 px-3 py-3 sm:px-4"
+				onSubmit={(event) => {
+					event.preventDefault();
+					void submit();
+				}}
+			>
+				<div className="flex flex-wrap gap-2">
+					<input
+						type="password"
+						value={current}
+						onChange={(event) => setCurrent(event.target.value)}
+						placeholder={t("Current passphrase")}
+						aria-label={t("Current passphrase")}
+						autoComplete="current-password"
+						className="min-w-40 flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+
+					<input
+						type="password"
+						value={next}
+						onChange={(event) => setNext(event.target.value)}
+						placeholder={t("New passphrase")}
+						aria-label={t("New passphrase")}
+						autoComplete="new-password"
+						className="min-w-40 flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</div>
+
+				<div className="flex items-center gap-3">
+					<button
+						type="submit"
+						disabled={saving || !current || next.length < 8}
+						className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+					>
+						{saving && <Loader2 className="size-3.5 animate-spin" />}
+						{t("Change it")}
+					</button>
+
+					{changed ? (
+						<span className="text-[11.5px] text-fg-muted">
+							{t("Done. Your signature is now")} <span className="readout text-fg">{changed}</span>
+						</span>
+					) : (
+						<span className="text-[11.5px] text-fg-muted">{t("At least eight characters.")}</span>
+					)}
+				</div>
+			</form>
+		</Card>
 	);
 }

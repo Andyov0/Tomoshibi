@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { say, t } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
-import { Check, Copy, Loader2, Plus, Terminal, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, Loader2, Plus, Terminal, Trash2, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { type Relay, api } from "./api";
 import { usePoll } from "./poll";
@@ -134,9 +134,26 @@ export function RelaysPanel({
 				) : null}
 			</Card>
 
-			{relays.map((relay) => (
+			{relays.map((relay, index) => (
 				<RelayRow
 					key={relay.name}
+					// Which arrows to draw. The list is what the server sent, in
+					// the order it sent it, so an end is an end.
+					first={index === 0}
+					last={index === relays.length - 1}
+					onMove={(by) =>
+						act(relay.name, () => {
+							const order = relays.map((one) => one.name);
+							const to = index + by;
+							const moved = order[index];
+							if (moved === undefined || to < 0 || to >= order.length) return Promise.resolve();
+
+							order.splice(index, 1);
+							order.splice(to, 0, moved);
+
+							return api.reorderRelays(order);
+						})
+					}
 					relay={relay}
 					canModerate={canModerate}
 					busy={busy === relay.name}
@@ -158,13 +175,25 @@ function RelayRow({
 	onToggle,
 	onDrop,
 	onEdit,
+	onMove,
+	first,
+	last,
 }: {
 	relay: Relay;
 	canModerate: boolean;
 	busy: boolean;
+	onMove: (by: number) => void;
+	first: boolean;
+	last: boolean;
 	onToggle: () => void;
 	onDrop: () => void;
-	onEdit: (change: { label?: string; fallback?: boolean }) => void;
+	onEdit: (change: {
+		name?: string;
+		url?: string;
+		region?: string;
+		label?: string;
+		fallback?: boolean;
+	}) => void;
 }) {
 	const [confirming, setConfirming] = useState(false);
 
@@ -201,6 +230,30 @@ function RelayRow({
 				{canModerate && (
 					<div className="flex shrink-0 items-center gap-2">
 						{busy && <Loader2 className="size-4 animate-spin text-fg-muted" />}
+
+						{/* Order is not something this server can work out. Alphabetical
+						    puts a reserve above the relay holding every call, and by-date
+						    puts whichever machine was rebuilt last at the bottom. */}
+						<div className="flex items-center">
+							<button
+								type="button"
+								disabled={busy || first}
+								onClick={() => onMove(-1)}
+								aria-label={t("Move up")}
+								className="rounded-l-md border border-border p-1.5 hover:bg-surface-2 disabled:opacity-30"
+							>
+								<ChevronUp className="size-3.5" />
+							</button>
+							<button
+								type="button"
+								disabled={busy || last}
+								onClick={() => onMove(1)}
+								aria-label={t("Move down")}
+								className="-ml-px rounded-r-md border border-border p-1.5 hover:bg-surface-2 disabled:opacity-30"
+							>
+								<ChevronDown className="size-3.5" />
+							</button>
+						</div>
 
 						<button
 							type="button"
@@ -272,15 +325,23 @@ function RelayRow({
 }
 
 /**
- * What this relay is called, and whether it is held in reserve.
+ * Everything about this relay that can be changed.
  *
- * Two settings that answer different questions and are grouped because they are
- * both "how should this machine be used", as against the buttons above, which
- * are "is it in service at all".
+ * All of it, including the name and the address. Neither used to be editable and
+ * both needed to be: an address changes when a machine moves or its port does,
+ * and a name is whatever somebody typed at a prompt on the night the machine was
+ * built — usually before anybody knew what it would end up being for.
  *
- * The name is not among them. It is the key a client sends back after measuring,
- * so renaming would orphan every browser that had measured the old one — which
- * is exactly why a label exists to be changed instead.
+ * The name is still the key, and changing it still costs something: a client
+ * that measured the old one sends it at the next join and is quietly ignored,
+ * falling back to wherever the room already is. That is one join with a wasted
+ * measurement, which is a great deal cheaper than a deployment stuck with the
+ * word "sh" forever.
+ *
+ * Saved together rather than field by field, because they are usually changed
+ * together — a machine that moved has a new address and often a new name — and
+ * because a form that saves on every keystroke is one that saves halfway
+ * through a word.
  */
 function Settings({
 	relay,
@@ -289,46 +350,110 @@ function Settings({
 }: {
 	relay: Relay;
 	busy: boolean;
-	onSave: (change: { label?: string; fallback?: boolean }) => void;
+	onSave: (change: {
+		name?: string;
+		url?: string;
+		region?: string;
+		label?: string;
+		fallback?: boolean;
+	}) => void;
 }) {
+	const [name, setName] = useState(relay.name);
+	const [url, setUrl] = useState(relay.url);
+	const [region, setRegion] = useState(relay.region ?? "");
 	const [label, setLabel] = useState(relay.label ?? "");
 
-	const dirty = label !== (relay.label ?? "");
+	const dirty =
+		name !== relay.name ||
+		url !== relay.url ||
+		region !== (relay.region ?? "") ||
+		label !== (relay.label ?? "");
 
 	return (
-		<div className="flex flex-wrap items-end gap-3 border-border border-t px-4 py-3">
-			<label className="flex min-w-40 flex-1 flex-col gap-1">
-				<span className="text-fg-muted text-[11px]">{t("Shown to people as")}</span>
-				<input
-					value={label}
-					onChange={(event) => setLabel(event.target.value)}
-					placeholder={relay.name}
-					maxLength={64}
-					className="rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
-				/>
-			</label>
+		<div className="flex flex-col gap-3 border-border border-t px-4 py-3">
+			<div className="flex flex-wrap gap-3">
+				<Field label={t("Name")} hint={t("How this deployment refers to it")}>
+					<input
+						value={name}
+						onChange={(event) => setName(event.target.value)}
+						maxLength={64}
+						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</Field>
 
+				<Field label={t("Shown to people as")} hint={t("Left empty, the name is used")}>
+					<input
+						value={label}
+						onChange={(event) => setLabel(event.target.value)}
+						placeholder={relay.name}
+						maxLength={64}
+						className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</Field>
+			</div>
 
-			<label className="flex items-center gap-1.5 pb-2 text-[12px] text-fg-muted">
-				<input
-					type="checkbox"
-					checked={relay.fallback ?? false}
-					disabled={busy}
-					onChange={(event) => onSave({ fallback: event.target.checked })}
-					className="size-3.5 accent-tally"
-				/>
-				{t("Keep in reserve")}
-			</label>
+			<div className="flex flex-wrap gap-3">
+				<Field label={t("Address")} hint={t("What a browser dials")} wide>
+					<input
+						value={url}
+						onChange={(event) => setUrl(event.target.value)}
+						placeholder="wss://host:port"
+						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</Field>
 
-			<button
-				type="button"
-				disabled={busy || !dirty}
-				onClick={() => onSave({ label })}
-				className="rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
-			>
-				{t("Save")}
-			</button>
+				<Field label={t("Region")} hint={t("This deployment's own label")}>
+					<input
+						value={region}
+						onChange={(event) => setRegion(event.target.value)}
+						maxLength={64}
+						className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</Field>
+			</div>
+
+			<div className="flex flex-wrap items-center gap-4">
+				<label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+					<input
+						type="checkbox"
+						checked={relay.fallback ?? false}
+						disabled={busy}
+						onChange={(event) => onSave({ fallback: event.target.checked })}
+						className="size-3.5 accent-tally"
+					/>
+					{t("Keep in reserve")}
+				</label>
+
+				<button
+					type="button"
+					disabled={busy || !dirty}
+					onClick={() => onSave({ name, url, region, label })}
+					className="ml-auto rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+				>
+					{t("Save")}
+				</button>
+			</div>
 		</div>
+	);
+}
+
+function Field({
+	label,
+	hint,
+	wide,
+	children,
+}: {
+	label: string;
+	hint: string;
+	wide?: boolean;
+	children: React.ReactNode;
+}) {
+	return (
+		<label className={cn("flex flex-col gap-1", wide ? "min-w-64 flex-[2]" : "min-w-40 flex-1")}>
+			<span className="text-fg-muted text-[11px]">{label}</span>
+			{children}
+			<span className="text-fg-muted/70 text-[10.5px]">{hint}</span>
+		</label>
 	);
 }
 

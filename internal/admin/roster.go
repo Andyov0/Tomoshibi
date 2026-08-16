@@ -243,3 +243,88 @@ func reasonFor(err error) string {
 
 	return err.Error()
 }
+
+// changeOwnPassphrase moves whoever is signed in to a new signature.
+//
+// There is no password on this server to change. The passphrase is never sent
+// here in a form anything keeps and never written down — what is stored is the
+// signature it produces — so rotating one means being recognised by a new
+// signature from now on, and that is what this does.
+//
+// The old passphrase is required even though the session already proves who
+// this is. What a session proves is that somebody was signed in; what this asks
+// is whether the person at the keyboard now is the one who signed in then. An
+// unattended laptop is exactly the case where those differ, and it is exactly
+// the case where a silent change of credentials is worth something to whoever
+// walked past.
+func (a *API) changeOwnPassphrase(session Session, w http.ResponseWriter, r *http.Request) {
+	if a.roster == nil {
+		a.detached(w)
+		return
+	}
+
+	var body struct {
+		Current string `json:"current"`
+		Next    string `json:"next"`
+	}
+
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+		refuse(w, http.StatusBadRequest, "unreadable")
+		return
+	}
+
+	if strings.TrimSpace(body.Next) == "" {
+		refuse(w, http.StatusBadRequest, "no_passphrase")
+		return
+	}
+
+	// Long enough to be worth having. This is the only credential on the
+	// deployment and it is checked by an endpoint anybody can reach, so a short
+	// one is a short one whichever way it is stored.
+	if len([]rune(strings.TrimSpace(body.Next))) < 8 {
+		refuse(w, http.StatusBadRequest, "passphrase_too_short")
+		return
+	}
+
+	if a.sessions.Signature(body.Current) != session.Trip {
+		a.log.Record(Entry{
+			Action: "change passphrase", Trip: session.Trip, Name: session.Name,
+			Failed: true, Reason: "the current passphrase did not match",
+		})
+
+		refuse(w, http.StatusForbidden, "wrong_passphrase")
+		return
+	}
+
+	next := a.sessions.Signature(body.Next)
+
+	if next == session.Trip {
+		// The same passphrase. Refused rather than quietly succeeding, because
+		// somebody who thought they had changed it would go on believing so.
+		refuse(w, http.StatusBadRequest, "passphrase_unchanged")
+		return
+	}
+
+	if err := a.roster.ReplaceAdminTrip(session.Trip, next); err != nil {
+		a.log.Record(Entry{
+			Action: "change passphrase", Trip: session.Trip, Name: session.Name,
+			Failed: true, Reason: reasonFor(err),
+		})
+
+		fail(w, err)
+		return
+	}
+
+	// Carried across, or they would be signed out by their own success: the
+	// cookie in their browser names a signature this deployment no longer has.
+	a.sessions.Moved(session.Trip, next)
+
+	a.log.Record(Entry{
+		Action: "change passphrase", Trip: next, Name: session.Name,
+	})
+
+	// The new signature is returned because it is what prints beside their name
+	// in every room from now on, and somebody who has just changed it is the one
+	// person who needs to know it changed.
+	respond(w, map[string]any{"trip": next})
+}

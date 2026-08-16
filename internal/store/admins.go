@@ -213,6 +213,68 @@ func (s *Store) UpdateAdmin(admin Admin) error {
 	})
 }
 
+// ReplaceAdminTrip moves an administrator to a new signature.
+//
+// Which is how somebody changes their passphrase. There is no password here to
+// change — the passphrase is never sent to this server and never stored, and
+// what is kept is the signature it produces — so rotating one is not an edit to
+// a field but a change of the key somebody is recognised by.
+//
+// Both halves in one transaction, because the two of them separately are a
+// window in which the deployment has either two administrators where it had one
+// or, far worse, none. The last-moderator guard is deliberately not consulted:
+// this is the same person keeping the same capabilities, and a check that
+// counted the old entry as leaving would refuse the one administrator on a
+// deployment from ever changing their passphrase.
+func (s *Store) ReplaceAdminTrip(from, to string) error {
+	replacement := Admin{Trip: to}
+	if err := replacement.Valid(); err != nil {
+		return err
+	}
+
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(adminsBucket)
+		if bucket == nil {
+			return ErrNoSuchAdmin
+		}
+
+		raw := bucket.Get([]byte(from))
+		if raw == nil {
+			return ErrNoSuchAdmin
+		}
+
+		if from != to && bucket.Get([]byte(to)) != nil {
+			// Somebody else already answers to the new signature, which means
+			// the new passphrase is one they are using. Refused rather than
+			// merged: the alternative silently hands one person's access to
+			// another.
+			return ErrAdminExists
+		}
+
+		var admin Admin
+		if err := json.Unmarshal(raw, &admin); err != nil {
+			return err
+		}
+
+		admin.Trip = to
+
+		encoded, err := json.Marshal(admin)
+		if err != nil {
+			return err
+		}
+
+		if err := bucket.Put([]byte(to), encoded); err != nil {
+			return err
+		}
+
+		if from == to {
+			return nil
+		}
+
+		return bucket.Delete([]byte(from))
+	})
+}
+
 // RemoveAdmin forgets somebody.
 //
 // Their open session is not ended here — sessions are held in memory by whoever

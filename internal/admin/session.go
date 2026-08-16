@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -190,4 +191,30 @@ func secret() string {
 	}
 
 	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+// Signature is what a passphrase produces on this deployment.
+//
+// Exposed so that changing one can be checked against the signature already
+// held, without the passphrase leaving this package or being written anywhere.
+func (s *Sessions) Signature(passphrase string) string {
+	return room.Trip(s.tripKey, strings.TrimSpace(passphrase))
+}
+
+// Moved carries every open session from one signature to another.
+//
+// Called when somebody changes their passphrase. Without it they would be
+// signed out by their own success: the cookie in their browser names a
+// signature the deployment no longer has, and the next request would be refused
+// with nothing to explain it.
+func (s *Sessions) Moved(from, to string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for token, session := range s.open {
+		if session.Trip == from {
+			session.Trip = to
+			s.open[token] = session
+		}
+	}
 }

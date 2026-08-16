@@ -85,6 +85,42 @@ func (r *relayList) RemoveRelay(name string) error {
 	return store.ErrNoSuchRelay
 }
 
+// ReorderRelays puts them in the order given, so that a caller which claims to
+// have reordered can be checked rather than believed.
+func (r *relayList) ReorderRelays(names []string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	at := make(map[string]int, len(names))
+	for position, name := range names {
+		at[name] = position + 1
+	}
+
+	for i := range r.relays {
+		if position, ok := at[r.relays[i].Name]; ok {
+			r.relays[i].Order = position
+		}
+	}
+
+	return nil
+}
+
+// RenameRelay moves one, so that a test can check a rename happened rather than
+// take a caller's word for it.
+func (r *relayList) RenameRelay(from, to string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for i := range r.relays {
+		if r.relays[i].Name == from {
+			r.relays[i].Name = to
+			return nil
+		}
+	}
+
+	return store.ErrNoSuchRelay
+}
+
 // naming records what it was asked to point where.
 type naming struct {
 	mu      sync.Mutex

@@ -64,6 +64,7 @@ type Roster interface {
 	AddAdmin(admin store.Admin) error
 	UpdateAdmin(admin store.Admin) error
 	RemoveAdmin(trip string) error
+	ReplaceAdminTrip(from, to string) error
 }
 
 // API is the management surface.
@@ -309,6 +310,7 @@ func (a *API) Mount(mux *http.ServeMux) {
 	// enrolment secret.
 	mux.HandleFunc("GET /api/admin/relays/script", a.moderate(a.installScript))
 	mux.HandleFunc("GET /api/admin/relays/command", a.moderate(a.installCommand))
+	mux.HandleFunc("PUT /api/admin/relays/order", a.moderate(a.orderRelays))
 
 	// Who else may open these pages. Reading the list needs observe; changing
 	// it needs moderate, because being able to grant an ability is that
@@ -317,6 +319,12 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/admins", a.moderate(a.addRole))
 	mux.HandleFunc("PATCH /api/admin/admins/{trip}", a.moderate(a.changeRole))
 	mux.HandleFunc("DELETE /api/admin/admins/{trip}", a.moderate(a.dropRole))
+
+	// Changing one's own passphrase needs no capability beyond being signed in.
+	// It is not an administrative act on the deployment; it is somebody looking
+	// after their own credential, and requiring moderate for it would mean an
+	// observer could never rotate theirs.
+	mux.HandleFunc("POST /api/admin/admins/me/passphrase", a.observe(a.changeOwnPassphrase))
 
 	mux.HandleFunc("PUT /api/admin/policy", a.moderate(a.setPolicy))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))

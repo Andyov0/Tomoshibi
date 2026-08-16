@@ -283,6 +283,7 @@ export const api = {
 	editRelay: (
 		name: string,
 		change: {
+			name?: string;
 			url?: string;
 			region?: string;
 			enabled?: boolean;
@@ -329,8 +330,34 @@ export const api = {
 			body: JSON.stringify(change),
 		}),
 
+	/**
+	 * Change your own passphrase.
+	 *
+	 * The current one is sent as well as the new one, even though the session
+	 * already says who this is. A session proves somebody signed in; this asks
+	 * whether the person at the keyboard now is that person, which is exactly
+	 * the question an unattended laptop raises.
+	 */
+	changePassphrase: (current: string, next: string) =>
+		call<{ trip: string }>("/admins/me/passphrase", {
+			method: "POST",
+			body: JSON.stringify({ current, next }),
+		}),
+
 	dropAdmin: (trip: string) =>
 		call<{ removed: string }>(`/admins/${encodeURIComponent(trip)}`, { method: "DELETE" }),
+
+	/**
+	 * Put the relays in a chosen order.
+	 *
+	 * The whole list rather than one move at a time: two administrators each
+	 * pressing an arrow would otherwise interleave into an order neither chose.
+	 */
+	reorderRelays: (names: string[]) =>
+		call<{ ordered: number }>("/relays/order", {
+			method: "PUT",
+			body: JSON.stringify({ names }),
+		}),
 
 	relayCommand: () => call<{ command: string; domain: string; port: number }>("/relays/command"),
 

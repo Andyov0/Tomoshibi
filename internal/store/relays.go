@@ -59,6 +59,18 @@ type Relay struct {
 	// Added is when somebody put it here, for a page that wants to say so.
 	Added time.Time `json:"added"`
 
+	// Order is where it sits in the list, smallest first.
+	//
+	// Set from a page rather than derived, because the useful order is not one
+	// this server can work out. Alphabetical put a reserve relay above the one
+	// holding every call, and by-date put whichever machine was rebuilt most
+	// recently at the bottom. Whoever runs the deployment knows which relay they
+	// want to look at first.
+	//
+	// Zero on everything written before this existed, which sorts them together
+	// and leaves the name to break the tie — exactly the order they had.
+	Order int `json:"order,omitempty"`
+
 	// Fallback keeps a relay out of the ordinary rotation without taking it out
 	// of service.
 	//
@@ -151,9 +163,64 @@ func (s *Store) Relays() ([]Relay, error) {
 		return nil, fmt.Errorf("read the relays: %w", err)
 	}
 
-	sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+	// By the order somebody chose, then by name for anything they have not
+	// ordered. Stable in both halves, so a page redrawn after a change does not
+	// reorder itself under whoever is reading it, and two control nodes show the
+	// same list.
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].Order != list[j].Order {
+			return list[i].Order < list[j].Order
+		}
+
+		return list[i].Name < list[j].Name
+	})
 
 	return list, nil
+}
+
+// ReorderRelays puts the list in the order given.
+//
+// The whole list at once rather than a move at a time. Two administrators
+// pressing an arrow each would otherwise interleave into an order neither
+// chose, and a swap that half applied would leave two relays claiming one
+// position. This writes positions from one, so whatever arrives last is simply
+// the order — and anything the caller did not mention keeps its place after the
+// ones that were.
+func (s *Store) ReorderRelays(names []string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(relaysBucket)
+		if bucket == nil {
+			return ErrNoSuchRelay
+		}
+
+		for position, name := range names {
+			raw := bucket.Get([]byte(name))
+			if raw == nil {
+				// Skipped rather than refused. A relay removed while somebody
+				// was dragging is not a reason to refuse the order they chose
+				// for the others.
+				continue
+			}
+
+			var relay Relay
+			if err := json.Unmarshal(raw, &relay); err != nil {
+				continue
+			}
+
+			relay.Order = position + 1
+
+			encoded, err := json.Marshal(relay)
+			if err != nil {
+				return err
+			}
+
+			if err := bucket.Put([]byte(name), encoded); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
 }
 
 // AddRelay records a new one.
@@ -233,6 +300,64 @@ func (s *Store) UpdateRelay(relay Relay) error {
 		}
 
 		return bucket.Put([]byte(relay.Name), encoded)
+	})
+}
+
+// RenameRelay moves a relay to a new name, keeping everything else.
+//
+// The name is the key, and it was immutable for a real reason: a client that
+// measured "shanghai" a minute ago sends that name at the join, and a rename
+// leaves it falling back as though it had never measured anything. That cost is
+// one join with an unused measurement, which is small — and paying it is better
+// than a deployment stuck with whatever prefix somebody typed at a prompt on
+// the night the machine was built.
+//
+// One transaction, because the two halves separately are a window in which the
+// relay exists twice or not at all, and not-at-all means calls being sent
+// nowhere.
+func (s *Store) RenameRelay(from, to string) error {
+	to = strings.TrimSpace(to)
+
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(relaysBucket)
+		if bucket == nil {
+			return ErrNoSuchRelay
+		}
+
+		raw := bucket.Get([]byte(from))
+		if raw == nil {
+			return ErrNoSuchRelay
+		}
+
+		if from == to {
+			return nil
+		}
+
+		if bucket.Get([]byte(to)) != nil {
+			return ErrRelayExists
+		}
+
+		var relay Relay
+		if err := json.Unmarshal(raw, &relay); err != nil {
+			return err
+		}
+
+		relay.Name = to
+
+		if err := relay.Valid(); err != nil {
+			return err
+		}
+
+		encoded, err := json.Marshal(relay)
+		if err != nil {
+			return err
+		}
+
+		if err := bucket.Put([]byte(to), encoded); err != nil {
+			return err
+		}
+
+		return bucket.Delete([]byte(from))
 	})
 }
 

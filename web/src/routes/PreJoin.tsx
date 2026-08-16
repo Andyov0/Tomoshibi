@@ -420,10 +420,10 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 								{servers.map((one) => (
 									<option key={one.name} value={one.name}>
 										{say(one.label || one.name)}
-										{/* A reserve relay is a working relay a long way
+										{/* A fallback relay is a working relay a long way
 										    away. Somebody may want it and should know
 										    what they are asking for. */}
-										{one.fallback ? ` — ${t("reserve")}` : ""}
+										{one.fallback ? "  [Fallback]" : ""}
 									</option>
 								))}
 							</select>

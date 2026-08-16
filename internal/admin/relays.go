@@ -22,6 +22,8 @@ type Relays interface {
 	AddRelay(relay store.Relay) error
 	UpdateRelay(relay store.Relay) error
 	RemoveRelay(name string) error
+	ReorderRelays(names []string) error
+	RenameRelay(from, to string) error
 }
 
 // Reachable is how a page finds out whether a relay is answering.
@@ -169,9 +171,12 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 
 	name := r.PathValue("relay")
 
+	// Pointers throughout, so that clearing a field and leaving it alone are
+	// different requests. An empty string is a thing somebody meant.
 	var body struct {
+		Name     *string `json:"name"`
 		URL      string  `json:"url"`
-		Region   string  `json:"region"`
+		Region   *string `json:"region"`
 		Label    *string `json:"label"`
 		Fallback *bool   `json:"fallback"`
 		Enabled  *bool   `json:"enabled"`
@@ -206,8 +211,8 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	if strings.TrimSpace(body.URL) != "" {
 		found.URL = strings.TrimSpace(body.URL)
 	}
-	if body.Region != "" {
-		found.Region = strings.TrimSpace(body.Region)
+	if body.Region != nil {
+		found.Region = strings.TrimSpace(*body.Region)
 	}
 	if body.Enabled != nil {
 		found.Enabled = *body.Enabled
@@ -222,9 +227,27 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 		found.Fallback = *body.Fallback
 	}
 
+	// The name last, and separately, because it is the key. Everything else is a
+	// field on a record; this moves the record.
+	renamed := name
+	if body.Name != nil && strings.TrimSpace(*body.Name) != "" && strings.TrimSpace(*body.Name) != name {
+		renamed = strings.TrimSpace(*body.Name)
+
+		if err := a.relays.RenameRelay(name, renamed); err != nil {
+			a.log.Record(Entry{
+				Action: "rename relay", Trip: session.Trip, Target: name,
+				Failed: true, Reason: err.Error(),
+			})
+			refuse(w, http.StatusBadRequest, relayReason(err))
+			return
+		}
+
+		found.Name = renamed
+	}
+
 	if err := a.relays.UpdateRelay(*found); err != nil {
 		a.log.Record(Entry{
-			Action: "edit relay", Trip: session.Trip, Target: name,
+			Action: "edit relay", Trip: session.Trip, Target: renamed,
 			Failed: true, Reason: err.Error(),
 		})
 		refuse(w, http.StatusBadRequest, relayReason(err))
@@ -301,4 +324,42 @@ func relayReason(err error) string {
 	default:
 		return "relay_refused"
 	}
+}
+
+// orderRelays puts the list in the order a page dragged it into.
+//
+// The whole list rather than one move, because two administrators each pressing
+// an arrow would otherwise interleave into an order neither of them chose.
+func (a *API) orderRelays(session Session, w http.ResponseWriter, r *http.Request) {
+	if a.relays == nil {
+		refuse(w, http.StatusServiceUnavailable, "no_relay_list")
+		return
+	}
+
+	var body struct {
+		Names []string `json:"names"`
+	}
+
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&body); err != nil {
+		refuse(w, http.StatusBadRequest, "unreadable")
+		return
+	}
+
+	if err := a.relays.ReorderRelays(body.Names); err != nil {
+		a.log.Record(Entry{
+			Action: "reorder relays", Trip: session.Trip, Name: session.Name,
+			Failed: true, Reason: err.Error(),
+		})
+
+		refuse(w, http.StatusInternalServerError, "store_unavailable")
+		return
+	}
+
+	a.log.Record(Entry{Action: "reorder relays", Trip: session.Trip, Name: session.Name})
+
+	if a.onRelaysChanged != nil {
+		a.onRelaysChanged()
+	}
+
+	respond(w, map[string]any{"ordered": len(body.Names)})
 }

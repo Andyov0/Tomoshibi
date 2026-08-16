@@ -179,7 +179,6 @@ const zhHans: Dictionary = {
 	"At least eight characters.": "至少八个字符。",
 	"Done. Your signature is now": "已修改。你的签名现在是",
 	"Whichever answers fastest": "自动选择响应最快的一台",
-	"no answer": "无响应",
 	"Groups the picker. A slash nests: Oversea/Asia": "决定选择框里的分组。用斜杠嵌套:Oversea/Asia",
 	"China Mainland": "中国大陆",
 	"Oversea": "海外",
@@ -219,6 +218,7 @@ const zhHans: Dictionary = {
 	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "还没有人带口令加入过。匿名访客不会出现在这里——他们的签名每开一个标签页都不一样。",
 	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "封禁会拒绝他们下一次加入。不会中断他们已经在进行的通话,也拦不住对方换一个口令——它封的是那个签名,而签名是这台服务器唯一能认出的东西。",
 	"This passphrase cannot join. Ask the organiser.": "该口令已被禁止加入,请联系组织者。",
+	"Timeout": "超时",
 };
 
 export default zhHans;

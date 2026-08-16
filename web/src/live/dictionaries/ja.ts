@@ -179,7 +179,6 @@ const ja: Dictionary = {
 	"At least eight characters.": "8 文字以上。",
 	"Done. Your signature is now": "変更しました。あなたの署名は",
 	"Whichever answers fastest": "応答が最も速いものを自動で選びます",
-	"no answer": "応答なし",
 	"Groups the picker. A slash nests: Oversea/Asia": "選択リストの分類に使われます。スラッシュで入れ子:Oversea/Asia",
 	"China Mainland": "中国本土",
 	"Oversea": "海外",
@@ -219,6 +218,7 @@ const ja: Dictionary = {
 	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "パスフレーズ付きで参加した人はまだいません。匿名の参加者はここには出ません。署名がタブごとに変わるためです。",
 	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "ブロックは次回の参加を拒否します。進行中の通話は終了させませんし、別のパスフレーズを選ばれれば止められません。止められるのはその署名だけで、それがこのサーバーに識別できる唯一のものです。",
 	"This passphrase cannot join. Ask the organiser.": "このパスフレーズでは参加できません。主催者にお問い合わせください。",
+	"Timeout": "タイムアウト",
 };
 
 export default ja;

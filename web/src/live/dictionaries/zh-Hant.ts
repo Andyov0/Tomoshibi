@@ -179,7 +179,6 @@ const zhHant: Dictionary = {
 	"At least eight characters.": "至少八個字元。",
 	"Done. Your signature is now": "已修改。你的簽名現在是",
 	"Whichever answers fastest": "自動選擇回應最快的一台",
-	"no answer": "無回應",
 	"Groups the picker. A slash nests: Oversea/Asia": "決定選擇框裡的分組。用斜線巢狀:Oversea/Asia",
 	"China Mainland": "中國大陸",
 	"Oversea": "海外",
@@ -219,6 +218,7 @@ const zhHant: Dictionary = {
 	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "還沒有人帶通行語加入過。匿名訪客不會出現在這裡——他們的簽名每開一個分頁都不一樣。",
 	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "封鎖會拒絕他們下一次加入。不會中斷他們已經在進行的通話,也攔不住對方換一個通行語——它封的是那個簽名,而簽名是這台伺服器唯一能認出的東西。",
 	"This passphrase cannot join. Ask the organiser.": "該通行語已被禁止加入,請聯絡主辦者。",
+	"Timeout": "逾時",
 };
 
 export default zhHant;

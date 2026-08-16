@@ -459,20 +459,19 @@ type relayEntry struct {
 	// can only ever select one of ours.
 	Name string `json:"name"`
 
-	// URL is where a browser dials, and it is sent only to an administrator.
+	// URL is the WebSocket origin to measure and, if chosen, to dial.
 	//
-	// Everybody else is given a name, a label and somewhere to measure, which is
-	// everything the picker needs: the measurement is a STUN exchange over UDP
-	// and the address it goes to is a name, not the machine. The address a call
-	// is actually held at arrives in the join, for the one relay that was
-	// chosen — so what a page reveals is where this person is being sent, not
-	// where everybody could be sent.
+	// Sent to everybody. It was briefly held back from anyone without a
+	// management session, to keep the whole fleet out of an ordinary visitor's
+	// network log — and it took the fallback measurement with it, because a
+	// relay that cannot answer STUN is timed by opening this. The deployment
+	// then showed a relay as having timed out when nothing had been tried.
 	//
-	// It is a deterrent and not a wall, and it is worth being clear about which:
-	// anybody who joins learns one address, and anybody who watches their own
-	// traffic learns it whatever this does. What it stops is the whole list
-	// being readable by anybody who opens the page.
-	URL string `json:"url,omitempty"`
+	// The address was never much of a secret: anybody who joins learns one, and
+	// anybody who watches their own traffic learns it whatever this does. What
+	// keeps a relay for administrators is the refusal at the join, which is
+	// where it belongs.
+	URL string `json:"url"`
 
 	// Region is the deployment's own label, shown to somebody who wants to know
 	// where their call is being held. Never used to choose under this policy —
@@ -539,16 +538,10 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 	entries := make([]relayEntry, 0, len(list))
 	for _, relay := range list {
 		entry := relayEntry{
-			Name: relay.Name, Region: relay.Region,
+			Name: relay.Name, URL: relay.URL, Region: relay.Region,
 			Label: relay.Shown(), Probe: relay.Probe,
 			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Maintenance: !relay.Enabled,
-		}
-
-		// The address only for somebody who is already trusted with the list of
-		// machines, which is what a management session is.
-		if admin {
-			entry.URL = relay.URL
 		}
 
 		entries = append(entries, entry)

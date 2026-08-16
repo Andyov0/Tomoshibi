@@ -383,7 +383,11 @@ a colleague's screen — and the second is the one that would be quietly missing
 because with the list filtered nothing on any screen would ever show it working.
 */
 
-func TestARelayForAdministratorsIsNotOffered(t *testing.T) {
+// The list shows everything to everybody, and says what each one is. Nothing is
+// protected by leaving a name out — a relay reserved for administrators is kept
+// by the refusal at the join, which is where somebody actually asks to come in
+// and which works whether or not they read the name off a colleague's screen.
+func TestEveryRelayIsShownToEverybody(t *testing.T) {
 	conf := &config.Config{}
 	conf.Meet.RelayPolicy = config.PickProbe
 
@@ -392,13 +396,10 @@ func TestARelayForAdministratorsIsNotOffered(t *testing.T) {
 
 	chosen := newRelays(conf, &listed{relays: []store.Relay{open, kept}})
 
-	if got := len(chosen.offered(false)); got != 1 {
-		t.Errorf("offered %d relays to somebody who is not an administrator, wanted 1", got)
-	}
-
-	if got := len(chosen.offered(true)); got != 2 {
-		t.Errorf("offered %d relays to an administrator, wanted 2: hiding a machine from "+
-			"the person it is reserved for is a page that lies", got)
+	for _, admin := range []bool{false, true} {
+		if got := len(chosen.offered(admin)); got != 2 {
+			t.Errorf("offered %d of 2 relays with admin=%v", got, admin)
+		}
 	}
 }
 

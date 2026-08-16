@@ -212,7 +212,6 @@ const en = {
 	"At least eight characters.": "At least eight characters.",
 	"Done. Your signature is now": "Done. Your signature is now",
 	"Whichever answers fastest": "Whichever answers fastest",
-	"no answer": "no answer",
 	"Groups the picker. A slash nests: Oversea/Asia": "Groups the picker. A slash nests: Oversea/Asia",
 	"China Mainland": "China Mainland",
 	"Oversea": "Oversea",
@@ -252,6 +251,7 @@ const en = {
 	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.",
 	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.",
 	"This passphrase cannot join. Ask the organiser.": "This passphrase cannot join. Ask the organiser.",
+	"Timeout": "Timeout",
 } as const;
 
 export default en;

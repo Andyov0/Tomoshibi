@@ -527,7 +527,7 @@ function Latency({ ms, known }: { ms: number | undefined; known: boolean }) {
 	}
 
 	if (ms === undefined) {
-		return <span className="shrink-0 text-[11px] text-danger">{t("no answer")}</span>;
+		return <span className="shrink-0 text-[11px] text-danger">{t("Timeout")}</span>;
 	}
 
 	const colour = ms <= 150 ? "text-good" : ms <= 400 ? "text-tally" : "text-danger";

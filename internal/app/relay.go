@@ -173,28 +173,20 @@ func (r *relays) byName(list []store.Relay, name string) (store.Relay, bool) {
 // somebody the moment they join. What is not here is anything about the shape
 // of the deployment — no counts, no health, no load — because this endpoint
 // answers to anybody who asks.
-// offered is the list a client is given, including the ones out of service.
+// offered is the list a client is given: all of them, in service or not, and
+// reserved or not.
 //
-// Those are sent so they can be shown greyed rather than hidden. A relay taken
-// down for maintenance that simply vanishes from the list looks like a relay
-// that was deleted — somebody who used it yesterday and cannot find it today
-// has no way to tell those apart, and asks. Sent with the flag, it says what it
-// is: still here, not taking calls.
-func (r *relays) offered(admin bool) []store.Relay {
-	list := r.all()
-
-	if !admin {
-		open := make([]store.Relay, 0, len(list))
-		for _, relay := range list {
-			if !relay.AdminOnly {
-				open = append(open, relay)
-			}
-		}
-
-		list = open
-	}
-
-	return r.reach.keep(list)
+// Everything is shown to everybody, and what a relay is is said rather than
+// hidden. One taken down for maintenance that simply vanished would look
+// deleted to whoever used it yesterday, and one reserved for administrators
+// that vanished would leave an operator wondering where their machine went on
+// the page they run it from.
+//
+// Nothing is protected by the list. What keeps a reserved relay reserved is the
+// refusal at the join, which is where somebody actually asks to come in — and
+// which works whether or not they read the name off a colleague's screen.
+func (r *relays) offered(_ bool) []store.Relay {
+	return r.reach.keep(r.all())
 }
 
 // preferred splits a list into the relays to use and the ones held in reserve.

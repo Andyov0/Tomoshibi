@@ -24,16 +24,7 @@
 /** One relay, as the control node describes it. */
 export interface Relay {
 	name: string;
-	/**
-	 * Where a browser dials, and absent unless this page belongs to an
-	 * administrator.
-	 *
-	 * The picker does not need it: measuring is a STUN exchange to `probe`, and
-	 * the address a call is held at arrives in the join for the one relay
-	 * chosen. So an ordinary visitor's network log holds the machine they were
-	 * sent to and not the six they might have been.
-	 */
-	url?: string;
+	url: string;
 	region?: string;
 	/** What a person is shown instead of the name, which is a key and not a word. */
 	label?: string;
@@ -194,15 +185,6 @@ function overUDP(relay: Relay): Promise<number | undefined> {
 function overSignalling(relay: Relay): Promise<number | undefined> {
 	return new Promise((resolve) => {
 		const started = performance.now();
-
-		if (!relay.url) {
-			// No address and no probe is a relay this page cannot measure, which
-			// is the ordinary case for a visitor now. It ranks last rather than
-			// being skipped, so a deployment that has not set a probe anywhere
-			// still offers a list somebody can choose from.
-			resolve(undefined);
-			return;
-		}
 
 		let socket: WebSocket;
 		try {

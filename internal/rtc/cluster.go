@@ -43,6 +43,17 @@ type Cluster struct {
 	secret string
 	client *http.Client
 
+	// dial is the same dialler the client above uses, kept so that the
+	// reachability check can use it too.
+	//
+	// It has to. The check opens a socket and nothing more, so it looked like
+	// somewhere a plain dialler would do — and a plain dialler sends a packet
+	// to this machine's own public address, which on any NAT never comes back.
+	// A control node running a relay beside it then reports that relay as
+	// unreachable, stops offering it to clients, and is wrong about the one
+	// machine it is sitting on.
+	dial *loopback
+
 	// last is the relay that answered most recently. Tried first next time,
 	// because the alternative is paying a failed connection to a machine known
 	// to be down before every question.
@@ -52,10 +63,13 @@ type Cluster struct {
 
 // NewCluster builds one.
 func NewCluster(relays func() []string, key, secret string, ownAddresses ...string) *Cluster {
+	dial := newLoopback(ownAddresses...)
+
 	return &Cluster{
 		relays: relays,
 		key:    key,
 		secret: secret,
+		dial:   dial,
 		// Four seconds, not eight. A relay that has not answered in four is one
 		// the page should say nothing about rather than one worth waiting
 		// longer for: these are drawn several at a time behind a person who is
@@ -70,7 +84,7 @@ func NewCluster(relays func() []string, key, secret string, ownAddresses ...stri
 		client: &http.Client{
 			Timeout: 4 * time.Second,
 			Transport: &http.Transport{
-				DialContext:         newLoopback(ownAddresses...).DialContext,
+				DialContext:         dial.DialContext,
 				TLSHandshakeTimeout: 3 * time.Second,
 				MaxIdleConnsPerHost: 4,
 				IdleConnTimeout:     90 * time.Second,
@@ -214,7 +228,7 @@ func (c *Cluster) Check(ctx context.Context, url string) (bool, time.Duration, s
 
 	started := time.Now()
 
-	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
+	conn, err := c.dial.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return false, time.Since(started), summarise(err)
 	}

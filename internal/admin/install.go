@@ -95,8 +95,13 @@ ask_prefix() {
             continue
         fi
 
-        answer=$(curl -fsS --max-time 15 -X POST "$CONTROL/api/enrol/taken"             -H 'Content-Type: application/json'             -d "{"secret":"$SECRET","prefix":"$prefix"}" 2>/dev/null || true)
+        answer=$(curl -fsS --max-time 15 -X POST "$CONTROL/api/enrol/taken"             -H 'Content-Type: application/json'             -d "{\"secret\":\"$SECRET\",\"prefix\":\"$prefix\"}" 2>/dev/null || true)
 
+        # An unquoted body made this JSON the shell had already eaten, so the
+        # check answered nothing every time and every duplicate reached the
+        # control node as a 409 with advice to try another name. The quoting is
+        # fixed; the point of the check is that a prefix already in use would
+        # otherwise move an existing relay's name onto this machine.
         case "$answer" in
             *'"taken":true'*)
                 printf '

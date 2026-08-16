@@ -39,6 +39,14 @@ type Session struct {
 	Trip string   `json:"trip"`
 	Name string   `json:"name"`
 	Can  []string `json:"can"`
+	// Kind separates a management session from an account's own.
+	//
+	// One bucket rather than two, because they are the same record with the
+	// same expiry and the same sweeping — and one field rather than a second
+	// bucket, because the thing that must never happen is a token from one
+	// being accepted by the other, and a field that is checked on every read is
+	// harder to forget than a bucket somebody has to remember to look in.
+	Kind string `json:"kind,omitempty"`
 	// Opened is when they signed in, and is what any ceiling is measured from.
 	Opened time.Time `json:"opened"`
 	// Expires moves forward each time the session is used.

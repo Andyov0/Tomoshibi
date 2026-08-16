@@ -486,3 +486,63 @@ func TestForgettingNothingIsNotAnError(t *testing.T) {
 		t.Errorf("forgot %d from an untouched store", gone)
 	}
 }
+
+/*
+A note about where a room is has to stop being believed.
+
+It is written after a join so the next person lands where the meeting already
+is, which saves them a measurement and is what lets somebody into a relay
+reserved for the administrator who invited them. Left to itself it never
+expired, and that turns a hint into a permanent binding: every room returns to
+whichever relay it first landed on, for good, and choosing a server stops
+meaning anything the second time a name is used.
+
+There is no cheap way to ask whether anybody is still in the room — the media
+server knows and asking it is a request to every relay on every join — so the
+note ages out instead. Being wrong either way is survivable: too eager and
+somebody is forwarded by the media server with only a measurement wasted, too
+patient and a meeting that ended hours ago sends the next one back to a machine
+it need not use. Lasting forever is the only outcome that is not.
+*/
+
+func TestWhereARoomIsHeldIsForgottenOnceItGoesQuiet(t *testing.T) {
+	st := open(t)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.HoldRoom("standup", "shanghai"); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := st.HeldOn("standup"); got != "shanghai" {
+		t.Fatalf("a room joined a moment ago is held on %q, wanted shanghai", got)
+	}
+
+	// Aged past the window by hand, because waiting two hours is not a test.
+	if err := st.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+
+		var tally Room
+		if err := json.Unmarshal(bucket.Get([]byte("standup")), &tally); err != nil {
+			return err
+		}
+
+		tally.Seen = time.Now().Add(-heldFor - time.Minute)
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte("standup"), encoded)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := st.HeldOn("standup"); got != "" {
+		t.Errorf("a room nobody has joined for hours is still held on %q; choosing a "+
+			"server would never mean anything again", got)
+	}
+}

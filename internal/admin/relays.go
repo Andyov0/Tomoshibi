@@ -44,6 +44,8 @@ type relayView struct {
 	Region    string `json:"region,omitempty"`
 	Label     string `json:"label,omitempty"`
 	Probe     string `json:"probe,omitempty"`
+	Turn      string `json:"turn,omitempty"`
+	Forwards  bool   `json:"forwards,omitempty"`
 	Fallback  bool   `json:"fallback,omitempty"`
 	AdminOnly bool   `json:"adminOnly,omitempty"`
 	Enabled   bool   `json:"enabled"`
@@ -81,6 +83,7 @@ func (a *API) listRelays(_ Session, w http.ResponseWriter, r *http.Request) {
 		views[i] = relayView{
 			Name: relay.Name, URL: relay.URL, Region: relay.Region,
 			Label: relay.Label, Probe: relay.Probe,
+			Turn: relay.Turn, Forwards: relay.Forwards,
 			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Enabled: relay.Enabled,
 		}
@@ -125,6 +128,8 @@ func (a *API) addRelay(session Session, w http.ResponseWriter, r *http.Request) 
 		URL       string `json:"url"`
 		Region    string `json:"region"`
 		Label     string `json:"label"`
+		Turn      string `json:"turn"`
+		Forwards  bool   `json:"forwards"`
 		Fallback  bool   `json:"fallback"`
 		AdminOnly bool   `json:"adminOnly"`
 		Enabled   *bool  `json:"enabled"`
@@ -140,6 +145,8 @@ func (a *API) addRelay(session Session, w http.ResponseWriter, r *http.Request) 
 		URL:       strings.TrimSpace(body.URL),
 		Region:    strings.TrimSpace(body.Region),
 		Label:     strings.TrimSpace(body.Label),
+		Turn:      strings.TrimSpace(body.Turn),
+		Forwards:  body.Forwards,
 		Fallback:  body.Fallback,
 		AdminOnly: body.AdminOnly,
 		Enabled:   body.Enabled == nil || *body.Enabled,
@@ -184,6 +191,8 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 		URL       string  `json:"url"`
 		Region    *string `json:"region"`
 		Label     *string `json:"label"`
+		Turn      *string `json:"turn"`
+		Forwards  *bool   `json:"forwards"`
 		Fallback  *bool   `json:"fallback"`
 		AdminOnly *bool   `json:"adminOnly"`
 		Enabled   *bool   `json:"enabled"`
@@ -232,6 +241,12 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	}
 	if body.Probe != nil {
 		found.Probe = strings.TrimSpace(*body.Probe)
+	}
+	if body.Turn != nil {
+		found.Turn = strings.TrimSpace(*body.Turn)
+	}
+	if body.Forwards != nil {
+		found.Forwards = *body.Forwards
 	}
 	if body.Fallback != nil {
 		found.Fallback = *body.Fallback

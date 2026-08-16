@@ -431,6 +431,8 @@ function Settings({
 		region?: string;
 		label?: string;
 		probe?: string;
+		turn?: string;
+		forwards?: boolean;
 		fallback?: boolean;
 		adminOnly?: boolean;
 	}) => void;
@@ -440,6 +442,7 @@ function Settings({
 	const [region, setRegion] = useState(relay.region ?? "");
 	const [label, setLabel] = useState(relay.label ?? "");
 	const [probe, setProbe] = useState(relay.probe ?? "");
+	const [turn, setTurn] = useState(relay.turn ?? "");
 
 	// Reloaded when the relay changes underneath this form.
 	//
@@ -459,14 +462,16 @@ function Settings({
 		setRegion(relay.region ?? "");
 		setLabel(relay.label ?? "");
 		setProbe(relay.probe ?? "");
-	}, [relay.name, relay.url, relay.region, relay.label, relay.probe]);
+		setTurn(relay.turn ?? "");
+	}, [relay.name, relay.url, relay.region, relay.label, relay.probe, relay.turn]);
 
 	const dirty =
 		name !== relay.name ||
 		url !== relay.url ||
 		region !== (relay.region ?? "") ||
 		label !== (relay.label ?? "") ||
-		probe !== (relay.probe ?? "");
+		probe !== (relay.probe ?? "") ||
+		turn !== (relay.turn ?? "");
 
 	return (
 		<div className="flex flex-col gap-3 border-border border-t px-4 py-3">
@@ -510,6 +515,15 @@ function Settings({
 					/>
 				</Field>
 
+				<Field label={t("Forwards through")} hint={t("host:port of its TURN server. Empty means it cannot carry a call it is not holding")}>
+					<input
+						value={turn}
+						onChange={(event) => setTurn(event.target.value)}
+						placeholder="host:39219"
+						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</Field>
+
 				<Field label={t("Region")} hint={t("Groups the picker. A slash nests: Oversea/Asia")}>
 					<input
 						value={region}
@@ -532,6 +546,26 @@ function Settings({
 					{t("Keep in reserve")}
 				</label>
 
+				{/* Its own switch, and deliberately not tied to any other.
+				    A meeting lives on one machine, so somebody joining a room that
+				    is already running has their media go past the relay they picked
+				    unless this relay forwards it on. That costs the relay two bytes
+				    for every one it carries, which is why it is a decision and not
+				    a consequence: a machine reserved for administrators can still
+				    be the right place to forward through, and a machine anybody may
+				    use can be one whose bandwidth is too expensive to spend twice.
+				    Whoever pays the bill decides, per machine. */}
+				<label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+					<input
+						type="checkbox"
+						checked={relay.forwards ?? false}
+						disabled={busy}
+						onChange={(event) => onSave({ forwards: event.target.checked })}
+						className="size-3.5 accent-tally"
+					/>
+					{t("Forwards other rooms")}
+				</label>
+
 				{/* Distinct from taking it out of service, and from keeping it in
 				    reserve: those are about when to use it, this is about who may.
 				    Refused at the join as well as hidden from the list, or somebody
@@ -550,7 +584,7 @@ function Settings({
 				<button
 					type="button"
 					disabled={busy || !dirty}
-					onClick={() => onSave({ name, url, region, label, probe })}
+					onClick={() => onSave({ name, url, region, label, probe, turn })}
 					className="ml-auto rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
 				>
 					{t("Save")}

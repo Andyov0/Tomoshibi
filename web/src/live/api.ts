@@ -73,6 +73,20 @@ export interface Join {
 	room: string;
 	/** What to call the machine this call was sent to. */
 	relay?: string;
+	/**
+	 * Where to send media, when that is not the machine holding the room.
+	 *
+	 * A meeting lives on one server, so somebody joining a room that is already
+	 * running would otherwise have their media go straight past the relay they
+	 * picked — the choice would be theirs to make and would change nothing. When
+	 * this is present the picked relay forwards instead: one extra hop, in
+	 * exchange for the call entering the country the caller is in.
+	 *
+	 * Absent whenever the two are the same machine, which is most calls, and
+	 * absent when the picked relay does not forward. Both mean: connect
+	 * directly, as before.
+	 */
+	forward?: { url: string; username: string; credential: string };
 }
 
 /**

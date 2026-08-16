@@ -233,7 +233,43 @@ export function create(): Room {
  * withholds, and the server would refuse.
  */
 export async function connect(room: Room, grant: Join): Promise<void> {
-	await room.connect(grant.url, grant.token);
+	if (!grant.forward) {
+		await room.connect(grant.url, grant.token);
+		return;
+	}
+
+	/*
+	 * Media through the relay that was picked, rather than past it.
+	 *
+	 * The server sends this only when the room is being held on a different
+	 * machine from the one this client chose. Left alone the browser would
+	 * gather its own candidates and connect straight to the holder, so the
+	 * chosen relay would carry the signalling and none of the call — which is
+	 * the same as not having chosen.
+	 *
+	 * `relay` is the whole of it. Offering the relay alongside the direct route
+	 * would mean the browser tries both and keeps whichever answers first, and
+	 * the direct one always answers first: the setting would appear to work,
+	 * change nothing, and be very hard to argue with afterwards.
+	 *
+	 * The server's own list is replaced rather than added to, which the SDK
+	 * allows explicitly — it fills in the servers from the join response only
+	 * when none were given here. Read out of `livekit-client.esm.mjs`, because
+	 * this is the kind of thing a release note does not mention and a call
+	 * failing to connect does not explain.
+	 */
+	await room.connect(grant.url, grant.token, {
+		rtcConfig: {
+			iceServers: [
+				{
+					urls: grant.forward.url,
+					username: grant.forward.username,
+					credential: grant.forward.credential,
+				},
+			],
+			iceTransportPolicy: "relay",
+		},
+	});
 }
 
 /**

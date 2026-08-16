@@ -136,17 +136,16 @@ export interface Administrator {
 	self?: boolean;
 }
 
-/** Somebody who has joined with a passphrase, as the register knows them. */
-export interface Person {
+/** Somebody who was given a way in. */
+export interface Account {
+	name: string;
 	trip: string;
-	name?: string;
-	rooms: number;
-	firstSeen?: string;
+	/** Whether they have chosen a picture. The picture itself is fetched by URL. */
+	avatar?: boolean;
+	created?: string;
 	lastSeen?: string;
 	blocked?: boolean;
 	note?: string;
-	/** Also an administrator, and so not blockable from here. */
-	administrator?: boolean;
 }
 
 export interface Entry {
@@ -267,6 +266,10 @@ export interface Relay {
 	adminOnly?: boolean;
 	/** Where it answers STUN binding requests, as host:port. */
 	probe?: string;
+	/** host:port of its TURN server, where it can forward a room it is not holding. */
+	turn?: string;
+	/** Whether it may carry a call held on another machine. */
+	forwards?: boolean;
 	enabled: boolean;
 	added?: string;
 	/** Whether it answered when this page was drawn, from the control node. */
@@ -318,6 +321,8 @@ export const api = {
 			enabled?: boolean;
 			label?: string;
 			probe?: string;
+			turn?: string;
+			forwards?: boolean;
 			fallback?: boolean;
 			adminOnly?: boolean;
 		},
@@ -390,17 +395,33 @@ export const api = {
 			body: JSON.stringify({ names }),
 		}),
 
-	/** Everybody who keeps coming back, most recently seen first. */
-	people: () => call<Person[]>("/people"),
+	/** Everybody who has an account here. */
+	accounts: () => call<Account[]>("/accounts"),
 
-	blockPerson: (trip: string, blocked: boolean, note: string) =>
-		call<{ trip: string; blocked: boolean }>(`/people/${encodeURIComponent(trip)}`, {
-			method: "PATCH",
-			body: JSON.stringify({ blocked, note }),
+	/**
+	 * Make one.
+	 *
+	 * The passphrase goes up and is turned into a signature there; it is not
+	 * stored and cannot be read back, which is why the page shows it once and
+	 * says so.
+	 */
+	addAccount: (name: string, passphrase: string) =>
+		call<{ name: string; trip: string }>("/accounts", {
+			method: "POST",
+			body: JSON.stringify({ name, passphrase }),
 		}),
 
-	forgetPerson: (trip: string) =>
-		call<{ forgotten: string }>(`/people/${encodeURIComponent(trip)}`, { method: "DELETE" }),
+	changeAccount: (
+		name: string,
+		change: { name?: string; passphrase?: string; blocked?: boolean; note?: string },
+	) =>
+		call<{ name: string; trip: string }>(`/accounts/${encodeURIComponent(name)}`, {
+			method: "PATCH",
+			body: JSON.stringify(change),
+		}),
+
+	dropAccount: (name: string) =>
+		call<{ removed: string }>(`/accounts/${encodeURIComponent(name)}`, { method: "DELETE" }),
 
 	relayCommand: () => call<{ command: string; domain: string; port: number }>("/relays/command"),
 

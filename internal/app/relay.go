@@ -456,3 +456,25 @@ func (a *App) UseEnrolment(enrolment *admin.Enrolment) {
 	a.admin.UseEnrolment(enrolment)
 	a.enrolment = enrolment
 }
+
+// forwarding mints what a client needs to reach a room through a relay that is
+// not holding it, or reports that this relay will not do that.
+//
+// Three answers rather than two, and the middle one is the point: a nil
+// forwarding with no error means the relay declines, which is an ordinary
+// setting and not a fault. Relaying costs a machine two bytes for every one it
+// carries, so an operator saying no to that is answering a question about a
+// bill. An error means the credentials could not be made at all, which is a
+// fault and is logged as one.
+func (a *App) forwarding(entry store.Relay) (*rtc.Forwarding, error) {
+	if !entry.Forwards || entry.Turn == "" {
+		return nil, nil
+	}
+
+	relayed, err := rtc.Forward(entry.Turn, a.conf.Key, a.conf.Secret)
+	if err != nil {
+		return nil, err
+	}
+
+	return &relayed, nil
+}

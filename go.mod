@@ -3,10 +3,12 @@ module tomoshibi
 go 1.26
 
 require (
+	github.com/jxskiss/base62 v1.1.0
 	github.com/livekit/livekit-server v1.13.5
 	github.com/livekit/protocol v1.50.5-0.20260728075222-28e604c046c6
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/time v0.15.0
+	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -43,7 +45,6 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jellydator/ttlcache/v3 v3.4.1 // indirect
 	github.com/josharian/native v1.1.0 // indirect
-	github.com/jxskiss/base62 v1.1.0 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/lithammer/shortuuid/v4 v4.2.0 // indirect
@@ -110,5 +111,4 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260724162435-b2f20204f0df // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260724162435-b2f20204f0df // indirect
 	google.golang.org/grpc v1.82.1 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 )

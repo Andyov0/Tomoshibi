@@ -46,6 +46,34 @@ type Relay struct {
 	// is what it did before this existed and is still the honest ranking.
 	Probe string `json:"probe,omitempty"`
 
+	// Turn is where this relay forwards media, as host:port.
+	//
+	// A meeting lives on one node — the media server binds a room to whichever
+	// node opened it — so without this, picking a server decided nothing for
+	// anybody but the first person in: their signalling was forwarded to the
+	// holding node and their media went straight past the machine they picked,
+	// which carried none of the call it was chosen for.
+	//
+	// With it, a client that picked this relay allocates on its TURN server and
+	// the packets are forwarded on. One extra hop, paid on purpose, in exchange
+	// for the call entering the country the caller is in.
+	//
+	// Empty where the relay does not run one, and a relay that cannot forward is
+	// not broken: a client that picks it while the room is elsewhere is sent
+	// straight to the node holding the room, which is what everybody got before
+	// this existed.
+	Turn string `json:"turn,omitempty"`
+
+	// Forwards is whether this relay may carry a call it is not holding.
+	//
+	// Separate from Turn, which is where, and deliberately separate from
+	// AdminOnly, which is who: a machine can be reserved and still be the right
+	// place to forward through, and a machine anybody may use can be one whose
+	// bandwidth is too expensive to spend twice. Relaying costs the relay two
+	// bytes for every one — in and out again — so this is the switch on the
+	// bill, and it belongs to whoever pays it rather than being inferred.
+	Forwards bool `json:"forwards,omitempty"`
+
 	// Label is what a person is shown instead of the name.
 	//
 	// The name is a key: immutable, because a client that measured it will send

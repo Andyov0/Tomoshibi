@@ -431,7 +431,27 @@ func (s *Store) HoldRoom(name, relay string) error {
 	})
 }
 
-// HeldOn says which relay a room was last held on, if any.
+// How long a note about where a room is stays worth believing.
+//
+// A meeting lives on one server for as long as somebody is in it, and this
+// server has no cheap way to ask whether anybody still is — the media server
+// knows, and asking it means a request to every relay on every join.
+//
+// So the note expires instead. Two hours without anybody joining is a room that
+// has almost certainly emptied, and the cost of being wrong either way is
+// small: too eager, and somebody is sent to a relay the meeting is not on, where
+// the media server forwards them to it and only their measurement was wasted;
+// too patient, and a room that ended hours ago sends the next meeting of the
+// same name back to a machine it need not use.
+//
+// What must not happen is the note lasting forever, which is what it did when
+// it was first written: every room would return to whichever relay it first
+// landed on, for good, and choosing a server would stop meaning anything the
+// second time a name was used.
+const heldFor = 2 * time.Hour
+
+// HeldOn says which relay a room is being held on, while that is still worth
+// believing.
 func (s *Store) HeldOn(name string) string {
 	var relay string
 
@@ -447,12 +467,53 @@ func (s *Store) HeldOn(name string) string {
 		}
 
 		var tally Room
-		if err := json.Unmarshal(raw, &tally); err == nil {
-			relay = tally.Relay
+		if err := json.Unmarshal(raw, &tally); err != nil {
+			return nil
 		}
+
+		if time.Since(tally.Seen) > heldFor {
+			return nil
+		}
+
+		relay = tally.Relay
 
 		return nil
 	})
 
 	return relay
+}
+
+// ReleaseRoom forgets where a room was being held.
+//
+// The timed expiry in HeldOn is what covers the ordinary case — a meeting that
+// ends leaves nobody to say so — and this is for the two cases a clock cannot
+// answer. An operator taking a relay out of service wants the rooms on it picked
+// again now rather than in two hours; and a test needs to arrange a room that
+// has gone quiet without waiting for it to.
+func (s *Store) ReleaseRoom(name string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		raw := bucket.Get([]byte(name))
+		if raw == nil {
+			return nil
+		}
+
+		var tally Room
+		if err := json.Unmarshal(raw, &tally); err != nil {
+			return nil
+		}
+
+		tally.Relay = ""
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(name), encoded)
+	})
 }

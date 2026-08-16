@@ -6,13 +6,13 @@ import type { Who } from "./api";
 import { rate } from "./units";
 
 /** The panels, in the order somebody works through them. */
-export const PANELS = ["Now", "Rooms", "People", "Relays", "Admins", "Runtime", "Audit"] as const;
+export const PANELS = ["Now", "Rooms", "Accounts", "Relays", "Admins", "Runtime", "Audit"] as const;
 export type Panel = (typeof PANELS)[number];
 
 const ICONS: Record<Panel, typeof Activity> = {
 	Now: Activity,
 	Rooms: LayoutGrid,
-	People: UsersRound,
+	Accounts: UsersRound,
 	Relays: Server,
 	Admins: Users,
 	Runtime: ScrollText,

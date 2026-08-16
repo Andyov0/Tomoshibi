@@ -42,6 +42,19 @@ the origin it was served from.
 func control(t *testing.T, policy string, relayList ...store.Relay) http.Handler {
 	t.Helper()
 
+	handler, _ := controlWithStore(t, policy, relayList...)
+
+	return handler
+}
+
+// controlWithStore is the same, for a test that has to reach past the router.
+//
+// Only where the fault being guarded against is about what the store holds
+// rather than about what an endpoint answers — where a room is being held, which
+// no request will say and which a test cannot arrange by asking twice.
+func controlWithStore(t *testing.T, policy string, relayList ...store.Relay) (http.Handler, *store.Store) {
+	t.Helper()
+
 	st, err := store.Open(filepath.Join(t.TempDir(), "meet.db"))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
@@ -85,7 +98,7 @@ func control(t *testing.T, policy string, relayList ...store.Relay) http.Handler
 	}
 	t.Cleanup(app.Close)
 
-	return app.Handler()
+	return app.Handler(), st
 }
 
 // The heart of it. A control node must not answer on the paths a media server

@@ -222,6 +222,10 @@ func (a *App) Handler() http.Handler {
 
 	mux.HandleFunc("POST /api/rooms/{room}/join", a.join)
 	mux.HandleFunc("GET /api/deployment", a.deployment)
+
+	// The pages somebody uses to look after their own account, which are not
+	// the management pages and never overlap with them.
+	a.mountAccounts(mux)
 	mux.HandleFunc("GET /api/relays", a.relayList)
 
 	// The two a machine being brought up calls, and the only management paths
@@ -261,6 +265,9 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("GET /admin", a.manage)
 	mux.HandleFunc("GET /admin/", a.manage)
 
+	mux.HandleFunc("GET /account", a.ownAccount)
+	mux.HandleFunc("GET /account/", a.ownAccount)
+
 	mux.Handle("/", a.web)
 
 	return mux
@@ -296,6 +303,15 @@ type joinResponse struct {
 	Identity string `json:"identity"`
 	// Room is the name that was actually authorised, after normalisation.
 	Room string `json:"room"`
+	// Forward is the relay to send media through, where that is not the machine
+	// holding the room.
+	//
+	// Present only when the two come apart, which is the only time it means
+	// anything: a client given this uses it as its sole candidate route, so
+	// sending it when the call is already going to the right place would add a
+	// hop and a delay to every meeting for nothing.
+	Forward *rtc.Forwarding `json:"forward,omitempty"`
+
 	// Relay is what to call the machine this call was sent to.
 	//
 	// Sent so a person in a call can be told where it is being held in the
@@ -333,6 +349,30 @@ func (a *App) manage(w http.ResponseWriter, r *http.Request) {
 	// somebody typed it and a reload lands in the same place.
 	r = r.Clone(r.Context())
 	r.URL.Path = "/admin.html"
+
+	a.web.ServeHTTP(w, r)
+}
+
+// ownAccount serves the page somebody looks after their own account on.
+//
+// Served whether or not they have one, and whether or not they are signed in:
+// what is behind it is a sign-in form, and a page that 404s for anybody without
+// a session would mean the only way to reach it was to already have reached it.
+// Nothing here is disclosed by the document — the accounts are behind the API.
+func (a *App) ownAccount(w http.ResponseWriter, r *http.Request) {
+	// Except where there is nowhere to keep accounts. A relay holds no store, so
+	// on one this address names nothing rather than serving a form that could
+	// never sign anybody in.
+	if a.store == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Rewritten rather than redirected, for the reason the management page is:
+	// the address stays where somebody typed it and a reload lands in the same
+	// place.
+	r = r.Clone(r.Context())
+	r.URL.Path = "/account.html"
 
 	a.web.ServeHTTP(w, r)
 }
@@ -403,9 +443,11 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// after either would leave a name recorded or a credential issued for
 	// somebody who is not getting in. An administrator is not checked against
 	// this: locking oneself out of one's own deployment by blocking one's own
-	// signature is a mistake with no way back from the page that made it.
+	// account is a mistake with no way back from the page that made it.
 	if !isAdmin && !body.Passphrase.Empty() {
-		if a.store.Blocked(room.Trip(a.tripKey, strings.TrimSpace(string(body.Passphrase)))) {
+		trip := room.Trip(a.tripKey, strings.TrimSpace(string(body.Passphrase)))
+
+		if account, ok := a.store.AccountBySignature(trip); ok && account.Blocked {
 			fail(w, http.StatusForbidden, reasonBlocked)
 			return
 		}
@@ -456,19 +498,6 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Recorded after the token is minted and before it is handed over, so the
-	// register reflects the joins that were actually authorised. Only where the
-	// signature was earned: an anonymous visitor's is drawn from nothing and
-	// differs in every tab, and writing those down would be a list of tabs.
-	if mark, ok := room.SignatureOf(grant.Identity); ok && mark.Proven {
-		if err := a.store.Seen(mark.Trip, body.Name, time.Now().UTC()); err != nil {
-			// Not a reason to refuse somebody a call. A register that cannot be
-			// written is a page that is out of date, which is a smaller problem
-			// than a meeting that did not happen.
-			slog.Error("failed to record who joined", "error", err)
-		}
-	}
-
 	// Picked once and used twice: the address to dial and the name to call it.
 	// Asking twice would be two independent choices, and under round robin they
 	// would not be the same one.
@@ -479,29 +508,84 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// signalling is forwarded and their measurement was spent on a machine that
 	// will not carry their call. It is also what lets somebody into a reserved
 	// relay they were invited to.
-	chosen := a.relays.pick(name, body.Relay, r, a.conf.Meet.TrustProxy, isAdmin)
+	// Two relays, and for the first person in a room the same one.
+	//
+	// `entry` is the machine this client dials and `holding` is the machine the
+	// meeting is on. They come apart because a meeting lives on exactly one
+	// node: the media server binds a room to whoever opened it, and everybody
+	// after that is forwarded there no matter what they picked.
+	//
+	// That used to be settled by moving the client — the picked relay was
+	// discarded and they were sent to the holder — which made choosing a server
+	// mean nothing for everybody but the first arrival, and left relays bought
+	// for the routes into them carrying no calls at all. Now the choice is kept
+	// and the media is forwarded through it instead.
+	entry := a.relays.pick(name, body.Relay, r, a.conf.Meet.TrustProxy, isAdmin)
+	holding := entry
 
-	if held := a.store.HeldOn(name); held != "" && held != chosen.Name {
+	if held := a.store.HeldOn(name); held != "" && held != entry.Name {
 		if there, ok := a.relays.named(held); ok {
-			chosen = there
+			holding = there
 		}
 	}
 
-	// Noted after everything that could refuse this join has not. A room
+	// What the client is told to send its media through, where that is not
+	// simply the machine holding the room.
+	var forward *rtc.Forwarding
+
+	if holding.Name != entry.Name {
+		switch relayed, err := a.forwarding(entry); {
+		case err != nil:
+			// Minted from nothing, which should not happen and must not become
+			// a client gathering candidates against a TURN server it cannot
+			// authenticate to — that is a call that never connects, where
+			// sending them to the holder is a call that does.
+			slog.Error("failed to mint forwarding credentials",
+				"relay", entry.Name, "room", name, "error", err)
+
+			entry = holding
+
+		case relayed != nil:
+			forward = relayed
+
+		default:
+			// This relay does not forward: either it runs no TURN server or
+			// whoever pays for it has said not to. Relaying costs it two bytes
+			// for every one, so that is a real answer and not a misconfiguration.
+			// The call goes straight to the machine holding the room, which is
+			// what everybody got before forwarding existed.
+			entry = holding
+		}
+	}
+
+	// The machine the meeting is on, not the one this client dialled. Noting the
+	// entry would move the room to whichever door the next person came through,
+	// which is the opposite of what this record is for.
+	//
+	// Written after everything that could refuse this join has not: a room
 	// recorded as being somewhere nobody was actually sent would send the next
 	// person there for no reason.
-	if chosen.Name != "" {
-		if err := a.store.HoldRoom(name, chosen.Name); err != nil {
+	if holding.Name != "" {
+		if err := a.store.HoldRoom(name, holding.Name); err != nil {
 			slog.Error("failed to note where a room is held", "room", name, "error", err)
 		}
 	}
 
+	// Noted, where the signature belongs to an account. Nothing is recorded
+	// about anybody else: an anonymous visitor's signature is drawn from
+	// nothing and differs in every tab, so a list of them would be a list of
+	// tabs.
+	if mark, ok := room.SignatureOf(grant.Identity); ok && mark.Proven {
+		a.store.AccountSeen(mark.Trip, time.Now().UTC())
+	}
+
 	respond(w, joinResponse{
-		URL:      a.signallingURLFor(chosen, r),
+		URL:      a.signallingURLFor(entry, r),
 		Token:    grant.Token,
 		Identity: grant.Identity,
 		Room:     name,
-		Relay:    chosen.Shown(),
+		Relay:    entry.Shown(),
+		Forward:  forward,
 	})
 }
 
@@ -787,6 +871,13 @@ const (
 	// because a refusal dressed up as a server fault sends somebody to look for
 	// a problem that is not there.
 	reasonBlocked = "blocked"
+	// The refusals an account holder can meet on their own page.
+	reasonNotYours        = "not_yours"
+	reasonPassphraseShort = "passphrase_too_short"
+	reasonPassphraseSame  = "passphrase_unchanged"
+	reasonPassphraseTaken = "passphrase_in_use"
+	reasonAvatarLarge     = "avatar_too_large"
+	reasonNotAnImage      = "not_an_image"
 	// reasonRelayNotAllowed is a relay kept for administrators, asked for by
 	// somebody who is not one.
 	reasonRelayNotAllowed = "relay_not_allowed"

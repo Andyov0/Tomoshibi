@@ -260,14 +260,25 @@ func serve(args []string) error {
 		return fmt.Errorf("listen on %s: %w", conf.Meet.Listen, err)
 	}
 
-	announce(listener.Addr())
+	announce(listener.Addr(), conf.Meet.TLSCert != "")
 
 	stopping := make(chan os.Signal, 1)
 	signal.Notify(stopping, os.Interrupt, syscall.SIGTERM)
 
 	failed := make(chan error, 1)
 	go func() {
-		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		// Configured certificate wins. Checked at load, so a file that is
+		// missing or does not match its key has already been a message rather
+		// than a listener that quietly never came up — or worse, one that came
+		// up plaintext on a deployment that believed otherwise.
+		var err error
+		if conf.Meet.TLSCert != "" {
+			err = server.ServeTLS(listener, conf.Meet.TLSCert, conf.Meet.TLSKey)
+		} else {
+			err = server.Serve(listener)
+		}
+
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			failed <- err
 		}
 	}()
@@ -511,16 +522,26 @@ func announceRole(conf *config.Config) {
 	}
 }
 
-func announce(addr net.Addr) {
+func announce(addr net.Addr, secure bool) {
 	tcp, ok := addr.(*net.TCPAddr)
 	if !ok {
 		slog.Info("listening", "addr", addr.String())
 		return
 	}
 
-	slog.Info("client", "url", fmt.Sprintf("http://localhost:%d/", tcp.Port))
+	scheme := "http"
+	if secure {
+		scheme = "https"
+	}
+
+	slog.Info("client", "url", fmt.Sprintf("%s://localhost:%d/", scheme, tcp.Port))
 
 	for _, ip := range outward() {
+		if secure {
+			slog.Info("reachable on the network", "url", fmt.Sprintf("https://%s:%d/", ip, tcp.Port))
+			continue
+		}
+
 		slog.Warn(
 			"reachable on the network, but cameras need a secure page: put this behind HTTPS "+
 				"before using it from another machine",

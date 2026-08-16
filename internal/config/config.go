@@ -10,6 +10,7 @@ package config
 import (
 	"bytes"
 	"crypto/subtle"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"os"
@@ -148,6 +149,23 @@ type Meet struct {
 	// PublicURL overrides the address clients are told to dial. Only needed
 	// behind a proxy or a name the request does not already carry.
 	PublicURL string `yaml:"public_url"`
+
+	// TLSCert and TLSKey serve this listener over TLS directly, without a proxy
+	// in front.
+	//
+	// Present because a relay usually has no proxy to put there and often
+	// cannot get one. Browsers refuse a plaintext WebSocket from a page loaded
+	// over HTTPS, so a relay dialled from a real deployment has to be wss —
+	// and the machines that make the best relays are frequently the ones where
+	// installing anything is hardest: a package mirror that will not answer, a
+	// port 80 the network never delivers, a host that cannot be issued a
+	// certificate locally at all.
+	//
+	// A certificate copied in from elsewhere, served by the one binary that was
+	// already going to be copied in, removes all of that. A deployment that does
+	// have a proxy leaves both empty and nothing changes.
+	TLSCert string `yaml:"tls_cert"`
+	TLSKey  string `yaml:"tls_key"`
 
 	// TokenTTL is how long a join token stays valid. Short by design: it is
 	// spent on the next connect and never reused.
@@ -343,7 +361,41 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	if err := checkTLS(&meet); err != nil {
+		return nil, err
+	}
+
 	return &Config{Meet: meet, LiveKit: lk, Key: key, Secret: secret}, nil
+}
+
+// checkTLS refuses a certificate that cannot be served, at startup.
+//
+// Every failure here is one that would otherwise appear as a listener that
+// never came up, or worse, one that came up plaintext on a deployment that
+// believed it was encrypted — and the browser refusing to connect is a long way
+// from the file that was misspelled.
+func checkTLS(meet *Meet) error {
+	switch {
+	case meet.TLSCert == "" && meet.TLSKey == "":
+		return nil
+
+	case meet.TLSCert == "":
+		return fmt.Errorf("meet.tls_key is set and meet.tls_cert is not; both are needed to " +
+			"serve TLS, and neither alone does anything")
+
+	case meet.TLSKey == "":
+		return fmt.Errorf("meet.tls_cert is set and meet.tls_key is not; both are needed to " +
+			"serve TLS, and neither alone does anything")
+	}
+
+	// Loaded rather than merely stat'd, so that a certificate which does not
+	// match its key, or a file holding something other than a certificate, is a
+	// message here rather than a listener that fails to start later.
+	if _, err := tls.LoadX509KeyPair(meet.TLSCert, meet.TLSKey); err != nil {
+		return fmt.Errorf("meet.tls_cert and meet.tls_key: %w", err)
+	}
+
+	return nil
 }
 
 // checkRole refuses a split that cannot work, at startup.

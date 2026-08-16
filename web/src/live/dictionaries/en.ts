@@ -200,6 +200,10 @@ const en = {
 	"Server": "Server",
 	"Automatic": "Automatic",
 	"reserve": "reserve",
+	"Guangzhou Tencent": "Guangzhou Tencent",
+	"Shanghai Tencent": "Shanghai Tencent",
+	"Shanghai Telecom": "Shanghai Telecom",
+	"Hong Kong": "Hong Kong",
 } as const;
 
 export default en;

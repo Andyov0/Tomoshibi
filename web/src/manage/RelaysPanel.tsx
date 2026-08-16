@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { t } from "@/live/i18n";
+import { say, t } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
 import { Check, Copy, Loader2, Plus, Terminal, Trash2, X } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -169,7 +169,7 @@ function RelayRow({
 	const [confirming, setConfirming] = useState(false);
 
 	return (
-		<Card title={relay.label || relay.name} note={relay.label ? relay.name : relay.region}>
+		<Card title={say(relay.label || relay.name)} note={relay.label ? relay.name : relay.region}>
 			<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">

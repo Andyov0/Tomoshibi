@@ -167,6 +167,10 @@ const ja: Dictionary = {
 	"Server": "サーバー",
 	"Automatic": "自動",
 	"reserve": "予備",
+	"Guangzhou Tencent": "広州テンセント",
+	"Shanghai Tencent": "上海テンセント",
+	"Shanghai Telecom": "上海テレコム",
+	"Hong Kong": "香港",
 };
 
 export default ja;

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 import { deployment } from "@/live/api";
 import { devicesAvailable, insecureReason } from "@/live/context";
+import { say } from "@/live/i18n";
 import { parseName } from "@/live/name";
 import { type Relay as OfferedRelay, relays } from "@/live/relays";
 import { remember } from "@/live/remember";
@@ -418,7 +419,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 								<option value="">{t("Automatic")}</option>
 								{servers.map((one) => (
 									<option key={one.name} value={one.name}>
-										{one.label || one.name}
+										{say(one.label || one.name)}
 										{/* A reserve relay is a working relay a long way
 										    away. Somebody may want it and should know
 										    what they are asking for. */}

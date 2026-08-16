@@ -167,6 +167,10 @@ const zhHant: Dictionary = {
 	"Server": "伺服器",
 	"Automatic": "自動選擇",
 	"reserve": "備援",
+	"Guangzhou Tencent": "廣州騰訊",
+	"Shanghai Tencent": "上海騰訊",
+	"Shanghai Telecom": "上海電信",
+	"Hong Kong": "香港",
 };
 
 export default zhHant;

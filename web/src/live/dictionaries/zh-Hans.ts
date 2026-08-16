@@ -167,6 +167,10 @@ const zhHans: Dictionary = {
 	"Server": "服务器",
 	"Automatic": "自动选择",
 	"reserve": "兜底",
+	"Guangzhou Tencent": "广州腾讯",
+	"Shanghai Tencent": "上海腾讯",
+	"Shanghai Telecom": "上海电信",
+	"Hong Kong": "香港",
 };
 
 export default zhHans;

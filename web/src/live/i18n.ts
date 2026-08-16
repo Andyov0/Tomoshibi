@@ -154,6 +154,26 @@ export type Values = Record<string, string | number>;
  * is a whole sentence rather than a placeholder, so an incomplete dictionary
  * degrades into a mixed interface instead of a broken one.
  */
+/**
+ * Translate a string that only exists at runtime.
+ *
+ * For text the deployment supplies rather than the interface: a relay's label,
+ * typed into a management page by whoever runs this. It cannot be typed as a
+ * Phrase, because nobody knew it when the code was written — but a deployment
+ * that labels a machine with something this application already says should get
+ * the reader's own language for free, and one that labels it anything else
+ * should get exactly what was typed.
+ *
+ * Kept apart from [t] rather than widening it. Losing the compiler's check on
+ * every ordinary phrase to accommodate the handful that cannot have one would
+ * trade a whole class of caught mistakes for a convenience.
+ */
+export function say(text: string): string {
+	const dictionary = DICTIONARIES[current] as Record<string, string | undefined>;
+
+	return dictionary[text] ?? text;
+}
+
 export function t(phrase: Phrase, values?: Values): string {
 	const template = DICTIONARIES[current][phrase] ?? phrase;
 	if (!values) return template;

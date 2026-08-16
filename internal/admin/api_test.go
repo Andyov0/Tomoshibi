@@ -73,7 +73,7 @@ func mount(t *testing.T, admins []config.Admin) (*API, http.Handler) {
 
 	api := &API{
 		conf:     &config.Config{Meet: config.Meet{Admins: admins}, LiveKit: livekitDefaults()},
-		sessions: NewSessions(admins, key),
+		sessions: NewSessions(func() []config.Admin { return admins }, key),
 		media:    absent{},
 		control:  absent{},
 		log:      NewLog(),

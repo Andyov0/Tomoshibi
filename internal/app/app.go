@@ -369,7 +369,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// standing here, only for somebody to look at what it had already worked out.
 	mayOpen := a.opening() == room.ByAnyone
 	if !mayOpen {
-		_, mayOpen = config.Administrator(a.conf.Meet.Admins, body.Passphrase, a.tripKey)
+		_, mayOpen = config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
 	}
 
 	// Before the token rather than after it, and waited for rather than sent
@@ -522,7 +522,23 @@ func (a *App) deployment(w http.ResponseWriter, _ *http.Request) {
 // opening is who may use a name nobody has used, as this deployment can
 // actually enforce it.
 func (a *App) opening() room.Opening {
-	return a.store.Opening().InEffect(len(a.conf.Meet.Admins))
+	return a.store.Opening().InEffect(len(a.administrators()))
+}
+
+// administrators is the live list, or the configured one where there is no
+// management surface to keep it.
+//
+// Both callers ask the same question — may this passphrase open a room, and is
+// there anybody an administrator-only setting could ever be satisfied by — and
+// both have to see somebody added on a page without a restart. The fallback is
+// not a nicety: a deployment built without management pages still reads its
+// configuration file, and answering none there would quietly open every room.
+func (a *App) administrators() []config.Admin {
+	if a.admin == nil {
+		return a.conf.Meet.Admins
+	}
+
+	return a.admin.Administrators()
 }
 
 // signallingURL is where this client should open its WebSocket.

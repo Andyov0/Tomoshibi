@@ -11,6 +11,15 @@ import (
 	"tomoshibi/internal/room"
 )
 
+// roster hands a fixed list to a Sessions that reads a live one.
+//
+// The list is read on every sign-in now, so that somebody added on a page can
+// sign in without a restart and somebody removed cannot sign in again. These
+// tests are about who is recognised rather than about when, so a constant does.
+func roster(list []config.Admin) func() []config.Admin {
+	return func() []config.Admin { return list }
+}
+
 /*
  * What these guard is a door.
  *
@@ -45,7 +54,7 @@ func admins(t *testing.T, passphrases ...string) ([]config.Admin, []string) {
 
 func TestTheRightPassphraseOpensASession(t *testing.T) {
 	listed, trips := admins(t, "correct")
-	sessions := NewSessions(listed, key)
+	sessions := NewSessions(roster(listed), key)
 
 	session, token, ok := sessions.Open("correct")
 	if !ok {
@@ -63,7 +72,7 @@ func TestTheRightPassphraseOpensASession(t *testing.T) {
 
 func TestEveryOtherPassphraseIsRefused(t *testing.T) {
 	listed, trips := admins(t, "correct")
-	sessions := NewSessions(listed, key)
+	sessions := NewSessions(roster(listed), key)
 
 	// The trip is public — it is printed beside its owner's name in every room
 	// they join. Somebody who has read it off a screen and types it in has
@@ -81,7 +90,7 @@ func TestASignatureIsOnlyGoodOnItsOwnDeployment(t *testing.T) {
 	// The same passphrase against a different key produces a different mark,
 	// which is what stops one deployment's signatures being worth anything on
 	// another.
-	elsewhere := NewSessions(listed, []byte("a different deployment's key"))
+	elsewhere := NewSessions(roster(listed), []byte("a different deployment's key"))
 
 	if _, _, ok := elsewhere.Open("correct"); ok {
 		t.Error("a passphrase from one deployment opened a session on another")
@@ -90,7 +99,7 @@ func TestASignatureIsOnlyGoodOnItsOwnDeployment(t *testing.T) {
 
 func TestWatchingAndActingAreSeparate(t *testing.T) {
 	listed, _ := admins(t, "moderator", "watcher")
-	sessions := NewSessions(listed, key)
+	sessions := NewSessions(roster(listed), key)
 
 	moderator, _, _ := sessions.Open("moderator")
 	watcher, _, _ := sessions.Open("watcher")
@@ -110,7 +119,7 @@ func TestWatchingAndActingAreSeparate(t *testing.T) {
 
 func TestASessionIsCarriedByItsCookieAndNothingElse(t *testing.T) {
 	listed, _ := admins(t, "correct")
-	sessions := NewSessions(listed, key)
+	sessions := NewSessions(roster(listed), key)
 
 	_, token, _ := sessions.Open("correct")
 
@@ -134,7 +143,7 @@ func TestASessionIsCarriedByItsCookieAndNothingElse(t *testing.T) {
 
 func TestSigningOutEndsIt(t *testing.T) {
 	listed, _ := admins(t, "correct")
-	sessions := NewSessions(listed, key)
+	sessions := NewSessions(roster(listed), key)
 
 	_, token, _ := sessions.Open("correct")
 
@@ -150,7 +159,7 @@ func TestSigningOutEndsIt(t *testing.T) {
 
 func TestASessionExpires(t *testing.T) {
 	listed, _ := admins(t, "correct")
-	sessions := NewSessions(listed, key)
+	sessions := NewSessions(roster(listed), key)
 
 	_, token, _ := sessions.Open("correct")
 
@@ -171,7 +180,7 @@ func TestASessionExpires(t *testing.T) {
 func TestNobodyIsConfiguredByDefault(t *testing.T) {
 	// The surface exists only where somebody asked for it. A door that opens
 	// for nobody is still a door, and this deployment does not fit one.
-	if NewSessions(nil, key).Configured() {
+	if NewSessions(roster(nil), key).Configured() {
 		t.Error("a deployment with no administrators has a management surface")
 	}
 }

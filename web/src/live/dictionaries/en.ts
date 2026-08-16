@@ -173,6 +173,17 @@ const en = {
 	"1080p, up to 8 Mbps": "1080p, up to 8 Mbps",
 	"1440p, up to 16 Mbps": "1440p, up to 16 Mbps",
 	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K, up to 30 Mbps. Needs a fast machine and upload.",
+	"Administrators": "Administrators",
+	"One of these can change things": "One of these can change things",
+	"can change things": "can change things",
+	"Add somebody": "Add somebody",
+	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.",
+	"Unnamed": "Unnamed",
+	"you": "you",
+	"Can change things": "Can change things",
+	"The last administrator who can change things cannot be removed": "The last administrator who can change things cannot be removed",
+	"Signature": "Signature",
+	"Add": "Add",
 } as const;
 
 export default en;

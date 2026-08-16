@@ -51,7 +51,14 @@ func (s Session) Allows(capability string) bool {
 // about people, and it means a session cannot outlive the configuration that
 // authorised it.
 type Sessions struct {
-	admins  []config.Admin
+	// admins is asked each time rather than captured once.
+	//
+	// Because the list changes while the deployment runs: somebody added on a
+	// page can sign in without a restart, and somebody removed cannot sign in
+	// again — their open session lasts out its half hour and then asks this
+	// same question and is refused. A captured slice would have made both of
+	// those a restart, which ends every call in progress.
+	admins  func() []config.Admin
 	tripKey []byte
 
 	mu    sync.Mutex
@@ -60,7 +67,7 @@ type Sessions struct {
 }
 
 // NewSessions prepares the sign-in for a set of administrators.
-func NewSessions(admins []config.Admin, tripKey []byte) *Sessions {
+func NewSessions(admins func() []config.Admin, tripKey []byte) *Sessions {
 	return &Sessions{
 		admins:  admins,
 		tripKey: tripKey,
@@ -71,7 +78,7 @@ func NewSessions(admins []config.Admin, tripKey []byte) *Sessions {
 
 // Configured reports whether this deployment has any administrators at all.
 func (s *Sessions) Configured() bool {
-	return len(s.admins) > 0
+	return len(s.admins()) > 0
 }
 
 // Open signs somebody in, or refuses them.
@@ -81,7 +88,7 @@ func (s *Sessions) Configured() bool {
 // the same key — it has to, to know who may open a room — and two answers to one
 // question is one of them waiting to drift.
 func (s *Sessions) Open(passphrase room.Passphrase) (Session, string, bool) {
-	found, matched := config.Administrator(s.admins, passphrase, s.tripKey)
+	found, matched := config.Administrator(s.admins(), passphrase, s.tripKey)
 	if !matched {
 		return Session{}, "", false
 	}

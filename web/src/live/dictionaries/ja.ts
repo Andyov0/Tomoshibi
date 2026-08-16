@@ -140,6 +140,17 @@ const ja: Dictionary = {
 	"1080p, up to 8 Mbps": "1080p、最大 8 Mbps",
 	"1440p, up to 16 Mbps": "1440p、最大 16 Mbps",
 	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K、最大 30 Mbps。速いマシンと上り回線が必要です。",
+	"Administrators": "管理者",
+	"One of these can change things": "このうち 1 人が変更できます",
+	"can change things": "人が変更できます",
+	"Add somebody": "メンバーを追加",
+	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "署名はパスフレーズから作られるもので、公開情報です。参加したどの部屋でも名前の横に表示されます。パスフレーズではなく署名を訊いてください。パスフレーズはこのサーバーが知ることも保存することもありません。",
+	"Unnamed": "名前なし",
+	"you": "あなた",
+	"Can change things": "変更できる",
+	"The last administrator who can change things cannot be removed": "変更できる最後の管理者は削除できません",
+	"Signature": "署名",
+	"Add": "追加",
 };
 
 export default ja;

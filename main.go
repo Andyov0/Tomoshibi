@@ -217,6 +217,12 @@ func serve(args []string) error {
 			return err
 		}
 
+		// After the opening, because the opening warns about there being no
+		// administrators and would be reading a list nobody had written yet.
+		if err := adoptAdmins(st, conf); err != nil {
+			return err
+		}
+
 		if tripKey, err = room.LoadTripKey(conf.Meet.TripcodeKey); err != nil {
 			return err
 		}
@@ -534,6 +540,42 @@ func adoptRelays(st *store.Store, conf *config.Config) error {
 	for _, relay := range live {
 		slog.Info("relay", "name", relay.Name, "url", relay.URL,
 			"region", relay.Region, "enabled", relay.Enabled)
+	}
+
+	return nil
+}
+
+// adoptAdmins writes the configured administrators in, the first time this runs.
+//
+// After that the management pages are what change them, and the file is the way
+// back in: somebody who can edit it on the host and restart is put back on a
+// deployment whose store was lost. That is deliberate. The alternative is a
+// deployment that has locked out the person who owns the machine.
+func adoptAdmins(st *store.Store, conf *config.Config) error {
+	adopted, err := st.AdoptAdmins(conf.Meet.Admins)
+	if err != nil {
+		return err
+	}
+
+	live, err := st.Admins()
+	if err != nil {
+		return err
+	}
+
+	if adopted && len(conf.Meet.Admins) > 0 {
+		slog.Info("adopted the administrators from the configuration file; the management "+
+			"pages are what change them from here", "administrators", len(conf.Meet.Admins))
+	}
+
+	if !adopted && len(conf.Meet.Admins) > 0 && len(live) != len(conf.Meet.Admins) {
+		slog.Warn("meet.admins in the configuration file is the starting value only, and this "+
+			"deployment already has its own list. Edit the administrators from the "+
+			"management pages",
+			"configured", len(conf.Meet.Admins), "in effect", len(live))
+	}
+
+	for _, admin := range live {
+		slog.Info("administrator", "name", admin.Name, "trip", admin.Trip, "can", admin.Can)
 	}
 
 	return nil

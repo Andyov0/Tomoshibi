@@ -122,6 +122,16 @@ export interface Participant {
 	tracks: Track[];
 }
 
+/** One administrator, as the management pages see them. */
+export interface Administrator {
+	trip: string;
+	name: string;
+	can: string[];
+	added?: string;
+	/** Whoever is reading, so a page can say so and guard their own way back in. */
+	self?: boolean;
+}
+
 export interface Entry {
 	at: string;
 	trip: string;
@@ -288,6 +298,27 @@ export const api = {
 	 * here would mean the client holding a second, quietly diverging idea of
 	 * where this deployment lives.
 	 */
+	/**
+	 * Everybody who may open these pages.
+	 *
+	 * The signature is the key and the whole of the identity. No passphrase
+	 * travels here in either direction: this server is never told one, which is
+	 * what makes a signature safe to send over a chat message.
+	 */
+	admins: () => call<Administrator[]>("/admins"),
+
+	addAdmin: (admin: { trip: string; name: string; can: string[] }) =>
+		call<{ added: string }>("/admins", { method: "POST", body: JSON.stringify(admin) }),
+
+	changeAdmin: (trip: string, change: { name: string; can: string[] }) =>
+		call<{ changed: string }>(`/admins/${encodeURIComponent(trip)}`, {
+			method: "PATCH",
+			body: JSON.stringify(change),
+		}),
+
+	dropAdmin: (trip: string) =>
+		call<{ removed: string }>(`/admins/${encodeURIComponent(trip)}`, { method: "DELETE" }),
+
 	relayCommand: () => call<{ command: string; domain: string; port: number }>("/relays/command"),
 
 	dropRelay: (name: string) =>

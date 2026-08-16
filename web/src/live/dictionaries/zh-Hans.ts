@@ -140,6 +140,17 @@ const zhHans: Dictionary = {
 	"1080p, up to 8 Mbps": "1080p，最高 8 Mbps",
 	"1440p, up to 16 Mbps": "1440p，最高 16 Mbps",
 	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K，最高 30 Mbps。需要够快的机器和上行带宽。",
+	"Administrators": "管理员",
+	"One of these can change things": "其中一人可以做修改",
+	"can change things": "人可以做修改",
+	"Add somebody": "添加成员",
+	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "签名是口令生成的,而且是公开的——他们进任何房间时都会显示在名字旁边。向对方要签名,不要口令;口令本服务器从来不会知道,也无法保存。",
+	"Unnamed": "未命名",
+	"you": "你",
+	"Can change things": "可以做修改",
+	"The last administrator who can change things cannot be removed": "最后一个可做修改的管理员不能被移除",
+	"Signature": "签名",
+	"Add": "添加",
 };
 
 export default zhHans;

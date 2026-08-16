@@ -140,6 +140,17 @@ const zhHant: Dictionary = {
 	"1080p, up to 8 Mbps": "1080p，最高 8 Mbps",
 	"1440p, up to 16 Mbps": "1440p，最高 16 Mbps",
 	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K，最高 30 Mbps。需要夠快的機器和上行頻寬。",
+	"Administrators": "管理員",
+	"One of these can change things": "其中一人可以做修改",
+	"can change things": "人可以做修改",
+	"Add somebody": "新增成員",
+	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "簽名是通行語生成的,而且是公開的——他們進任何房間時都會顯示在名字旁邊。向對方要簽名,不要通行語;通行語本伺服器從來不會知道,也無法保存。",
+	"Unnamed": "未命名",
+	"you": "你",
+	"Can change things": "可以做修改",
+	"The last administrator who can change things cannot be removed": "最後一個可做修改的管理員不能被移除",
+	"Signature": "簽名",
+	"Add": "新增",
 };
 
 export default zhHant;

@@ -53,6 +53,19 @@ type Names interface {
 	SetOpening(opening room.Opening) error
 }
 
+// Roster is where the administrators are kept.
+//
+// Its own interface rather than a method on the one above, for the reason the
+// package names narrow ones at all: this is the list that decides who may open
+// these pages, and a test that exercises the gate has to be able to hand over a
+// list somebody wrote down without also standing up a database.
+type Roster interface {
+	Admins() ([]store.Admin, error)
+	AddAdmin(admin store.Admin) error
+	UpdateAdmin(admin store.Admin) error
+	RemoveAdmin(trip string) error
+}
+
 // API is the management surface.
 type API struct {
 	conf     *config.Config
@@ -60,6 +73,7 @@ type API struct {
 	control  Control
 	media    Media
 	store    Names
+	roster   Roster
 	relays   Relays
 	probe    Reachable
 	// fleet reads the counters of the relays this node does not run. Nil on a
@@ -86,18 +100,25 @@ type API struct {
 // out — see [API.attached].
 func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte) *API {
 	api := &API{
-		conf:     conf,
-		sessions: NewSessions(conf.Meet.Admins, tripKey),
-		store:    st,
-		log:      NewLog(),
-		history:  NewHistory(),
-		stop:     make(chan struct{}),
+		conf:    conf,
+		store:   st,
+		log:     NewLog(),
+		history: NewHistory(),
+		stop:    make(chan struct{}),
 	}
+
+	// Signing in asks the store, and falls back to the file where there is no
+	// store — which is a relay, where none of this is mounted anyway. The file
+	// is also what answers before the store has been adopted from, so a
+	// deployment being started for the first time is not briefly locked out of
+	// itself.
+	api.sessions = NewSessions(api.Administrators, tripKey)
 
 	// The relay list is the store's, where a page's changes go. Nil on a
 	// deployment without one, which is a relay.
 	if st != nil {
 		api.relays = st
+		api.roster = st
 	}
 
 	// Assigned inside the guard and never outside it. A nil *rtc.Server put
@@ -231,6 +252,35 @@ func (a *API) detached(w http.ResponseWriter) {
 // Nothing is registered when no administrator is configured, so the paths do
 // not merely refuse — they are not there, and the client fallback answers them
 // like any other unknown address.
+// administrators is the live list, as everything that recognises somebody reads
+// it.
+//
+// The store first and the configuration file behind it. The file is the starting
+// value and the way back in when a store has been lost: somebody who can edit it
+// on the host can always put themselves back, and that is deliberate, because
+// the alternative is a deployment that has locked out its own owner.
+func (a *API) Administrators() []config.Admin {
+	// Nil where no management surface was built, which is a relay. Callers on
+	// that side ask this to decide whether an administrator exists at all, and
+	// the honest answer for a machine with no management pages is none.
+	if a == nil {
+		return nil
+	}
+
+	if a.roster != nil {
+		if stored, err := a.roster.Admins(); err == nil && len(stored) > 0 {
+			list := make([]config.Admin, 0, len(stored))
+			for _, one := range stored {
+				list = append(list, one.Configured())
+			}
+
+			return list
+		}
+	}
+
+	return a.conf.Meet.Admins
+}
+
 func (a *API) Mount(mux *http.ServeMux) {
 	if !a.Configured() {
 		return
@@ -259,6 +309,14 @@ func (a *API) Mount(mux *http.ServeMux) {
 	// enrolment secret.
 	mux.HandleFunc("GET /api/admin/relays/script", a.moderate(a.installScript))
 	mux.HandleFunc("GET /api/admin/relays/command", a.moderate(a.installCommand))
+
+	// Who else may open these pages. Reading the list needs observe; changing
+	// it needs moderate, because being able to grant an ability is that
+	// ability — an observer who could appoint a moderator would be one.
+	mux.HandleFunc("GET /api/admin/admins", a.observe(a.roles))
+	mux.HandleFunc("POST /api/admin/admins", a.moderate(a.addRole))
+	mux.HandleFunc("PATCH /api/admin/admins/{trip}", a.moderate(a.changeRole))
+	mux.HandleFunc("DELETE /api/admin/admins/{trip}", a.moderate(a.dropRole))
 
 	mux.HandleFunc("PUT /api/admin/policy", a.moderate(a.setPolicy))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))
@@ -599,7 +657,7 @@ func (a *API) runtime(_ Session, w http.ResponseWriter, _ *http.Request) {
 			"joinBurst":  a.conf.Meet.JoinBurst,
 			"trustProxy": a.conf.Meet.TrustProxy,
 			"database":   a.conf.Meet.Database,
-			"admins":     len(a.conf.Meet.Admins),
+			"admins":     len(a.Administrators()),
 		},
 		"rooms": a.currentPolicy(),
 		"rtc": map[string]any{
@@ -662,7 +720,7 @@ func (a *API) currentPolicy() policy {
 	chosen := a.store.Opening()
 
 	return policy{
-		OpenedBy:   chosen.InEffect(len(a.conf.Meet.Admins)),
+		OpenedBy:   chosen.InEffect(len(a.Administrators())),
 		Chosen:     chosen,
 		Configured: a.conf.Meet.Rooms.OpenedBy,
 		Remember:   int64(a.conf.Meet.Rooms.Remember / time.Second),

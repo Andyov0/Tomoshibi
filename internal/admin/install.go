@@ -155,7 +155,13 @@ say "Writing the configuration"
     printf '  tls_cert: /etc/tomoshibi/certs/relay.fullchain.pem\n'
     printf '  tls_key: /etc/tomoshibi/certs/relay.key\n'
 } > /etc/tomoshibi/relay.yaml
-chmod 600 /etc/tomoshibi/relay.yaml
+
+# Readable by the group the service runs in, and by nobody else. The file holds
+# the deployment's API secret and the redis password, so it is not world
+# readable — and it is not 600 either, because the service runs under a dynamic
+# user that is not root and would be refused its own configuration.
+chgrp tomoshibi-certs /etc/tomoshibi/relay.yaml 2>/dev/null || true
+chmod 640 /etc/tomoshibi/relay.yaml
 
 say "Installing the service"
 cat > /etc/systemd/system/tomoshibi-relay.service <<'UNIT'

@@ -153,6 +153,20 @@ type Meet struct {
 	// behind a proxy or a name the request does not already carry.
 	PublicURL string `yaml:"public_url"`
 
+	// Silent answers nothing but a WebSocket upgrade.
+	//
+	// For a relay on a network that decides what a machine is by asking it.
+	// Mainland Chinese hosts are probed with an ordinary HTTPS request, and any
+	// answer — 204, 401, even 404 — identifies the port as a website, which an
+	// unregistered domain is not allowed to be. A WebSocket endpoint owes no
+	// answer to a request that is not an upgrade, so under this it gives none:
+	// the connection is closed without a status line.
+	//
+	// The cost is the health endpoint, which a control node's page and a
+	// client's own measurement both use. A relay elsewhere should leave this
+	// off and stay readable.
+	Silent bool `yaml:"silent"`
+
 	// TLSCert and TLSKey serve this listener over TLS directly, without a proxy
 	// in front.
 	//

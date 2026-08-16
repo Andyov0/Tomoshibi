@@ -178,6 +178,14 @@ func (a *App) Handler() http.Handler {
 	// tokens against a store it does not keep, and management pages for
 	// administrators it was told nothing about.
 	if a.conf.Meet.Role == config.RoleRelay {
+		// Nothing but the upgrade, on a network that probes for websites.
+		//
+		// Registered before the endpoints below rather than instead of them, so
+		// that turning this off restores them without the routes having moved.
+		if a.conf.Meet.Silent {
+			return silence(mux)
+		}
+
 		// Answered for any origin, because the point of this endpoint on a relay
 		// is to be timed by a client served from somewhere else: the control
 		// node's page measures every relay before choosing one, and a browser

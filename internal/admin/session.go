@@ -105,8 +105,8 @@ func (s *Sessions) Configured() bool {
 // one's, because the join endpoint asks the same question of the same list with
 // the same key — it has to, to know who may open a room — and two answers to one
 // question is one of them waiting to drift.
-func (s *Sessions) Open(passphrase room.Passphrase) (Session, string, bool) {
-	found, matched := config.Administrator(s.admins(), passphrase, s.tripKey)
+func (s *Sessions) Open(name string, passphrase room.Passphrase) (Session, string, bool) {
+	found, matched := config.NamedAdministrator(s.admins(), name, passphrase, s.tripKey)
 	if !matched {
 		return Session{}, "", false
 	}

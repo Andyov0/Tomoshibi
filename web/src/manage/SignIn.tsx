@@ -26,6 +26,7 @@ import { api } from "./api";
  * was right.
  */
 export function SignIn({ onIn }: { onIn: () => void }) {
+	const [name, setName] = useState("");
 	const [passphrase, setPassphrase] = useState("");
 	const [shown, setShown] = useState(false);
 	const [busy, setBusy] = useState(false);
@@ -37,7 +38,7 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 		setBusy(true);
 
 		try {
-			await api.signIn(passphraseOf(passphrase));
+			await api.signIn(name, passphraseOf(passphrase));
 			onIn();
 		} catch (err) {
 			// A refused passphrase is an event, and the field is cleared for the
@@ -57,7 +58,7 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 					<ShieldCheck className="size-8 text-fg-muted" />
 					<h1 className="font-semibold text-xl tracking-tight">Management</h1>
 					<p className="text-fg-muted text-sm">
-						Enter your passphrase.
+						Enter your name and passphrase.
 					</p>
 				</header>
 
@@ -67,6 +68,24 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 				  * password manager. Being able to see what was typed is the
 				  * difference between one attempt and three.
 				  */}
+				{/*
+				  * Asked for, and not only as a label. Without it a guess is
+				  * checked against every administrator at once, so a stuffed
+				  * credential succeeds if anybody here has ever reused a
+				  * passphrase; with it, an attacker has to be right about who as
+				  * well as about what.
+				  */}
+				<Input
+					value={name}
+					onChange={(event) => setName(event.target.value)}
+					placeholder="Name"
+					aria-label="Name"
+					autoComplete="username"
+					// biome-ignore lint/a11y/noAutofocus: the page exists to be typed into
+					autoFocus
+					maxLength={64}
+				/>
+
 				<div className="relative">
 					<Input
 						type={shown ? "text" : "password"}
@@ -75,8 +94,6 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 						placeholder="Passphrase"
 						aria-label="Passphrase"
 						autoComplete="current-password"
-						// biome-ignore lint/a11y/noAutofocus: the page exists to be typed into
-						autoFocus
 						maxLength={200}
 						className={passphrase ? "pr-10" : undefined}
 					/>

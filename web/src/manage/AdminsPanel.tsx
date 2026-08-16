@@ -58,6 +58,10 @@ export function AdminsPanel({
 	const admins = value ?? [];
 	const moderators = admins.filter((one) => one.can.includes("moderate")).length;
 
+	// Anybody who may change things may change who else can, because there is
+	// one kind of administrator here and it was not worth inventing a second.
+	const canAppoint = canModerate;
+
 	return (
 		<div className="mx-auto flex max-w-4xl flex-col gap-3 sm:gap-4">
 			<Card
@@ -68,7 +72,7 @@ export function AdminsPanel({
 						: `${moderators} ${t("can change things")}`
 				}
 				actions={
-					canModerate &&
+					canAppoint &&
 					!adding && (
 						<button
 							type="button"
@@ -96,11 +100,12 @@ export function AdminsPanel({
 						<Row
 							key={one.trip}
 							admin={one}
-							canModerate={canModerate}
-							// The last person who can change anything cannot be removed
-							// or demoted, and the server refuses it either way. Said here
-							// too, so the button is not offered and then refused.
-							onlyModerator={moderators === 1 && one.can.includes("moderate")}
+							canAppoint={canAppoint}
+							// The last person who can appoint anybody cannot be
+							// removed or demoted, and the server refuses it either
+							// way. Said here too, so the control is not offered and
+							// then refused.
+							onlyOwner={moderators === 1 && one.can.includes("moderate")}
 							busy={busy === one.trip}
 							onChange={(can) =>
 								act(one.trip, () => api.changeAdmin(one.trip, { name: one.name, can }))
@@ -125,29 +130,29 @@ export function AdminsPanel({
 
 function Row({
 	admin,
-	canModerate,
-	onlyModerator,
+	canAppoint,
+	onlyOwner,
 	busy,
 	onChange,
 	onDrop,
 	onRename,
 }: {
 	admin: Administrator;
-	canModerate: boolean;
-	onlyModerator: boolean;
+	canAppoint: boolean;
+	onlyOwner: boolean;
 	busy: boolean;
 	onChange: (can: string[]) => void;
 	onDrop: () => void;
 	onRename: (name: string) => void;
 }) {
 	const [name, setName] = useState(admin.name);
-	const moderates = admin.can.includes("moderate");
+	const role = admin.can.includes("moderate") ? "moderate" : "observe";
 
 	return (
 		<li className="flex flex-wrap items-center gap-x-4 gap-y-2 border-border border-b px-3 py-3 last:border-0 sm:px-4">
 			<div className="flex min-w-0 flex-col gap-0.5">
 				<span className="flex items-center gap-2">
-					{canModerate ? (
+					{canAppoint ? (
 						<input
 							value={name}
 							onChange={(event) => setName(event.target.value)}
@@ -173,28 +178,36 @@ function Row({
 			</div>
 
 			<div className="ml-auto flex items-center gap-3">
-				<label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
-					<input
-						type="checkbox"
-						checked={moderates}
-						disabled={!canModerate || busy || onlyModerator}
-						onChange={(event) =>
-							onChange(event.target.checked ? ["moderate"] : [])
-						}
-						className="size-3.5 accent-tally disabled:opacity-40"
-					/>
-					{t("Can change things")}
-				</label>
+				{/*
+				  * Three levels, as one control rather than two checkboxes. They
+				  * are ordered — an owner may moderate, a moderator may watch —
+				  * so a pair of boxes would admit combinations that mean nothing
+				  * and invite somebody to tick the wrong one of them.
+				  */}
+				<select
+					value={role}
+					disabled={!canAppoint || busy || onlyOwner}
+					onChange={(event) => onChange(roleTo(event.target.value))}
+					className={cn(
+						"rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px] text-fg",
+						"outline-none transition-colors hover:border-fg/20",
+						"focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40",
+					)}
+					title={onlyOwner ? t("The last administrator who can change things cannot be removed") : undefined}
+				>
+					<option value="observe">{t("Can watch")}</option>
+					<option value="moderate">{t("Can change things")}</option>
+				</select>
 
-				{canModerate && (
+				{canAppoint && (
 					<button
 						type="button"
-						disabled={busy || onlyModerator}
+						disabled={busy || onlyOwner}
 						onClick={onDrop}
-						title={onlyModerator ? t("The last administrator who can change things cannot be removed") : undefined}
+						title={onlyOwner ? t("The last administrator who can change things cannot be removed") : undefined}
 						className={cn(
 							"rounded-md border border-border p-1.5",
-							onlyModerator ? "opacity-40" : "hover:bg-surface-2 hover:text-danger",
+							onlyOwner ? "opacity-40" : "hover:bg-surface-2 hover:text-danger",
 						)}
 					>
 						{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -208,7 +221,7 @@ function Row({
 function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
 	const [name, setName] = useState("");
 	const [trip, setTrip] = useState("");
-	const [moderates, setModerates] = useState(false);
+	const [role, setRole] = useState("observe");
 	const [saving, setSaving] = useState(false);
 
 	const submit = async () => {
@@ -217,7 +230,11 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 		setSaving(true);
 
 		try {
-			await api.addAdmin({ trip: trip.trim().toLowerCase(), name: name.trim(), can: moderates ? ["moderate"] : [] });
+			await api.addAdmin({
+				trip: trip.trim().toLowerCase(),
+				name: name.trim(),
+				can: roleTo(role),
+			});
 			onDone();
 		} catch (err) {
 			actionFailed(err instanceof Error ? err.message : String(err));
@@ -255,14 +272,16 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 				/>
 			</div>
 
-			<label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
-				<input
-					type="checkbox"
-					checked={moderates}
-					onChange={(event) => setModerates(event.target.checked)}
-					className="size-3.5 accent-tally"
-				/>
-				{t("Can change things")}
+			<label className="flex items-center gap-2 text-[12px] text-fg-muted">
+				{t("May")}
+				<select
+					value={role}
+					onChange={(event) => setRole(event.target.value)}
+					className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px] text-fg outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+				>
+					<option value="observe">{t("Can watch")}</option>
+					<option value="moderate">{t("Can change things")}</option>
+				</select>
 			</label>
 
 			<div className="flex gap-2">
@@ -378,4 +397,9 @@ function OwnPassphrase() {
 			</form>
 		</Card>
 	);
+}
+
+/** What a chosen level means to the server. Observe is held by everybody. */
+function roleTo(role: string): string[] {
+	return role === "moderate" ? ["moderate"] : [];
 }

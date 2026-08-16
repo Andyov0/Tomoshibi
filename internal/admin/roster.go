@@ -206,7 +206,6 @@ func capabilitiesOf(admin config.Admin) []string {
 	if admin.Allows(config.Moderate) {
 		out = append(out, config.Moderate)
 	}
-
 	return out
 }
 

@@ -350,6 +350,7 @@ type Admin struct {
 }
 
 // Allows reports whether this administrator holds a capability.
+// Allows reports whether this administrator holds a capability.
 func (a Admin) Allows(capability string) bool {
 	if capability == Observe {
 		return true
@@ -657,17 +658,57 @@ func checkAdmins(admins []Admin) error {
 // string comparisons, and stopping at the first match would leak, through the
 // time taken, how far down the list a signature sits.
 func Administrator(admins []Admin, passphrase room.Passphrase, tripKey []byte) (Admin, bool) {
+	return NamedAdministrator(admins, "", passphrase, tripKey)
+}
+
+// NamedAdministrator is the same question with a name attached.
+//
+// The management sign-in asks for both, and it asks for a reason: a passphrase
+// alone is a single secret that anybody may guess at, and every guess is checked
+// against every administrator at once. A list of leaked passphrases run at this
+// endpoint would find a match if any one person on the deployment had reused
+// one. Requiring the name means a guess has to be aimed at somebody, which turns
+// one pool into as many separate ones as there are administrators.
+//
+// The room join is the other caller and passes no name, because there is nobody
+// to name: somebody opening a room proves they hold an administrator's
+// passphrase and nothing more is asked of them.
+//
+// An administrator with no name recorded is matched by passphrase alone, as
+// before. Refusing them would lock out any deployment upgrading into this, and
+// the fix is to give them a name — which the management pages now do.
+func NamedAdministrator(
+	admins []Admin,
+	name string,
+	passphrase room.Passphrase,
+	tripKey []byte,
+) (Admin, bool) {
 	if passphrase.Empty() {
 		return Admin{}, false
 	}
 
 	trip := []byte(room.Trip(tripKey, strings.TrimSpace(string(passphrase))))
+	wanted := strings.ToLower(strings.TrimSpace(name))
 
 	var found Admin
 	matched := false
 
 	for _, admin := range admins {
-		if subtle.ConstantTimeCompare([]byte(admin.Trip), trip) == 1 {
+		// Compared in full rather than skipped early, so that the work done is
+		// the same whether or not a name was right. A loop that returned as soon
+		// as the name missed would answer faster for a name nobody has, which is
+		// a way to enumerate who does.
+		right := subtle.ConstantTimeCompare([]byte(admin.Trip), trip)
+
+		named := 1
+		if wanted != "" && admin.Name != "" {
+			named = subtle.ConstantTimeCompare(
+				[]byte(strings.ToLower(strings.TrimSpace(admin.Name))),
+				[]byte(wanted),
+			)
+		}
+
+		if right == 1 && named == 1 {
 			found = admin
 			matched = true
 		}

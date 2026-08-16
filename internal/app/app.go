@@ -372,7 +372,18 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// and whether a relay reserved for administrators may be asked for.
 	_, isAdmin := config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
 
-	mayOpen := a.opening() == room.ByAnyone || isAdmin
+	// Three settings, and the middle one is the useful one. Anonymous visitors
+	// have a signature drawn from nothing that changes on every tab, so under
+	// BySigned they can join any room they are told about and cannot make one —
+	// which is the difference between a meeting server and a thing strangers
+	// find and use.
+	mayOpen := isAdmin
+	switch a.opening() {
+	case room.ByAnyone:
+		mayOpen = true
+	case room.BySigned:
+		mayOpen = mayOpen || !body.Passphrase.Empty()
+	}
 
 	// Before the token rather than after it, and waited for rather than sent
 	// off, because this is no longer only an observation: whether the name has
@@ -440,6 +451,12 @@ type relayEntry struct {
 	// picker can say so rather than presenting it as an equal choice — a person
 	// who picks it should know they are asking for the long way round.
 	Fallback bool `json:"fallback,omitempty"`
+
+	// AdminOnly marks one that only an administrator may use. It is only ever
+	// sent to an administrator — anybody else does not receive the relay at all
+	// — so this is a label rather than a gate: whoever sees it should know that
+	// what they are looking at is not on everybody else's list.
+	AdminOnly bool `json:"adminOnly,omitempty"`
 }
 
 // relayList is what a client measures before it joins.
@@ -472,7 +489,7 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 	for _, relay := range list {
 		entries = append(entries, relayEntry{
 			Name: relay.Name, URL: relay.URL, Region: relay.Region,
-			Label: relay.Shown(), Fallback: relay.Fallback,
+			Label: relay.Shown(), Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 		})
 	}
 

@@ -56,7 +56,7 @@ func TestTheRightPassphraseOpensASession(t *testing.T) {
 	listed, trips := admins(t, "correct")
 	sessions := NewSessions(roster(listed), key)
 
-	session, token, ok := sessions.Open("correct")
+	session, token, ok := sessions.Open("", "correct")
 	if !ok {
 		t.Fatal("the configured passphrase was refused")
 	}
@@ -78,7 +78,7 @@ func TestEveryOtherPassphraseIsRefused(t *testing.T) {
 	// they join. Somebody who has read it off a screen and types it in has
 	// offered a name, not a secret.
 	for _, attempt := range []string{"", " ", "wrong", "Correct", trips[0]} {
-		if _, _, ok := sessions.Open(room.Passphrase(attempt)); ok {
+		if _, _, ok := sessions.Open("", room.Passphrase(attempt)); ok {
 			t.Errorf("%q opened a session", attempt)
 		}
 	}
@@ -92,7 +92,7 @@ func TestASignatureIsOnlyGoodOnItsOwnDeployment(t *testing.T) {
 	// another.
 	elsewhere := NewSessions(roster(listed), []byte("a different deployment's key"))
 
-	if _, _, ok := elsewhere.Open("correct"); ok {
+	if _, _, ok := elsewhere.Open("", "correct"); ok {
 		t.Error("a passphrase from one deployment opened a session on another")
 	}
 }
@@ -101,8 +101,8 @@ func TestWatchingAndActingAreSeparate(t *testing.T) {
 	listed, _ := admins(t, "moderator", "watcher")
 	sessions := NewSessions(roster(listed), key)
 
-	moderator, _, _ := sessions.Open("moderator")
-	watcher, _, _ := sessions.Open("watcher")
+	moderator, _, _ := sessions.Open("", "moderator")
+	watcher, _, _ := sessions.Open("", "watcher")
 
 	if !watcher.Allows(config.Observe) {
 		t.Error("an administrator listed with nothing cannot even watch")
@@ -121,7 +121,7 @@ func TestASessionIsCarriedByItsCookieAndNothingElse(t *testing.T) {
 	listed, _ := admins(t, "correct")
 	sessions := NewSessions(roster(listed), key)
 
-	_, token, _ := sessions.Open("correct")
+	_, token, _ := sessions.Open("", "correct")
 
 	bare := httptest.NewRequest(http.MethodGet, "/api/admin/now", nil)
 	if _, ok := sessions.Of(bare); ok {
@@ -145,7 +145,7 @@ func TestSigningOutEndsIt(t *testing.T) {
 	listed, _ := admins(t, "correct")
 	sessions := NewSessions(roster(listed), key)
 
-	_, token, _ := sessions.Open("correct")
+	_, token, _ := sessions.Open("", "correct")
 
 	request := httptest.NewRequest(http.MethodDelete, "/api/admin/session", nil)
 	request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
@@ -161,7 +161,7 @@ func TestASessionExpires(t *testing.T) {
 	listed, _ := admins(t, "correct")
 	sessions := NewSessions(roster(listed), key)
 
-	_, token, _ := sessions.Open("correct")
+	_, token, _ := sessions.Open("", "correct")
 
 	sessions.mu.Lock()
 	held := sessions.open[token]
@@ -292,5 +292,59 @@ func TestCallersAreForgotten(t *testing.T) {
 
 	if held > 1 {
 		t.Errorf("%d callers held after all but one aged out; the map grows without bound", held)
+	}
+}
+
+/*
+The name is not decoration on the sign-in form.
+
+Without it, every attempt is checked against every administrator at once, so a
+list of leaked passphrases run at this endpoint succeeds if any one person on the
+deployment has ever reused one — and it succeeds without the attacker having to
+know that anybody exists. With it, a guess has to be aimed at somebody: one pool
+becomes as many separate pools as there are administrators.
+
+The compatibility case is the one that would rot quietly. An administrator with
+no name recorded is matched by passphrase alone, because refusing them would lock
+out any deployment upgrading into this — and a test that only covered the happy
+path would let somebody later "tidy up" that branch and take the deployment with
+it.
+*/
+
+func TestSigningInNeedsTheRightName(t *testing.T) {
+	listed := []config.Admin{
+		{Trip: room.Trip(key, "correct"), Name: "andy", Can: []string{config.Moderate}},
+		{Trip: room.Trip(key, "elsewhere"), Name: "sam"},
+	}
+
+	sessions := NewSessions(roster(listed), key)
+
+	if _, _, ok := sessions.Open("andy", "correct"); !ok {
+		t.Fatal("the right name and passphrase were refused")
+	}
+
+	// Somebody else's name with this passphrase. Both are real and the pairing
+	// is not, which is exactly what a stuffed credential looks like.
+	if _, _, ok := sessions.Open("sam", "correct"); ok {
+		t.Error("a passphrase belonging to one administrator signed in as another")
+	}
+
+	if _, _, ok := sessions.Open("nobody", "correct"); ok {
+		t.Error("a name nobody has signed in")
+	}
+}
+
+func TestSigningInStillWorksForSomebodyWithNoName(t *testing.T) {
+	listed := []config.Admin{{Trip: room.Trip(key, "correct")}}
+
+	sessions := NewSessions(roster(listed), key)
+
+	// Whatever is typed in the name field, including nothing. The alternative
+	// is a deployment that upgraded into this and can no longer be signed into
+	// at all.
+	for _, name := range []string{"", "andy", "anything"} {
+		if _, _, ok := sessions.Open(name, "correct"); !ok {
+			t.Errorf("an administrator with no name recorded was refused with name %q", name)
+		}
 	}
 }

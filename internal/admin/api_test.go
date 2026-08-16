@@ -142,7 +142,7 @@ func TestACookieFromNowhereIsNotASession(t *testing.T) {
 func TestWatchingIsNotActing(t *testing.T) {
 	api, mux := mount(t, []config.Admin{{Trip: room.Trip(key, "watcher"), Name: "watcher"}})
 
-	_, token, ok := api.sessions.Open("watcher")
+	_, token, ok := api.sessions.Open("", "watcher")
 	if !ok {
 		t.Fatal("the configured passphrase was refused")
 	}
@@ -308,7 +308,7 @@ func TestActionsAreRecordedAgainstWhoTookThem(t *testing.T) {
 	trip := room.Trip(key, "moderator")
 	api, mux := mount(t, []config.Admin{{Trip: trip, Name: "adam", Can: []string{config.Moderate}}})
 
-	_, token, _ := api.sessions.Open("moderator")
+	_, token, _ := api.sessions.Open("", "moderator")
 
 	// Reaches a media server that is not there, which is the point: a refusal
 	// is worth recording as much as a success, and by the same signature.
@@ -372,7 +372,7 @@ func TestOnlyAModeratorMayChangeWhoOpensRooms(t *testing.T) {
 	names := &remembers{opening: room.ByAnyone}
 	api.store = names
 
-	_, token, _ := api.sessions.Open("watcher")
+	_, token, _ := api.sessions.Open("", "watcher")
 
 	request := httptest.NewRequest(http.MethodPut, "/api/admin/policy",
 		strings.NewReader(`{"openedBy":"admins"}`))
@@ -398,7 +398,7 @@ func TestAModeratorMayChangeWhoOpensRooms(t *testing.T) {
 	names := &remembers{opening: room.ByAnyone}
 	api.store = names
 
-	_, token, _ := api.sessions.Open("moderator")
+	_, token, _ := api.sessions.Open("", "moderator")
 
 	request := httptest.NewRequest(http.MethodPut, "/api/admin/policy",
 		strings.NewReader(`{"openedBy":"admins"}`))
@@ -450,7 +450,7 @@ func TestSomethingThatIsNotAPolicyIsRefused(t *testing.T) {
 	names := &remembers{opening: room.ByAnyone}
 	api.store = names
 
-	_, token, _ := api.sessions.Open("moderator")
+	_, token, _ := api.sessions.Open("", "moderator")
 
 	for _, body := range []string{`{"openedBy":"administrators"}`, `{"openedBy":""}`, `not json`} {
 		request := httptest.NewRequest(http.MethodPut, "/api/admin/policy", strings.NewReader(body))

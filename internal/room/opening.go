@@ -20,14 +20,24 @@ const (
 	// everywhere it appears.
 	ByAnyone Opening = "anyone"
 
+	// BySigned refuses one unless whoever asked can prove a name.
+	//
+	// The middle setting, and the one most deployments actually want. An
+	// anonymous visitor has a signature drawn from nothing that changes on every
+	// tab, so they can join any room somebody tells them about but cannot make
+	// one; anybody who has set a passphrase can. It costs nothing to satisfy and
+	// it is the whole of the difference between a meeting server and a thing
+	// that gets found and used by strangers.
+	BySigned Opening = "signed"
+
 	// ByAdmins refuses one unless the passphrase that came with the request is
 	// an administrator's.
 	ByAdmins Opening = "admins"
 )
 
-// Valid reports whether this is one of the two.
+// Valid reports whether this is one of the three.
 func (o Opening) Valid() bool {
-	return o == ByAnyone || o == ByAdmins
+	return o == ByAnyone || o == BySigned || o == ByAdmins
 }
 
 // InEffect resolves a policy against how many administrators there are to

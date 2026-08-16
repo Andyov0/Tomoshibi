@@ -22,7 +22,7 @@ const IDENTITY_KEY = "meet-live.identity";
  * So the screen says who rooms are opened by, and the answer about any one
  * person arrives where it always did: on pressing Join.
  */
-export type Opening = "anyone" | "admins";
+export type Opening = "anyone" | "signed" | "admins";
 
 /** What the server said about itself. */
 export interface Deployment {

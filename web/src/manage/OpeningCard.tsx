@@ -62,13 +62,27 @@ export function OpeningCard({
 				<div
 					role="group"
 					aria-label="Who can start a new room"
-					className="grid grid-cols-2 gap-1 rounded-md border border-border bg-bg p-1"
+					className="grid grid-cols-3 gap-1 rounded-md border border-border bg-bg p-1"
 				>
 					<Choice
 						label="Anyone"
 						chosen={value?.chosen === "anyone"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("anyone")}
+					/>
+					{/*
+					  * The middle one, and the one most deployments want. An
+					  * anonymous visitor's signature is drawn from nothing and
+					  * changes on every tab, so this lets anybody who has set a
+					  * passphrase start a room and leaves everybody else able to
+					  * join one they were told about — which is the difference
+					  * between a meeting server and a thing strangers find.
+					  */}
+					<Choice
+						label="Named"
+						chosen={value?.chosen === "signed"}
+						disabled={!canModerate || saving || !value}
+						onChoose={() => choose("signed")}
 					/>
 					<Choice
 						label="Administrators"
@@ -81,7 +95,9 @@ export function OpeningCard({
 				<p className="text-fg-muted text-xs leading-relaxed">
 					{value?.chosen === "admins"
 						? "Only administrators can start a room. Rooms already in use stay open."
-						: "Anyone with a link can start a room."}
+						: value?.chosen === "signed"
+							? "Anybody with a passphrase can start a room. Everybody else can still join one they have a link to."
+							: "Anyone with a link can start a room."}
 				</p>
 
 				{value && <HowLongItLasts remember={value.remember} />}

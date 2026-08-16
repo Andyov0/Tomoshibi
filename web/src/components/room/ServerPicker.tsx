@@ -164,7 +164,7 @@ export function ServerPicker({
 				)}
 			>
 				<span className="min-w-0 flex-1 truncate">
-					{chosen ? say(chosen.label || chosen.name) : t("Automatic")}
+					{chosen ? marked(chosen) : t("Automatic")}
 				</span>
 
 				{chosen && <Latency ms={measured?.get(chosen.name)} known={measured !== undefined} />}
@@ -243,7 +243,7 @@ export function ServerPicker({
 						) : (
 							<Option
 								key={row.relay.name}
-								label={say(row.relay.label || row.relay.name)}
+								label={marked(row.relay)}
 								describes={row.relay.fallback ? "[Fallback]" : undefined}
 								chosen={value === row.relay.name}
 								depth={row.depth}
@@ -268,6 +268,20 @@ export function ServerPicker({
 			)}
 		</div>
 	);
+}
+
+/**
+ * A relay's name with what is unusual about it attached.
+ *
+ * Only an administrator is ever sent one of these, so the mark is not a warning
+ * — it is a reminder that what they are looking at is not on the list everybody
+ * else sees, which matters when they are about to send somebody a link and
+ * wonder why that person landed elsewhere.
+ */
+function marked(relay: Relay): string {
+	const name = say(relay.label || relay.name);
+
+	return relay.adminOnly ? `${name} [Admin]` : name;
 }
 
 /**

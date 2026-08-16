@@ -30,6 +30,8 @@ export interface Relay {
 	label?: string;
 	/** Held in reserve: it works, and every byte of a call on it goes the long way. */
 	fallback?: boolean;
+	/** Only administrators are offered it, and only they may ask for it. */
+	adminOnly?: boolean;
 }
 
 interface RelayList {

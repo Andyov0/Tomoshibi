@@ -58,10 +58,10 @@ var (
 	ErrAdminExists   = errors.New("somebody with that signature is already an administrator")
 	ErrNoSuchAdmin   = errors.New("nobody with that signature is an administrator here")
 
-	// ErrLastModerator guards the one mistake that cannot be undone from the
-	// page it is made on: removing the last person who can add anybody back.
-	// Recovering from it means editing a file on the host and restarting, which
-	// ends every call in progress.
+	// ErrLastModerator guards the one mistake that cannot be undone from the page it
+	// is made on: removing the last person who can add anybody back. Recovering
+	// from it means editing a file on the host and restarting, which ends every
+	// call in progress.
 	ErrLastModerator = errors.New("this is the last administrator who can change anything")
 )
 
@@ -195,9 +195,9 @@ func (s *Store) UpdateAdmin(admin Admin) error {
 			admin.Added = existing.Added
 		}
 
-		// Losing the last moderator is checked here rather than at the API,
-		// because the store is what the running deployment reads and this is the
-		// one change that cannot be undone from the page that made it.
+		// Losing the last owner is checked here rather than at the API, because
+		// the store is what the running deployment reads and this is the one
+		// change that cannot be undone from the page that made it.
 		if existing.Allows(config.Moderate) && !admin.Allows(config.Moderate) {
 			if lastModerator(bucket, admin.Trip) {
 				return ErrLastModerator
@@ -299,8 +299,8 @@ func (s *Store) RemoveAdmin(trip string) error {
 	})
 }
 
-// lastModerator reports whether removing this signature's moderate capability
-// would leave nobody holding it.
+// lastModerator reports whether removing this signature would leave nobody who
+// can change anything.
 func lastModerator(bucket *bolt.Bucket, trip string) bool {
 	others := 0
 

@@ -144,7 +144,7 @@ export interface Entry {
 }
 
 /** Who may use a name nobody has used before. */
-export type Opening = "anyone" | "admins";
+export type Opening = "anyone" | "signed" | "admins";
 
 /**
  * The policy, in the three forms worth telling apart.
@@ -261,8 +261,16 @@ export interface Relay {
 
 export const api = {
 	whoami: () => call<Who>("/session"),
-	signIn: (passphrase: string) =>
-		call<Who>("/session", { method: "POST", body: JSON.stringify({ passphrase }) }),
+	/**
+	 * Both, always.
+	 *
+	 * A passphrase alone is checked against every administrator at once, so a
+	 * list of leaked passphrases run at this endpoint succeeds if any one person
+	 * on the deployment has ever reused one. The name makes a guess have to be
+	 * aimed at somebody.
+	 */
+	signIn: (name: string, passphrase: string) =>
+		call<Who>("/session", { method: "POST", body: JSON.stringify({ name, passphrase }) }),
 	signOut: () => call<void>("/session", { method: "DELETE" }),
 
 	now: () => call<Now>("/now"),

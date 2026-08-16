@@ -360,11 +360,18 @@ func (a *API) open(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
+		// Name narrows the guess to one person.
+		//
+		// Without it every attempt is checked against every administrator at
+		// once, so a list of leaked passphrases run at this endpoint succeeds if
+		// any one person on the deployment ever reused one. With it, an attacker
+		// has to be right about who as well as what.
+		Name       string          `json:"name"`
 		Passphrase room.Passphrase `json:"passphrase"`
 	}
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
 
-	session, token, ok := a.sessions.Open(body.Passphrase)
+	session, token, ok := a.sessions.Open(body.Name, body.Passphrase)
 	if !ok {
 		a.sessions.limit.Failed(caller)
 		// Recorded without anything derived from what was typed. A rejected

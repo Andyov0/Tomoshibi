@@ -223,7 +223,21 @@ function RelayRow({
 	return (
 		<Card title={say(relay.label || relay.name)} note={relay.label ? relay.name : relay.region}>
 			<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-				<div className="min-w-0">
+				{/* First, because it is about the line it sits beside: the address
+				    and what it answered in. The buttons on the right change the
+				    relay; this one only asks it again. */}
+				<button
+					type="button"
+					onClick={onRecheck}
+					disabled={busy}
+					aria-label={t("Measure again")}
+					title={t("Measure again")}
+					className="shrink-0 rounded-md border border-border p-1.5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40"
+				>
+					<RotateCw className={cn("size-3.5", busy && "animate-spin")} />
+				</button>
+
+				<div className="min-w-0 flex-1">
 					<div className="flex items-center gap-2">
 						<span className="truncate readout text-[12px]">{relay.url}</span>
 
@@ -276,44 +290,6 @@ function RelayRow({
 					</p>
 				</div>
 
-				<div className="flex shrink-0 items-center gap-2">
-					{busy && <Loader2 className="size-4 animate-spin text-fg-muted" />}
-
-					{/* No cooldown on this one. It is one connection from one
-					    machine that already checks every relay on a timer; what
-					    the client's own button is rate limited against is every
-					    browser doing it at once. */}
-					<button
-						type="button"
-						onClick={onRecheck}
-						disabled={busy}
-						aria-label={t("Measure again")}
-						title={t("Measure again")}
-						className="rounded-md border border-border p-1.5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40"
-					>
-						<RotateCw className={cn("size-3.5", busy && "animate-spin")} />
-					</button>
-
-					{canModerate && (
-						<button
-							type="button"
-							onClick={() => setShowing(!showing)}
-							aria-expanded={showing}
-							aria-label={t("Settings")}
-							title={t("Settings")}
-							className={cn(
-								"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
-								"hover:bg-surface-2 hover:text-fg",
-								showing && "bg-surface-2 text-fg",
-							)}
-						>
-							<ChevronDown
-								className={cn("size-3.5 transition-transform duration-200", showing && "rotate-180")}
-							/>
-						</button>
-					)}
-				</div>
-
 				{canModerate && (
 					<div className="flex shrink-0 items-center gap-2">
 
@@ -348,6 +324,23 @@ function RelayRow({
 							className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2 disabled:opacity-50"
 						>
 							{relay.enabled ? t("Stop sending here") : t("Send calls here")}
+						</button>
+
+						<button
+							type="button"
+							onClick={() => setShowing(!showing)}
+							aria-expanded={showing}
+							aria-label={t("Settings")}
+							title={t("Settings")}
+							className={cn(
+								"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
+								"hover:bg-surface-2 hover:text-fg",
+								showing && "bg-surface-2 text-fg",
+							)}
+						>
+							<ChevronDown
+								className={cn("size-3.5 transition-transform duration-200", showing && "rotate-180")}
+							/>
 						</button>
 
 						{confirming ? (

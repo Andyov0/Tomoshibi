@@ -123,6 +123,15 @@ const zhHant: Dictionary = {
 	Address: "位址",
 	"Region (optional)": "區域（選填）",
 	"The address a browser dials. It must begin ws:// or wss://, and the relay must be running with role: relay.": "瀏覽器要撥的位址。必須以 ws:// 或 wss:// 開頭，並且那台機器要以 role: relay 執行。",
+	"Add a machine": "新增機器",
+	"Add by address": "手動填位址",
+	"Paste this into the new machine as root. It asks for a prefix, then does the rest: fetches the binary, takes this deployment's certificate and credentials, points a name at the machine, and starts the relay.": "以 root 身分把這段貼到新機器上。它會問你要一個前綴，然後自己完成其餘的：下載程式、取走本部署的憑證和金鑰、把網域指向這台機器、啟動中轉。",
+	"This script carries the key to this deployment. Anybody who has it can add a relay, so do not put it anywhere it will be kept.": "這段指令稿帶著本部署的金鑰。拿到它的人都能往這裡加中轉，所以別把它留在會被保存的地方。",
+	"This deployment cannot bring up relays from a script.": "本部署沒有開啟指令稿裝機。",
+	"Could not copy. Select the text and copy it.": "複製失敗。請手動選取複製。",
+	Copy: "複製",
+	Copied: "已複製",
+	Done: "完成",
 };
 
 export default zhHant;

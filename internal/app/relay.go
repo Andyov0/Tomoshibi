@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"tomoshibi/internal/admin"
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/rtc"
 	"tomoshibi/internal/store"
@@ -279,4 +280,15 @@ func (a *App) RelayURLs() []string {
 func (a *App) UseCluster(cluster *rtc.Cluster) {
 	a.admin.UseCluster(cluster)
 	a.admin.OnRelaysChanged(a.relays.forget)
+}
+
+// UseEnrolment lets relays bring themselves up from a script.
+//
+// Two things: the management pages gain the script, and the router gains the
+// one endpoint a machine with no session calls. Registered here rather than in
+// Handler so that a deployment which did not configure enrolment has no such
+// address at all, rather than one that refuses.
+func (a *App) UseEnrolment(enrolment *admin.Enrolment) {
+	a.admin.UseEnrolment(enrolment)
+	a.enrolment = enrolment
 }

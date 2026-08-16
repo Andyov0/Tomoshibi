@@ -1,0 +1,192 @@
+package admin
+
+// installTemplate is the script a new relay runs.
+//
+// Written for /bin/sh, because a machine minutes into its life may have nothing
+// else, and with every step visible because anybody about to run this as root
+// should be able to read all of it.
+//
+// Held as a template rather than served from a file so that a relay's install
+// cannot be broken by a file that failed to deploy alongside the binary — which
+// is the one failure this whole path exists to remove.
+//
+// The %% sequences are printf escapes: this string is filled in by Fprintf with
+// the deployment's own values, and everything the shell should see as a literal
+// percent is doubled.
+const installTemplate = `#!/bin/sh
+# Add this machine to the meeting deployment as a relay.
+#
+# Paste it in, answer the prompt, and this does the five things that otherwise
+# have to agree by hand: fetch the binary, claim the deployment's credentials
+# and certificate, write the configuration, point a DNS name at this machine,
+# and start the service.
+#
+# It carries the enrolment secret. Anybody holding a copy can add a relay to
+# this deployment, so treat it as the credential it is.
+set -eu
+
+CONTROL="%s"
+SECRET="%s"
+DOMAIN="%s"
+LISTEN_PORT=%d
+UDP_PORT=%d
+TCP_PORT=%d
+
+say() { printf '\n\033[1m%%s\033[0m\n' "$1"; }
+die() { printf '\nerror: %%s\n' "$1" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || die "run this as root"
+command -v curl >/dev/null 2>&1 || die "curl is needed and is not installed"
+
+# The prefix names this relay: in the zone above, and on the management pages.
+if [ -n "${PREFIX:-}" ]; then
+    prefix="$PREFIX"
+else
+    printf 'Prefix for this relay (it becomes <prefix>.%%s): ' "$DOMAIN"
+    read -r prefix </dev/tty
+fi
+
+[ -n "$prefix" ] || die "a prefix is needed"
+region="${REGION:-}"
+
+# The address browsers will reach this machine on. Asked of the outside rather
+# than read from an interface: the machines that make good relays are frequently
+# behind NAT, and the interface address is not the one to publish.
+say "Working out this machine's address"
+address="${ADDRESS:-$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)}"
+[ -n "$address" ] || die "could not work out this machine's public address; set ADDRESS=... and run again"
+printf '  %%s\n' "$address"
+
+say "Claiming this deployment's configuration"
+package=$(curl -fsS --max-time 30 -X POST "$CONTROL/api/enrol" \
+    -H 'Content-Type: application/json' \
+    -d "{\"secret\":\"$SECRET\",\"prefix\":\"$prefix\",\"region\":\"$region\",\"address\":\"$address\"}") \
+    || die "the control node refused this machine; check the prefix and that this script is current"
+
+# Read with sed rather than a JSON parser, because a machine this new may have
+# neither python nor jq, and installing one to read six fields is a dependency
+# for the sake of elegance.
+value() { printf '%%s' "$package" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
+
+host=$(value host)
+[ -n "$host" ] || die "the control node's answer could not be read: $package"
+
+api_key=$(value apiKey)
+api_secret=$(value apiSecret)
+redis_addr=$(value redisAddr)
+redis_pass=$(value redisPassword)
+named=$(printf '%%s' "$package" | sed -n 's/.*"named":\([a-z]*\).*/\1/p')
+
+printf '  name  %%s\n  host  %%s\n' "$prefix" "$host"
+
+say "Fetching the binary"
+curl -fsS --max-time 600 -o /usr/local/bin/tomoshibi.new "$CONTROL/download/tomoshibi" \
+    || die "could not fetch the binary"
+chmod +x /usr/local/bin/tomoshibi.new
+mv /usr/local/bin/tomoshibi.new /usr/local/bin/tomoshibi
+
+say "Writing the certificate"
+mkdir -p /etc/tomoshibi/certs
+
+# The PEM arrives with its newlines escaped, as JSON requires. Turned back with
+# sed rather than printf %%b, which would also interpret anything else that
+# looks like an escape inside a certificate.
+printf '%%s' "$package" | sed -n 's/.*"cert":"\(.*\)","key".*/\1/p' | sed 's/\\n/\
+/g' > /etc/tomoshibi/certs/relay.fullchain.pem
+
+printf '%%s' "$package" | sed -n 's/.*"key":"\(.*\)","listenPort".*/\1/p' | sed 's/\\n/\
+/g' > /etc/tomoshibi/certs/relay.key
+
+[ -s /etc/tomoshibi/certs/relay.fullchain.pem ] || die "the certificate came back empty"
+[ -s /etc/tomoshibi/certs/relay.key ] || die "the certificate key came back empty"
+grep -q 'BEGIN CERTIFICATE' /etc/tomoshibi/certs/relay.fullchain.pem || die "what came back is not a certificate"
+
+# The key stays readable by one group rather than by everybody. The service runs
+# under a dynamic user, put in that group for the length of its run.
+groupadd -f tomoshibi-certs 2>/dev/null || true
+chgrp tomoshibi-certs /etc/tomoshibi/certs/relay.key /etc/tomoshibi/certs/relay.fullchain.pem 2>/dev/null || true
+chmod 640 /etc/tomoshibi/certs/relay.key
+chmod 644 /etc/tomoshibi/certs/relay.fullchain.pem
+
+# The interface carrying traffic outward. Named so the media server does not
+# offer docker bridges to browsers as places to send media — clients try them,
+# wait, and fall back, paying a connection delay for addresses that could never
+# work.
+iface=$(ip route get 1.1.1.1 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)
+
+say "Writing the configuration"
+{
+    printf 'port: 7880\n'
+    printf 'bind_addresses: ["127.0.0.1"]\n\n'
+    printf 'rtc:\n'
+    printf '  udp_port: %%s\n' "$UDP_PORT"
+    printf '  tcp_port: %%s\n' "$TCP_PORT"
+    printf '  # Decides the address advertised to clients. False hands out one only\n'
+    printf '  # this machine can reach, and calls fail after appearing to connect.\n'
+    printf '  use_external_ip: true\n'
+    if [ -n "$iface" ]; then
+        printf '  interfaces:\n    includes: ["%%s"]\n' "$iface"
+    fi
+    printf '\nkeys:\n  %%s: %%s\n' "$api_key" "$api_secret"
+    printf '\nredis:\n  address: "%%s"\n' "$redis_addr"
+    [ -n "$redis_pass" ] && printf '  password: "%%s"\n' "$redis_pass"
+    printf '\nlogging:\n  level: info\n'
+    printf '\nmeet:\n  role: relay\n'
+    printf '  listen: ":%%s"\n' "$LISTEN_PORT"
+    printf '  tls_cert: /etc/tomoshibi/certs/relay.fullchain.pem\n'
+    printf '  tls_key: /etc/tomoshibi/certs/relay.key\n'
+} > /etc/tomoshibi/relay.yaml
+chmod 600 /etc/tomoshibi/relay.yaml
+
+say "Installing the service"
+cat > /etc/systemd/system/tomoshibi-relay.service <<'UNIT'
+[Unit]
+Description=Tomoshibi relay (media only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tomoshibi serve /etc/tomoshibi/relay.yaml
+Restart=always
+RestartSec=3
+DynamicUser=yes
+StateDirectory=tomoshibi
+SupplementaryGroups=tomoshibi-certs
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now tomoshibi-relay
+
+sleep 5
+if ! systemctl is-active --quiet tomoshibi-relay; then
+    printf '\n'
+    journalctl -u tomoshibi-relay -n 20 --no-pager || true
+    die "the relay did not start; the log above says why"
+fi
+
+say "Done"
+printf '  name     %%s\n' "$prefix"
+printf '  address  wss://%%s:%%s\n' "$host" "$LISTEN_PORT"
+printf '  media    udp %%s, tcp %%s\n' "$UDP_PORT" "$TCP_PORT"
+
+if [ "$named" = "true" ]; then
+    printf '  dns      %%s -> %%s\n' "$host" "$address"
+else
+    printf '\n  The DNS record was not created. Point %%s at %%s before this relay can be used.\n' "$host" "$address"
+fi
+
+printf '\nIf this machine has a firewall or a cloud security group in front of it,\n'
+printf 'open these:\n'
+printf '  tcp %%s   signalling and the health endpoint\n' "$LISTEN_PORT"
+printf '  udp %%s   media\n' "$UDP_PORT"
+printf '  tcp %%s   media, for networks that drop udp\n\n' "$TCP_PORT"
+`

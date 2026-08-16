@@ -25,8 +25,10 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"tomoshibi/internal/admin"
 	"tomoshibi/internal/app"
 	"tomoshibi/internal/config"
+	"tomoshibi/internal/dns"
 	"tomoshibi/internal/room"
 	"tomoshibi/internal/rtc"
 	"tomoshibi/internal/store"
@@ -244,6 +246,13 @@ func serve(args []string) error {
 			func() []string { return application.RelayURLs() },
 			conf.Key, conf.Secret,
 		))
+
+		if enrolment := enrolFrom(conf); enrolment != nil {
+			application.UseEnrolment(enrolment)
+			slog.Info("relays can enrol themselves",
+				"domain", enrolment.Domain, "port", enrolment.ListenPort,
+				"names DNS", enrolment.Naming != nil)
+		}
 	}
 
 	server := &http.Server{
@@ -426,6 +435,41 @@ func listRooms(args []string) error {
 // is: after the first start the management pages are what change this, and a
 // file that no longer matches is the likeliest reason somebody is looking at a
 // relay list that is not the one they edited.
+// enrolFrom builds what a new relay is told, or nothing where enrolment was not
+// configured.
+//
+// Certificate paths come from the listener's own, because a relay is handed the
+// certificate this deployment already uses: a control node behind a proxy has
+// none of its own, and one serving TLS directly has exactly the pair every
+// relay needs.
+func enrolFrom(conf *config.Config) *admin.Enrolment {
+	if conf.Meet.Enrol.Secret == "" || conf.Meet.Enrol.Domain == "" {
+		return nil
+	}
+
+	enrolment := &admin.Enrolment{
+		Secret:        conf.Meet.Enrol.Secret,
+		Domain:        conf.Meet.Enrol.Domain,
+		PublicURL:     conf.Meet.Enrol.PublicURL,
+		RedisAddr:     conf.LiveKit.Redis.Address,
+		RedisPassword: conf.LiveKit.Redis.Password,
+		CertPath:      conf.Meet.Enrol.Cert(conf.Meet.TLSCert),
+		KeyPath:       conf.Meet.Enrol.Key(conf.Meet.TLSKey),
+		ListenPort:    conf.Meet.Enrol.ListenPort,
+		UDPPort:       conf.Meet.Enrol.UDPPort,
+		TCPPort:       conf.Meet.Enrol.TCPPort,
+	}
+
+	if cf := dns.NewCloudflare(conf.Meet.Enrol.CloudflareToken, conf.Meet.Enrol.CloudflareZone); cf.Configured() {
+		enrolment.Naming = cf
+	} else {
+		slog.Warn("no cloudflare credentials for enrolment: a relay will install itself and " +
+			"then wait for somebody to point its name at it")
+	}
+
+	return enrolment
+}
+
 func adoptRelays(st *store.Store, conf *config.Config) error {
 	configured := make([]store.Relay, 0, len(conf.Meet.Relays))
 	for _, relay := range conf.Meet.Relays {

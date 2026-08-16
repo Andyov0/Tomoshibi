@@ -123,6 +123,15 @@ const zhHans: Dictionary = {
 	Address: "地址",
 	"Region (optional)": "区域（可选）",
 	"The address a browser dials. It must begin ws:// or wss://, and the relay must be running with role: relay.": "浏览器要拨的地址。必须以 ws:// 或 wss:// 开头，并且那台机器要以 role: relay 运行。",
+	"Add a machine": "添加机器",
+	"Add by address": "手动填地址",
+	"Paste this into the new machine as root. It asks for a prefix, then does the rest: fetches the binary, takes this deployment's certificate and credentials, points a name at the machine, and starts the relay.": "以 root 身份把这段粘贴到新机器上。它会问你要一个前缀，然后自己完成剩下的：下载程序、取走本部署的证书和密钥、把域名指向这台机器、启动中转。",
+	"This script carries the key to this deployment. Anybody who has it can add a relay, so do not put it anywhere it will be kept.": "这段脚本带着本部署的密钥。拿到它的人都能往这里加中转，所以别把它留在会被保存的地方。",
+	"This deployment cannot bring up relays from a script.": "本部署没有开启脚本装机。",
+	"Could not copy. Select the text and copy it.": "复制失败。请手动选中复制。",
+	Copy: "复制",
+	Copied: "已复制",
+	Done: "完成",
 };
 
 export default zhHans;

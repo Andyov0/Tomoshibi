@@ -12,6 +12,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,8 @@ type App struct {
 	admin   *admin.API
 	// relays is where a control node sends clients. Empty everywhere else.
 	relays *relays
+	// enrolment is set where a relay may bring itself up from a script.
+	enrolment *admin.Enrolment
 
 	stop    chan struct{}
 	closing sync.Once
@@ -214,6 +217,15 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("POST /api/rooms/{room}/join", a.join)
 	mux.HandleFunc("GET /api/deployment", a.deployment)
 	mux.HandleFunc("GET /api/relays", a.relayList)
+
+	// The two a machine being brought up calls, and the only management paths
+	// with no session behind them: the token in the script is what authenticates
+	// them, and there is no administrator sitting at a machine minutes into its
+	// life. Registered only where enrolment was configured.
+	if a.enrolment != nil {
+		a.admin.MountEnrolment(mux)
+		mux.HandleFunc("GET /download/tomoshibi", a.binary)
+	}
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -435,6 +447,52 @@ type relayListResponse struct {
 	Relays []relayEntry `json:"relays"`
 	// Measure says whether this deployment will act on a measurement.
 	Measure bool `json:"measure"`
+}
+
+// binary serves the build this control node is running to a relay installing
+// itself.
+//
+// The same file rather than a download from anywhere else, so a fleet cannot
+// drift apart by version: every relay runs what the control node runs, because
+// that is literally the file it was given.
+//
+// Open, like the client is. It is a build of a published program and carries no
+// secret; what a relay needs and must not be given away travels through the
+// enrolment endpoint, which is behind the secret.
+func (a *App) binary(w http.ResponseWriter, r *http.Request) {
+	path := a.conf.Meet.Enrol.Binary
+	if path == "" {
+		if resolved, err := os.Executable(); err == nil {
+			path = resolved
+		}
+	}
+
+	if path == "" {
+		fail(w, http.StatusServiceUnavailable, "no_binary")
+		return
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		slog.Error("failed to open the binary for a relay", "path", path, "error", err)
+		fail(w, http.StatusServiceUnavailable, "no_binary")
+		return
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		fail(w, http.StatusServiceUnavailable, "no_binary")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="tomoshibi"`)
+
+	// ServeContent rather than io.Copy: it handles ranges and conditional
+	// requests, which matter for a fifty-megabyte file fetched over a link that
+	// may drop halfway.
+	http.ServeContent(w, r, "tomoshibi", info.ModTime(), file)
 }
 
 // deployment is what a client needs to know before somebody types a room name.

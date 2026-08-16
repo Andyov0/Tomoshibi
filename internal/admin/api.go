@@ -65,6 +65,9 @@ type API struct {
 	// fleet reads the counters of the relays this node does not run. Nil on a
 	// full deployment, which reads its own.
 	fleet Fleet
+	// enrolment is what a new relay is told; nil where bringing one up from a
+	// page is not configured.
+	enrolment *Enrolment
 	// onRelaysChanged lets the choosing side drop its cache the moment this
 	// list moves, so a relay added here is used by the very next join.
 	onRelaysChanged func()
@@ -165,6 +168,16 @@ func (a *API) UseCluster(cluster *rtc.Cluster) {
 	a.fleet = cluster
 }
 
+// UseEnrolment lets relays be brought up from the management pages.
+//
+// Off unless configured, and deliberately so: what an enrolment hands over is
+// the secret every relay signs with, the redis password and a private key. A
+// deployment that has not said where those live does not get an endpoint that
+// gives them away.
+func (a *API) UseEnrolment(enrolment *Enrolment) {
+	a.enrolment = enrolment
+}
+
 // OnRelaysChanged registers what to run when the relay list moves.
 func (a *API) OnRelaysChanged(fn func()) {
 	a.onRelaysChanged = fn
@@ -243,11 +256,30 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/relays", a.moderate(a.addRelay))
 	mux.HandleFunc("PATCH /api/admin/relays/{relay}", a.moderate(a.editRelay))
 	mux.HandleFunc("DELETE /api/admin/relays/{relay}", a.moderate(a.dropRelay))
+	// The install script, served to somebody signed in because it carries the
+	// enrolment secret.
+	mux.HandleFunc("GET /api/admin/relays/script", a.moderate(a.installScript))
 
 	mux.HandleFunc("PUT /api/admin/policy", a.moderate(a.setPolicy))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}/participants/{identity}", a.moderate(a.removeOne))
 	mux.HandleFunc("POST /api/admin/rooms/{room}/participants/{identity}/mute", a.moderate(a.muteOne))
+}
+
+// MountEnrolment registers the endpoint a new relay claims its configuration
+// from.
+//
+// Separate from Mount because it is the one management path with no session
+// behind it: the machine claiming it has no administrator sitting at it, and
+// the token it carries is the authentication. Registered only where enrolment
+// was configured, so a deployment that did not ask for this has no such
+// address rather than one that refuses.
+func (a *API) MountEnrolment(mux *http.ServeMux) {
+	if a.enrolment == nil {
+		return
+	}
+
+	mux.HandleFunc("POST /api/enrol", a.claim)
 }
 
 // open signs somebody in.

@@ -123,6 +123,15 @@ const ja: Dictionary = {
 	Address: "アドレス",
 	"Region (optional)": "地域（任意）",
 	"The address a browser dials. It must begin ws:// or wss://, and the relay must be running with role: relay.": "ブラウザーが接続するアドレスです。ws:// または wss:// で始まり、その機体は role: relay で動いている必要があります。",
+	"Add a machine": "マシンを追加",
+	"Add by address": "アドレスを直接入力",
+	"Paste this into the new machine as root. It asks for a prefix, then does the rest: fetches the binary, takes this deployment's certificate and credentials, points a name at the machine, and starts the relay.": "新しいマシンに root で貼り付けてください。プレフィックスを訊いたあとは自動です。バイナリーを取得し、この配備の証明書と資格情報を受け取り、名前をこのマシンに向け、中継を起動します。",
+	"This script carries the key to this deployment. Anybody who has it can add a relay, so do not put it anywhere it will be kept.": "このスクリプトはこの配備の鍵を持っています。持っている人は誰でも中継を追加できるので、残る場所には置かないでください。",
+	"This deployment cannot bring up relays from a script.": "この配備ではスクリプトからの中継追加が有効になっていません。",
+	"Could not copy. Select the text and copy it.": "コピーできませんでした。選択してコピーしてください。",
+	Copy: "コピー",
+	Copied: "コピーしました",
+	Done: "完了",
 };
 
 export default ja;

@@ -156,6 +156,15 @@ const en = {
 	Address: "Address",
 	"Region (optional)": "Region (optional)",
 	"The address a browser dials. It must begin ws:// or wss://, and the relay must be running with role: relay.": "The address a browser dials. It must begin ws:// or wss://, and the relay must be running with role: relay.",
+	"Add a machine": "Add a machine",
+	"Add by address": "Add by address",
+	"Paste this into the new machine as root. It asks for a prefix, then does the rest: fetches the binary, takes this deployment's certificate and credentials, points a name at the machine, and starts the relay.": "Paste this into the new machine as root. It asks for a prefix, then does the rest: fetches the binary, takes this deployment's certificate and credentials, points a name at the machine, and starts the relay.",
+	"This script carries the key to this deployment. Anybody who has it can add a relay, so do not put it anywhere it will be kept.": "This script carries the key to this deployment. Anybody who has it can add a relay, so do not put it anywhere it will be kept.",
+	"This deployment cannot bring up relays from a script.": "This deployment cannot bring up relays from a script.",
+	"Could not copy. Select the text and copy it.": "Could not copy. Select the text and copy it.",
+	Copy: "Copy",
+	Copied: "Copied",
+	Done: "Done",
 } as const;
 
 export default en;

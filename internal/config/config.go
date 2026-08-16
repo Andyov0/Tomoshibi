@@ -126,6 +126,9 @@ type Meet struct {
 	// RelayPolicy is how a control node chooses between them.
 	RelayPolicy string `yaml:"relay_policy"`
 
+	// Enrol lets a new relay bring itself up from a script.
+	Enrol Enrol `yaml:"enrol"`
+
 	// Listen is the address serving the client, the API, and the signalling
 	// proxy. The one port anybody outside this machine talks to over TCP.
 	Listen string `yaml:"listen"`
@@ -199,6 +202,51 @@ type Meet struct {
 	// wherever a changed copy lives: a link to somebody else's repository is
 	// not an offer of the source anybody is actually running.
 	SourceURL string `yaml:"source_url"`
+}
+
+// Enrol is what a machine running the install script is told.
+//
+// Off unless a secret is set. What an enrolment hands over is the credential
+// every relay signs with, the redis password and a private key, so a deployment
+// that has not said it wants this does not get an endpoint that gives them away.
+type Enrol struct {
+	// Secret is what the install script proves it has. Long-lived, because the
+	// script is meant to be kept and pasted into whatever machine comes next —
+	// which makes the script itself a credential.
+	Secret string `yaml:"secret"`
+
+	// Domain is what a prefix is added to: `tokyo` under `relay.example.com`
+	// becomes `tokyo.relay.example.com`.
+	//
+	// ⚠ It must not be a name that already carries a CNAME. A CNAME shadows
+	// every name beneath it, so records created under one are never answered —
+	// the zone shows them and the world does not.
+	Domain string `yaml:"domain"`
+
+	// PublicURL is where a new machine fetches the binary and claims its
+	// configuration: this deployment as the outside reaches it.
+	PublicURL string `yaml:"public_url"`
+
+	// Ports every relay in this deployment listens on. Sent to each new machine
+	// so they agree without anybody having to remember.
+	ListenPort int `yaml:"listen_port"`
+	UDPPort    int `yaml:"udp_port"`
+	TCPPort    int `yaml:"tcp_port"`
+
+	// CertFile and KeyFile are the certificate handed to a new relay. Empty
+	// takes the listener's own, which is what a control node serving TLS
+	// directly already holds.
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
+
+	// Binary is the file served to a new relay. The control node hands out the
+	// build it is running, so a fleet cannot drift apart by version.
+	Binary string `yaml:"binary"`
+
+	// Cloudflare creates each relay's DNS record. Optional: without it a relay
+	// still enrols and whoever ran the script points the name themselves.
+	CloudflareToken string `yaml:"cloudflare_token"`
+	CloudflareZone  string `yaml:"cloudflare_zone"`
 }
 
 // Rooms is the policy for names nobody has used.
@@ -308,6 +356,7 @@ var defaults = Meet{
 	// Thirty days: long enough that a fortnightly meeting keeps its room, short
 	// enough that a name nobody has used since is not still holding one.
 	Rooms:     Rooms{OpenedBy: room.ByAnyone, Remember: 30 * 24 * time.Hour},
+	Enrol:     Enrol{ListenPort: 13377, UDPPort: 13378, TCPPort: 13379},
 	SourceURL: "https://github.com/5t-RawBeRry/Tomoshibi",
 }
 
@@ -668,4 +717,23 @@ func credentials(lk *livekit.Config) (string, string, error) {
 		"%d API keys configured, but this server signs its own tokens and can only use one: "+
 			"leave a single entry under `keys`", len(lk.Keys),
 	)
+}
+
+// Cert and Key are the certificate handed to a new relay.
+//
+// The listener's own by default. A control node serving TLS directly already
+// holds exactly the pair every relay needs, and naming it twice is one more
+// place for the two to drift apart.
+func (e Enrol) Cert(fallback string) string {
+	if e.CertFile != "" {
+		return e.CertFile
+	}
+	return fallback
+}
+
+func (e Enrol) Key(fallback string) string {
+	if e.KeyFile != "" {
+		return e.KeyFile
+	}
+	return fallback
 }

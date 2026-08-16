@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { t } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
-import { Check, Loader2, Plus, Trash2, X } from "lucide-react";
+import { Check, Copy, Loader2, Plus, Terminal, Trash2, X } from "lucide-react";
 import { useCallback, useState } from "react";
 import { type Relay, api } from "./api";
 import { usePoll } from "./poll";
@@ -36,6 +36,7 @@ export function RelaysPanel({
 	const { value, error, refresh } = usePoll(api.relays, { every: 15_000, onSignedOut });
 
 	const [adding, setAdding] = useState(false);
+	const [script, setScript] = useState<string>();
 	const [busy, setBusy] = useState<string>();
 
 	const act = useCallback(
@@ -67,19 +68,42 @@ export function RelaysPanel({
 				note={t("Where calls are held. This machine serves the page and carries no media.")}
 				actions={
 					canModerate &&
-					!adding && (
-						<button
-							type="button"
-							onClick={() => setAdding(true)}
-							className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
-						>
-							<Plus className="size-3.5" />
-							{t("Add relay")}
-						</button>
+					!adding &&
+					script === undefined && (
+						<div className="flex items-center gap-2">
+							{/* Two ways in, because they are different situations. A machine
+							    somebody is holding gets the script; one that is already
+							    running somewhere gets its address typed in. */}
+							<button
+								type="button"
+								onClick={async () => {
+									try {
+										setScript(await api.relayScript());
+									} catch {
+										actionFailed(t("This deployment cannot bring up relays from a script."));
+									}
+								}}
+								className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+							>
+								<Terminal className="size-3.5" />
+								{t("Add a machine")}
+							</button>
+
+							<button
+								type="button"
+								onClick={() => setAdding(true)}
+								className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+							>
+								<Plus className="size-3.5" />
+								{t("Add by address")}
+							</button>
+						</div>
 					)
 				}
 			>
-				{adding ? (
+				{script !== undefined ? (
+					<AddByScript script={script} onDone={() => setScript(undefined)} />
+				) : adding ? (
 					<AddRelay
 						onDone={async () => {
 							setAdding(false);
@@ -310,5 +334,65 @@ function AddRelay({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 				</button>
 			</div>
 		</form>
+	);
+}
+
+/**
+ * The script that brings a machine up as a relay.
+ *
+ * Shown rather than run: this is somebody else's machine, and the only thing
+ * this server can do about it is hand over the instructions. What comes back
+ * afterwards is the relay appearing in the list above, which is how anybody
+ * knows it worked.
+ *
+ * The warning is not decoration. The script carries the enrolment secret, and
+ * that secret buys the credential every relay in this deployment signs with.
+ */
+function AddByScript({ script, onDone }: { script: string; onDone: () => void }) {
+	const [copied, setCopied] = useState(false);
+
+	return (
+		<div className="flex flex-col gap-3 px-4 py-3">
+			<p className="text-fg-muted text-xs">
+				{t("Paste this into the new machine as root. It asks for a prefix, then does the rest: fetches the binary, takes this deployment's certificate and credentials, points a name at the machine, and starts the relay.")}
+			</p>
+
+			<div className="relative">
+				<pre className="max-h-64 overflow-auto rounded-md border border-border bg-surface-2 p-3 text-[11px] leading-relaxed">
+					<code>{script}</code>
+				</pre>
+
+				<button
+					type="button"
+					onClick={async () => {
+						try {
+							await navigator.clipboard.writeText(script);
+							setCopied(true);
+							setTimeout(() => setCopied(false), 2000);
+						} catch {
+							actionFailed(t("Could not copy. Select the text and copy it."));
+						}
+					}}
+					className="absolute top-2 right-2 flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] hover:bg-surface-2"
+				>
+					{copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+					{copied ? t("Copied") : t("Copy")}
+				</button>
+			</div>
+
+			<p className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
+				{t("This script carries the key to this deployment. Anybody who has it can add a relay, so do not put it anywhere it will be kept.")}
+			</p>
+
+			<div>
+				<button
+					type="button"
+					onClick={onDone}
+					className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+				>
+					{t("Done")}
+				</button>
+			</div>
+		</div>
 	);
 }

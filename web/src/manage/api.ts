@@ -235,6 +235,14 @@ export const api = {
 			body: JSON.stringify(change),
 		}),
 
+	// Text rather than JSON: it is a shell script, and it carries the enrolment
+	// secret, which is why it is behind the same session as everything else here.
+	relayScript: async (): Promise<string> => {
+		const response = await fetch("/api/admin/relays/script", { credentials: "same-origin" });
+		if (!response.ok) throw new Error(String(response.status));
+		return response.text();
+	},
+
 	dropRelay: (name: string) =>
 		call<{ removed: string }>(`/relays/${encodeURIComponent(name)}`, { method: "DELETE" }),
 

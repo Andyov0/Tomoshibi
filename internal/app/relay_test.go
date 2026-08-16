@@ -1,21 +1,40 @@
 package app
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"tomoshibi/internal/config"
+	"tomoshibi/internal/store"
 )
 
-func relaysOf(policy string, list ...config.Relay) *relays {
-	return &relays{list: list, policy: policy}
+// listed is a relay list somebody wrote down, standing in for the store.
+type listed struct {
+	relays []store.Relay
+	err    error
+	// reads counts how often the list was asked for, so the cache can be
+	// tested for doing what it claims.
+	reads int
+}
+
+func (l *listed) Relays() ([]store.Relay, error) {
+	l.reads++
+	if l.err != nil {
+		return nil, l.err
+	}
+	return l.relays, nil
+}
+
+func relaysOf(policy string, list ...store.Relay) *relays {
+	return &relays{source: &listed{relays: list}, policy: policy}
 }
 
 var (
-	sh = config.Relay{Name: "shanghai", URL: "wss://sh.example.com", Region: "cn-east"}
-	hk = config.Relay{Name: "hongkong", URL: "wss://hk.example.com", Region: "hk"}
-	jp = config.Relay{Name: "tokyo", URL: "wss://jp.example.com", Region: "jp"}
+	sh = store.Relay{Name: "shanghai", URL: "wss://sh.example.com", Region: "cn-east", Enabled: true}
+	hk = store.Relay{Name: "hongkong", URL: "wss://hk.example.com", Region: "hk", Enabled: true}
+	jp = store.Relay{Name: "tokyo", URL: "wss://jp.example.com", Region: "jp", Enabled: true}
 )
 
 // The property the whole sticky policy exists for: everybody who names the same
@@ -164,7 +183,7 @@ func TestRoundRobinVisitsEveryRelayInTurn(t *testing.T) {
 		seen[r.pick("same-room-every-time", "", nil, false).URL]++
 	}
 
-	for _, relay := range []config.Relay{sh, hk, jp} {
+	for _, relay := range []store.Relay{sh, hk, jp} {
 		if seen[relay.URL] != 3 {
 			t.Errorf("%s was chosen %d times in nine turns, wanted 3: %v",
 				relay.Name, seen[relay.URL], seen)
@@ -175,7 +194,7 @@ func TestRoundRobinVisitsEveryRelayInTurn(t *testing.T) {
 func TestProbeHonoursWhatTheClientMeasured(t *testing.T) {
 	r := relaysOf(config.PickProbe, sh, hk, jp)
 
-	for _, relay := range []config.Relay{sh, hk, jp} {
+	for _, relay := range []store.Relay{sh, hk, jp} {
 		if got := r.pick("standup", relay.Name, nil, false); got.URL != relay.URL {
 			t.Errorf("client measured %s as fastest and was sent to %s", relay.Name, got.URL)
 		}
@@ -252,5 +271,82 @@ func TestNoRelaysMeansNothingToChoose(t *testing.T) {
 
 	if (*relays)(nil).any() {
 		t.Error("a nil relays reported that it had relays")
+	}
+}
+
+// A relay taken out of service must stop receiving clients, and must do so
+// without the list being emptied: the calls already on it keep running, and an
+// operator who disabled one and saw new callers still arriving would reasonably
+// conclude the switch did nothing.
+func TestDisabledRelaysAreNotOffered(t *testing.T) {
+	off := jp
+	off.Enabled = false
+
+	r := &relays{source: &listed{relays: []store.Relay{sh, hk, off}}, policy: config.PickProbe}
+
+	if got := r.pick("standup", "tokyo", nil, false); got.URL == jp.URL {
+		t.Error("a client that measured a disabled relay was sent there anyway")
+	}
+
+	for _, relay := range r.offered() {
+		if relay.Name == "tokyo" {
+			t.Error("a disabled relay was offered to a client to measure")
+		}
+	}
+}
+
+// The list is cached so that a join is not a database read, and dropped the
+// moment the management pages change it. Without the drop, a relay added on a
+// page would not be used until the cache expired, and whoever added it would be
+// looking at a page saying it is there beside a join that does not use it.
+func TestTheListIsCachedAndDroppedOnChange(t *testing.T) {
+	source := &listed{relays: []store.Relay{sh, hk}}
+	r := &relays{source: source, policy: config.PickSticky}
+
+	r.pick("standup", "", nil, false)
+	afterFirst := source.reads
+
+	for i := 0; i < 20; i++ {
+		r.pick("standup", "", nil, false)
+	}
+
+	if source.reads != afterFirst {
+		t.Errorf("twenty joins read the store %d times; the cache is not holding",
+			source.reads-afterFirst+1)
+	}
+
+	source.relays = append(source.relays, jp)
+	r.forget()
+
+	found := false
+	for _, relay := range r.offered() {
+		if relay.Name == "tokyo" {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Error("a relay added after the cache was dropped was still not offered")
+	}
+}
+
+// A store that will not answer must not empty the list. Every relay would
+// vanish at once, every join would be told there is nowhere to hold a call, and
+// the deployment would go dark over a database that is briefly busy.
+func TestAFailingStoreKeepsTheLastList(t *testing.T) {
+	source := &listed{relays: []store.Relay{sh, hk}}
+	r := &relays{source: source, policy: config.PickSticky}
+
+	first := r.pick("standup", "", nil, false)
+	if first.URL == "" {
+		t.Fatal("nothing was chosen from a working store")
+	}
+
+	source.err = errors.New("the database is busy")
+	r.forget()
+
+	if got := r.pick("standup", "", nil, false); got.URL != first.URL {
+		t.Errorf("a failing store changed the choice from %s to %q; the last known list "+
+			"should stand", first.URL, got.URL)
 	}
 }

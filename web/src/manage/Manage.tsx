@@ -4,6 +4,7 @@ import { usePoll } from "./poll";
 import { AuditPanel } from "./AuditPanel";
 import { HealthPanel } from "./HealthPanel";
 import { NowPanel } from "./NowPanel";
+import { RelaysPanel } from "./RelaysPanel";
 import { RoomsPanel } from "./RoomsPanel";
 import { RuntimePanel } from "./RuntimePanel";
 import { SignIn } from "./SignIn";
@@ -79,6 +80,9 @@ export function Manage() {
 			{panel === "Now" && <NowPanel now={load} onSignedOut={signedOut} />}
 			{panel === "Rooms" && (
 				<RoomsPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
+			)}
+			{panel === "Relays" && (
+				<RelaysPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
 			)}
 			{panel === "Health" && <HealthPanel onSignedOut={signedOut} />}
 			{panel === "Runtime" && <RuntimePanel onSignedOut={signedOut} />}

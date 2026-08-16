@@ -1,0 +1,314 @@
+import { cn } from "@/lib/utils";
+import { t } from "@/live/i18n";
+import { actionFailed } from "@/live/notices";
+import { Check, Loader2, Plus, Trash2, X } from "lucide-react";
+import { useCallback, useState } from "react";
+import { type Relay, api } from "./api";
+import { usePoll } from "./poll";
+import { Card, Failed } from "./Shell";
+
+/**
+ * The media servers this deployment holds calls on.
+ *
+ * Adding one is a page rather than a line in a configuration file because of
+ * when it happens: a relay is added the moment a machine is brought up, and
+ * editing a file and restarting to record that would drop every call the
+ * control node is holding — for an operation that changes nothing at all about
+ * the calls already in progress somewhere else.
+ *
+ * Each row carries whether the relay answered, measured from the control node
+ * when this page was drawn. That is deliberately not the same measurement a
+ * client makes before joining: this says whether the machine is up, and the
+ * client's says whether it is near them. A relay can be perfectly healthy here
+ * and the wrong choice for somebody on another continent, and a row that
+ * conflated the two would send an operator looking for a fault that is not one.
+ */
+export function RelaysPanel({
+	canModerate,
+	onSignedOut,
+}: {
+	canModerate: boolean;
+	onSignedOut: () => void;
+}) {
+	// Often enough that a relay going down is noticed while somebody is
+	// watching, rarely enough that the control node is not measuring every
+	// relay continuously for a page nobody has open.
+	const { value, error, refresh } = usePoll(api.relays, { every: 15_000, onSignedOut });
+
+	const [adding, setAdding] = useState(false);
+	const [busy, setBusy] = useState<string>();
+
+	const act = useCallback(
+		async (name: string, run: () => Promise<unknown>) => {
+			if (busy) return;
+
+			setBusy(name);
+
+			try {
+				await run();
+				await refresh();
+			} catch (err) {
+				actionFailed(err instanceof Error ? err.message : String(err));
+			} finally {
+				setBusy(undefined);
+			}
+		},
+		[busy, refresh],
+	);
+
+	if (error) return <Failed>{error}</Failed>;
+
+	const relays = value?.relays ?? [];
+
+	return (
+		<div className="flex flex-col gap-4">
+			<Card
+				title={t("Relays")}
+				note={t("Where calls are held. This machine serves the page and carries no media.")}
+				actions={
+					canModerate &&
+					!adding && (
+						<button
+							type="button"
+							onClick={() => setAdding(true)}
+							className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+						>
+							<Plus className="size-3.5" />
+							{t("Add relay")}
+						</button>
+					)
+				}
+			>
+				{adding ? (
+					<AddRelay
+						onDone={async () => {
+							setAdding(false);
+							await refresh();
+						}}
+						onCancel={() => setAdding(false)}
+					/>
+				) : relays.length === 0 ? (
+					<p className="px-4 py-6 text-center text-fg-muted text-xs">
+						{t("No relays yet. Calls cannot be held until one is added.")}
+					</p>
+				) : null}
+			</Card>
+
+			{relays.map((relay) => (
+				<RelayRow
+					key={relay.name}
+					relay={relay}
+					canModerate={canModerate}
+					busy={busy === relay.name}
+					onToggle={() =>
+						act(relay.name, () => api.editRelay(relay.name, { enabled: !relay.enabled }))
+					}
+					onDrop={() => act(relay.name, () => api.dropRelay(relay.name))}
+				/>
+			))}
+		</div>
+	);
+}
+
+function RelayRow({
+	relay,
+	canModerate,
+	busy,
+	onToggle,
+	onDrop,
+}: {
+	relay: Relay;
+	canModerate: boolean;
+	busy: boolean;
+	onToggle: () => void;
+	onDrop: () => void;
+}) {
+	const [confirming, setConfirming] = useState(false);
+
+	return (
+		<Card title={relay.name} note={relay.region}>
+			<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+				<div className="min-w-0">
+					<div className="flex items-center gap-2">
+						<span
+							className={cn(
+								"size-2 shrink-0 rounded-full",
+								relay.reachable ? "bg-ok" : "bg-danger",
+							)}
+							aria-hidden
+						/>
+						<span className="truncate readout text-[12px]">{relay.url}</span>
+
+						{!relay.enabled && (
+							<span className="rounded bg-warn/15 px-1.5 py-0.5 text-[11px] text-warn">
+								{t("Not taking new calls")}
+							</span>
+						)}
+					</div>
+
+					<p className="mt-1 text-fg-muted text-xs">
+						{relay.reachable
+							? t("Answered in {ms} ms", { ms: relay.latencyMs ?? 0 })
+							: relay.detail
+								? t("Did not answer: {reason}", { reason: relay.detail })
+								: t("Did not answer")}
+					</p>
+				</div>
+
+				{canModerate && (
+					<div className="flex shrink-0 items-center gap-2">
+						{busy && <Loader2 className="size-4 animate-spin text-fg-muted" />}
+
+						<button
+							type="button"
+							onClick={onToggle}
+							disabled={busy}
+							className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2 disabled:opacity-50"
+						>
+							{relay.enabled ? t("Stop sending here") : t("Send calls here")}
+						</button>
+
+						{confirming ? (
+							<div className="flex items-center gap-1">
+								{/* Named rather than a bare tick, because removing a relay and
+								    disabling one are a keystroke apart and only one of them is
+								    reversible by somebody who did not write the address down. */}
+								<button
+									type="button"
+									onClick={() => {
+										setConfirming(false);
+										onDrop();
+									}}
+									disabled={busy}
+									className="flex items-center gap-1 rounded-md bg-danger px-2.5 py-1 text-[12px] text-white hover:opacity-90 disabled:opacity-50"
+								>
+									<Check className="size-4" />
+									{t("Remove")}
+								</button>
+								<button
+									type="button"
+									onClick={() => setConfirming(false)}
+									className="rounded-md border border-border p-1.5 hover:bg-surface-2"
+									aria-label={t("Cancel")}
+								>
+									<X className="size-4" />
+								</button>
+							</div>
+						) : (
+							<button
+								type="button"
+								onClick={() => setConfirming(true)}
+								disabled={busy}
+								className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-2 hover:text-danger disabled:opacity-50"
+								aria-label={t("Remove relay")}
+							>
+								<Trash2 className="size-4" />
+							</button>
+						)}
+					</div>
+				)}
+			</div>
+
+			{confirming && (
+				<p className="px-4 pb-3 text-fg-muted text-xs">
+					{t(
+						"Calls already on this relay keep running; this only stops new ones being sent there.",
+					)}
+				</p>
+			)}
+		</Card>
+	);
+}
+
+function AddRelay({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+	const [name, setName] = useState("");
+	const [url, setUrl] = useState("");
+	const [region, setRegion] = useState("");
+	const [saving, setSaving] = useState(false);
+
+	const submit = useCallback(async () => {
+		if (saving) return;
+
+		setSaving(true);
+
+		try {
+			await api.addRelay({
+				name: name.trim(),
+				url: url.trim(),
+				region: region.trim() || undefined,
+			});
+			onDone();
+		} catch (err) {
+			actionFailed(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	}, [name, url, region, saving, onDone]);
+
+	return (
+		<form
+			className="flex flex-col gap-3 px-4 py-3"
+			onSubmit={(event) => {
+				event.preventDefault();
+				void submit();
+			}}
+		>
+			<div className="grid gap-3 sm:grid-cols-3">
+				<label className="flex flex-col gap-1">
+					<span className="text-fg-muted text-xs">{t("Name")}</span>
+					<input
+						value={name}
+						onChange={(event) => setName(event.target.value)}
+						placeholder="tokyo"
+						required
+						className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm"
+					/>
+				</label>
+
+				<label className="flex flex-col gap-1 sm:col-span-2">
+					<span className="text-fg-muted text-xs">{t("Address")}</span>
+					<input
+						value={url}
+						onChange={(event) => setUrl(event.target.value)}
+						placeholder="wss://tokyo.example.com"
+						required
+						className="rounded-md border border-border bg-surface px-2.5 py-1.5 font-mono text-sm"
+					/>
+				</label>
+			</div>
+
+			<label className="flex flex-col gap-1">
+				<span className="text-fg-muted text-xs">{t("Region (optional)")}</span>
+				<input
+					value={region}
+					onChange={(event) => setRegion(event.target.value)}
+					placeholder="jp"
+					className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-sm sm:max-w-48"
+				/>
+			</label>
+
+			<p className="text-fg-muted text-xs">
+				{t("The address a browser dials. It must begin ws:// or wss://, and the relay must be running with role: relay.")}
+			</p>
+
+			<div className="flex gap-2">
+				<button
+					type="submit"
+					disabled={saving || !name.trim() || !url.trim()}
+					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2 disabled:opacity-50"
+				>
+					{saving && <Loader2 className="size-4 animate-spin" />}
+					{t("Add relay")}
+				</button>
+
+				<button
+					type="button"
+					onClick={onCancel}
+					className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+				>
+					{t("Cancel")}
+				</button>
+			</div>
+		</form>
+	);
+}

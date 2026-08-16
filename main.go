@@ -210,6 +210,10 @@ func serve(args []string) error {
 			return err
 		}
 
+		if err := adoptRelays(st, conf); err != nil {
+			return err
+		}
+
 		if tripKey, err = room.LoadTripKey(conf.Meet.TripcodeKey); err != nil {
 			return err
 		}
@@ -229,6 +233,17 @@ func serve(args []string) error {
 
 	application := app.New(conf, st, media, web, tripKey)
 	defer application.Close()
+
+	// A control node has no media server of its own, so the management pages
+	// would have nothing to ask about rooms or participants. Pointed at the
+	// relays instead, they work as a full deployment's do: the questions go to
+	// whichever relay answers, and redis makes any one of them speak for all.
+	if conf.Meet.Role == config.RoleControl {
+		application.UseCluster(rtc.NewCluster(
+			func() []string { return application.RelayURLs() },
+			conf.Key, conf.Secret,
+		))
+	}
 
 	server := &http.Server{
 		Addr:    conf.Meet.Listen,
@@ -376,6 +391,50 @@ func listRooms(args []string) error {
 // what change it. Said out loud on every start because there is no other way to
 // find out — a file that no longer matches is the likeliest reason somebody is
 // standing in front of this wondering why a room will not open.
+// adoptRelays writes the configured relays into the store the first time this
+// runs, and says what is in effect.
+//
+// The file is the starting value and only that, exactly as the opening policy
+// is: after the first start the management pages are what change this, and a
+// file that no longer matches is the likeliest reason somebody is looking at a
+// relay list that is not the one they edited.
+func adoptRelays(st *store.Store, conf *config.Config) error {
+	configured := make([]store.Relay, 0, len(conf.Meet.Relays))
+	for _, relay := range conf.Meet.Relays {
+		configured = append(configured, store.Relay{
+			Name: relay.Name, URL: relay.URL, Region: relay.Region, Enabled: true,
+		})
+	}
+
+	adopted, err := st.AdoptRelays(configured)
+	if err != nil {
+		return err
+	}
+
+	live, err := st.Relays()
+	if err != nil {
+		return err
+	}
+
+	if adopted && len(configured) > 0 {
+		slog.Info("adopted the relays from the configuration file; the management pages "+
+			"are what change them from here", "relays", len(configured))
+	}
+
+	if !adopted && len(conf.Meet.Relays) > 0 {
+		slog.Warn("meet.relays in the configuration file is the starting value only, and this "+
+			"deployment already has its own list. Edit the relays from the management pages",
+			"configured", len(conf.Meet.Relays), "in effect", len(live))
+	}
+
+	for _, relay := range live {
+		slog.Info("relay", "name", relay.Name, "url", relay.URL,
+			"region", relay.Region, "enabled", relay.Enabled)
+	}
+
+	return nil
+}
+
 func adoptOpening(st *store.Store, conf *config.Config) error {
 	chosen, err := st.AdoptOpening(conf.Meet.Rooms.OpenedBy)
 	if err != nil {

@@ -1,0 +1,274 @@
+// Cluster is how a control node reaches the media servers it does not run.
+//
+// A control node starts no media server, so the management pages had nothing to
+// ask and answered every question about rooms and participants with a refusal —
+// correct, and useless, since those pages exist to answer exactly those
+// questions.
+//
+// What makes this work without a second protocol is the arrangement the split
+// already relies on: every relay verifies tokens signed with the deployment's
+// one key pair, and a relay's own management API is reachable at the address
+// clients already dial. So a control node holding that pair can mint a token
+// and ask a relay directly, which is what [Control] does on a full deployment
+// over loopback. The only difference here is the distance.
+//
+// LiveKit routes through redis when relays share one, so a room being held on
+// another relay is still listed by the one asked. That is why a single relay
+// answers for the cluster and why this does not have to ask each in turn.
+package rtc
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/livekit/protocol/livekit"
+)
+
+// Cluster asks whichever relay is answering.
+//
+// Not a fixed one. A control node that always asked the first relay in the list
+// would show an empty dashboard whenever that particular machine was down, and
+// the operator would read it as "no calls" rather than "cannot see".
+type Cluster struct {
+	// relays returns the addresses to try, newest first read from the store, so
+	// that a relay added on a page is asked without a restart.
+	relays func() []string
+
+	key    string
+	secret string
+	client *http.Client
+
+	// last is the relay that answered most recently. Tried first next time,
+	// because the alternative is paying a failed connection to a machine known
+	// to be down before every question.
+	mu   sync.Mutex
+	last string
+}
+
+// NewCluster builds one.
+func NewCluster(relays func() []string, key, secret string) *Cluster {
+	return &Cluster{
+		relays: relays,
+		key:    key,
+		secret: secret,
+		// Longer than the loopback client, and not by much. This crosses the
+		// public internet to a relay that may be on another continent, and a
+		// management page that hangs is still worse than one that says it could
+		// not find out.
+		client: &http.Client{Timeout: 8 * time.Second},
+	}
+}
+
+// controlFor builds a [Control] pointed at one relay's management API.
+//
+// The address a client dials is a WebSocket origin; the management API is the
+// same host over plain HTTP, which is what the scheme swap below is. Relays
+// serve both from the one listener, so there is no second port to configure and
+// no way for the two to drift apart.
+func (c *Cluster) controlFor(relay string) *Control {
+	upstream := strings.Replace(strings.Replace(relay, "wss://", "https://", 1), "ws://", "http://", 1)
+
+	return &Control{
+		client:   c.client,
+		upstream: strings.TrimRight(upstream, "/"),
+		key:      c.key,
+		secret:   c.secret,
+	}
+}
+
+// ordered returns the relays to try, the last one that answered first.
+func (c *Cluster) ordered() []string {
+	list := c.relays()
+
+	c.mu.Lock()
+	preferred := c.last
+	c.mu.Unlock()
+
+	if preferred == "" {
+		return list
+	}
+
+	ordered := make([]string, 0, len(list))
+	for _, relay := range list {
+		if relay == preferred {
+			ordered = append([]string{relay}, ordered...)
+			continue
+		}
+		ordered = append(ordered, relay)
+	}
+
+	return ordered
+}
+
+// answered records which relay worked, so it is asked first next time.
+func (c *Cluster) answered(relay string) {
+	c.mu.Lock()
+	c.last = relay
+	c.mu.Unlock()
+}
+
+// ask runs one question against the relays until one answers.
+//
+// An error from a relay is not necessarily that relay's fault — a room that
+// does not exist is an error too — so only a failure to reach one moves on to
+// the next. Distinguishing them by anything finer than "did the request
+// complete" would mean parsing the media server's errors, which is a coupling
+// worth more than it saves.
+func (c *Cluster) ask(ctx context.Context, run func(*Control) error) error {
+	list := c.ordered()
+
+	if len(list) == 0 {
+		return fmt.Errorf("no relay is configured, so there is nowhere to ask about rooms")
+	}
+
+	var reached error
+
+	for _, relay := range list {
+		err := run(c.controlFor(relay))
+		if err == nil {
+			c.answered(relay)
+			return nil
+		}
+
+		// Reached it and it said no: that is an answer, and asking a different
+		// relay the same question would only produce the same one.
+		if !unreachable(err) {
+			c.answered(relay)
+			return err
+		}
+
+		reached = err
+	}
+
+	return fmt.Errorf("no relay answered: %w", reached)
+}
+
+// unreachable says whether an error is a failure to reach a relay rather than
+// an answer from one.
+func unreachable(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	text := err.Error()
+
+	for _, sign := range []string{
+		"connection refused", "no such host", "timeout", "deadline exceeded",
+		"connection reset", "EOF", "network is unreachable", "i/o timeout",
+	} {
+		if strings.Contains(text, sign) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// Check says whether a relay is answering, and how quickly.
+//
+// The health endpoint rather than the management API, because this is asked
+// once per relay every time a page is drawn: it is the cheapest thing a relay
+// serves, needs no token, and answers the question actually being asked, which
+// is whether the machine is there.
+func (c *Cluster) Check(ctx context.Context, url string) (bool, time.Duration, string) {
+	origin := strings.Replace(strings.Replace(url, "wss://", "https://", 1), "ws://", "http://", 1)
+	origin = strings.TrimRight(origin, "/")
+
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, origin+"/api/health", nil)
+	if err != nil {
+		return false, 0, err.Error()
+	}
+
+	started := time.Now()
+
+	response, err := c.client.Do(request)
+	if err != nil {
+		// Trimmed: the full transport error names the address twice and wraps
+		// it in three layers, none of which tell an operator anything the
+		// address at the top of the row does not.
+		return false, time.Since(started), summarise(err)
+	}
+	defer response.Body.Close()
+
+	took := time.Since(started)
+
+	if response.StatusCode != http.StatusNoContent && response.StatusCode != http.StatusOK {
+		return false, took, fmt.Sprintf("answered %d", response.StatusCode)
+	}
+
+	return true, took, ""
+}
+
+// summarise reduces a transport error to the part worth showing.
+func summarise(err error) string {
+	text := err.Error()
+
+	switch {
+	case strings.Contains(text, "connection refused"):
+		return "connection refused"
+	case strings.Contains(text, "no such host"):
+		return "name does not resolve"
+	case strings.Contains(text, "certificate"):
+		return "certificate rejected"
+	case strings.Contains(text, "deadline exceeded"), strings.Contains(text, "timeout"):
+		return "timed out"
+	default:
+		if len(text) > 120 {
+			return text[:120]
+		}
+		return text
+	}
+}
+
+// The five questions the management pages ask, each run against whichever relay
+// answers. Together these satisfy the Control interface those pages hold, so a
+// control node's pages work exactly as a full deployment's do.
+
+func (c *Cluster) Rooms(ctx context.Context) ([]*livekit.Room, error) {
+	var rooms []*livekit.Room
+
+	err := c.ask(ctx, func(control *Control) error {
+		found, err := control.Rooms(ctx)
+		if err != nil {
+			return err
+		}
+		rooms = found
+		return nil
+	})
+
+	return rooms, err
+}
+
+func (c *Cluster) Participants(ctx context.Context, room string) ([]*livekit.ParticipantInfo, error) {
+	var people []*livekit.ParticipantInfo
+
+	err := c.ask(ctx, func(control *Control) error {
+		found, err := control.Participants(ctx, room)
+		if err != nil {
+			return err
+		}
+		people = found
+		return nil
+	})
+
+	return people, err
+}
+
+func (c *Cluster) Remove(ctx context.Context, room, identity string) error {
+	return c.ask(ctx, func(control *Control) error { return control.Remove(ctx, room, identity) })
+}
+
+func (c *Cluster) Mute(ctx context.Context, room, identity, track string) error {
+	return c.ask(ctx, func(control *Control) error { return control.Mute(ctx, room, identity, track) })
+}
+
+func (c *Cluster) Close(ctx context.Context, room string) error {
+	return c.ask(ctx, func(control *Control) error { return control.Close(ctx, room) })
+}

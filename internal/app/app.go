@@ -56,7 +56,7 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 		web:     web,
 		tripKey: tripKey,
 		admin:   admin.New(conf, media, st, tripKey),
-		relays:  newRelays(conf),
+		relays:  newRelays(conf, st),
 		stop:    make(chan struct{}),
 	}
 

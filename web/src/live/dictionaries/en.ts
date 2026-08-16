@@ -137,6 +137,25 @@ const en = {
 	"Could not join {room}.": "Could not join {room}.",
 	"{room} isn't open. Ask the organiser for the link.":
 		"{room} isn't open. Ask the organiser for the link.",
+
+	Relays: "Relays",
+	"Where calls are held. This machine serves the page and carries no media.": "Where calls are held. This machine serves the page and carries no media.",
+	"Add relay": "Add relay",
+	"No relays yet. Calls cannot be held until one is added.": "No relays yet. Calls cannot be held until one is added.",
+	"Not taking new calls": "Not taking new calls",
+	"Answered in {ms} ms": "Answered in {ms} ms",
+	"Did not answer: {reason}": "Did not answer: {reason}",
+	"Did not answer": "Did not answer",
+	"Stop sending here": "Stop sending here",
+	"Send calls here": "Send calls here",
+	Remove: "Remove",
+	Cancel: "Cancel",
+	"Remove relay": "Remove relay",
+	"Calls already on this relay keep running; this only stops new ones being sent there.": "Calls already on this relay keep running; this only stops new ones being sent there.",
+	Name: "Name",
+	Address: "Address",
+	"Region (optional)": "Region (optional)",
+	"The address a browser dials. It must begin ws:// or wss://, and the relay must be running with role: relay.": "The address a browser dials. It must begin ws:// or wss://, and the relay must be running with role: relay.",
 } as const;
 
 export default en;

@@ -189,6 +189,22 @@ function explain(reason: string | undefined, status: number): string {
 	}
 }
 
+/** One media server, as the management pages see it. */
+export interface Relay {
+	name: string;
+	url: string;
+	region?: string;
+	enabled: boolean;
+	added?: string;
+	/** Whether it answered when this page was drawn, from the control node. */
+	reachable: boolean;
+	latencyMs?: number;
+	/** Why it did not answer, when it did not. A code is not sent for this one:
+	 * it is a transport failure summarised by the server, and there is no fixed
+	 * set of them to translate. */
+	detail?: string;
+}
+
 export const api = {
 	whoami: () => call<Who>("/session"),
 	signIn: (passphrase: string) =>
@@ -207,6 +223,20 @@ export const api = {
 
 	setPolicy: (openedBy: Opening) =>
 		call<Policy>("/policy", { method: "PUT", body: JSON.stringify({ openedBy }) }),
+
+	relays: () => call<{ relays: Relay[] }>("/relays"),
+
+	addRelay: (relay: { name: string; url: string; region?: string; enabled?: boolean }) =>
+		call<{ added: string }>("/relays", { method: "POST", body: JSON.stringify(relay) }),
+
+	editRelay: (name: string, change: { url?: string; region?: string; enabled?: boolean }) =>
+		call<{ updated: string }>(`/relays/${encodeURIComponent(name)}`, {
+			method: "PATCH",
+			body: JSON.stringify(change),
+		}),
+
+	dropRelay: (name: string) =>
+		call<{ removed: string }>(`/relays/${encodeURIComponent(name)}`, { method: "DELETE" }),
 
 	closeRoom: (room: string) => call<void>(`/rooms/${encodeURIComponent(room)}`, { method: "DELETE" }),
 	remove: (room: string, identity: string) =>

@@ -60,10 +60,15 @@ type API struct {
 	control  Control
 	media    Media
 	store    Names
-	log      *Log
-	history  *History
-	stop     chan struct{}
-	closing  sync.Once
+	relays   Relays
+	probe    Reachable
+	// onRelaysChanged lets the choosing side drop its cache the moment this
+	// list moves, so a relay added here is used by the very next join.
+	onRelaysChanged func()
+	log             *Log
+	history         *History
+	stop            chan struct{}
+	closing         sync.Once
 }
 
 // New assembles it.
@@ -81,6 +86,12 @@ func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte
 		log:      NewLog(),
 		history:  NewHistory(),
 		stop:     make(chan struct{}),
+	}
+
+	// The relay list is the store's, where a page's changes go. Nil on a
+	// deployment without one, which is a relay.
+	if st != nil {
+		api.relays = st
 	}
 
 	// Assigned inside the guard and never outside it. A nil *rtc.Server put
@@ -130,6 +141,27 @@ func (a *API) sample() Sample {
 	}
 }
 
+// UseCluster points the management pages at relays elsewhere.
+//
+// A control node has no media server of its own, so without this every page
+// about rooms or participants answers that it cannot find out — which is true
+// and useless, since those pages exist to answer exactly those questions. Given
+// a cluster they work as a full deployment's do: the questions go to whichever
+// relay answers, and redis makes any one of them speak for all.
+func (a *API) UseCluster(cluster *rtc.Cluster) {
+	if cluster == nil {
+		return
+	}
+
+	a.control = cluster
+	a.probe = cluster
+}
+
+// OnRelaysChanged registers what to run when the relay list moves.
+func (a *API) OnRelaysChanged(fn func()) {
+	a.onRelaysChanged = fn
+}
+
 // Configured reports whether this deployment has a management surface at all.
 func (a *API) Configured() bool {
 	return a.sessions.Configured()
@@ -146,7 +178,18 @@ func (a *API) Configured() bool {
 // should not have to know that. Neither is ever a nil pointer inside a non-nil
 // interface — see the guard in New, which is what makes this test meaningful.
 func (a *API) attached() bool {
-	return a.media != nil && a.control != nil
+	return a.control != nil
+}
+
+// local says whether the figures that only a media server knows about itself are
+// available: throughput, node identity, hardware counters.
+//
+// Distinct from attached, because the two became different questions the moment
+// a control node could reach relays it does not run. It can list their rooms
+// and remove somebody from one; it cannot report their CPU, because those
+// counters are read from the process holding them.
+func (a *API) local() bool {
+	return a.media != nil
 }
 
 // detached answers a page that wanted a media server on a node that has none.
@@ -184,6 +227,14 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/runtime", a.observe(a.runtime))
 	mux.HandleFunc("GET /api/admin/audit", a.observe(a.audit))
 	mux.HandleFunc("GET /api/admin/policy", a.observe(a.readPolicy))
+	mux.HandleFunc("GET /api/admin/relays", a.observe(a.listRelays))
+
+	// Adding a relay decides where other people's calls are held, which is the
+	// same kind of authority as closing a room rather than the same kind as
+	// reading a figure.
+	mux.HandleFunc("POST /api/admin/relays", a.moderate(a.addRelay))
+	mux.HandleFunc("PATCH /api/admin/relays/{relay}", a.moderate(a.editRelay))
+	mux.HandleFunc("DELETE /api/admin/relays/{relay}", a.moderate(a.dropRelay))
 
 	mux.HandleFunc("PUT /api/admin/policy", a.moderate(a.setPolicy))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))
@@ -302,7 +353,7 @@ func (a *API) trend(_ Session, w http.ResponseWriter, _ *http.Request) {
 }
 
 func (a *API) now(_ Session, w http.ResponseWriter, _ *http.Request) {
-	if !a.attached() {
+	if !a.local() {
 		a.detached(w)
 		return
 	}
@@ -459,7 +510,7 @@ func tracksOf(one *livekit.ParticipantInfo) []map[string]any {
 }
 
 func (a *API) health(_ Session, w http.ResponseWriter, _ *http.Request) {
-	if !a.attached() {
+	if !a.local() {
 		a.detached(w)
 		return
 	}

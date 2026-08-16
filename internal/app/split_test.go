@@ -39,7 +39,7 @@ the origin it was served from.
 // Through Handler rather than by registering the routes a test wants, unlike
 // mount above. What is being tested here is which routes exist at all, and a
 // test that mounted its own would be asserting against its own arrangement.
-func control(t *testing.T, policy string, relayList ...config.Relay) http.Handler {
+func control(t *testing.T, policy string, relayList ...store.Relay) http.Handler {
 	t.Helper()
 
 	st, err := store.Open(filepath.Join(t.TempDir(), "meet.db"))
@@ -48,12 +48,20 @@ func control(t *testing.T, policy string, relayList ...config.Relay) http.Handle
 	}
 	t.Cleanup(func() { st.Close() })
 
+	// The store is the live list, so what the pages and the joins both read is
+	// what was put here — the configuration is only ever a starting value.
+	for _, relay := range relayList {
+		relay.Enabled = true
+		if err := st.AddRelay(relay); err != nil {
+			t.Fatalf("AddRelay: %v", err)
+		}
+	}
+
 	conf := &config.Config{
 		Key:    "APIkey",
 		Secret: "a secret long enough for the media server to accept it",
 		Meet: config.Meet{
 			Role:        config.RoleControl,
-			Relays:      relayList,
 			RelayPolicy: policy,
 			TokenTTL:    5 * time.Minute,
 			JoinRate:    1000,
@@ -72,7 +80,7 @@ func control(t *testing.T, policy string, relayList ...config.Relay) http.Handle
 		web:     http.NotFoundHandler(),
 		tripKey: tripKey,
 		admin:   admin.New(conf, nil, st, tripKey),
-		relays:  newRelays(conf),
+		relays:  newRelays(conf, st),
 		stop:    make(chan struct{}),
 	}
 	t.Cleanup(app.Close)
@@ -85,8 +93,8 @@ func control(t *testing.T, policy string, relayList ...config.Relay) http.Handle
 // either, which would be a 200 that looks like it worked.
 func TestAControlNodeCarriesNoSignalling(t *testing.T) {
 	mux := control(t, config.PickProbe,
-		config.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
-		config.Relay{Name: "tokyo", URL: "wss://jp.example.invalid"},
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
+		store.Relay{Name: "tokyo", URL: "wss://jp.example.invalid"},
 	)
 
 	for _, path := range []string{"/rtc", "/rtc/", "/rtc/validate", "/twirp/", "/twirp/livekit.RoomService/ListRooms"} {
@@ -124,8 +132,9 @@ func TestARelayCarriesNothingButMedia(t *testing.T) {
 		web:     nil,
 		tripKey: nil,
 		admin:   admin.New(conf, nil, nil, nil),
-		relays:  newRelays(conf),
-		stop:    make(chan struct{}),
+		// nil source: a relay has no store and chooses no relays.
+		relays: newRelays(conf, nil),
+		stop:   make(chan struct{}),
 	}
 	t.Cleanup(app.Close)
 
@@ -172,7 +181,7 @@ func TestARelayCarriesNothingButMedia(t *testing.T) {
 // looking URL pointing at a machine running no media server, and a call that
 // fails after appearing to be authorised.
 func TestAJoinSendsTheClientToARelayAndNotToUs(t *testing.T) {
-	relayList := []config.Relay{
+	relayList := []store.Relay{
 		{Name: "shanghai", URL: "wss://sh.example.invalid"},
 		{Name: "tokyo", URL: "wss://jp.example.invalid"},
 	}
@@ -226,7 +235,7 @@ func TestAJoinSendsTheClientToARelayAndNotToUs(t *testing.T) {
 // even when the room's own hash points elsewhere. This is the difference
 // between "we support choosing" and "we ask and then ignore the answer".
 func TestTheMeasuredRelayIsTheOneUsed(t *testing.T) {
-	relayList := []config.Relay{
+	relayList := []store.Relay{
 		{Name: "shanghai", URL: "wss://sh.example.invalid"},
 		{Name: "tokyo", URL: "wss://jp.example.invalid"},
 		{Name: "frankfurt", URL: "wss://de.example.invalid"},
@@ -261,8 +270,8 @@ func TestTheMeasuredRelayIsTheOneUsed(t *testing.T) {
 // has to reach them; nothing about the shape of the deployment is.
 func TestTheRelayListIsWhatAClientNeedsToMeasure(t *testing.T) {
 	mux := control(t, config.PickProbe,
-		config.Relay{Name: "shanghai", URL: "wss://sh.example.invalid", Region: "cn-east"},
-		config.Relay{Name: "tokyo", URL: "wss://jp.example.invalid", Region: "jp"},
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid", Region: "cn-east"},
+		store.Relay{Name: "tokyo", URL: "wss://jp.example.invalid", Region: "jp"},
 	)
 
 	recorder := ask(mux, httptest.NewRequest(http.MethodGet, "/api/relays", nil))
@@ -297,8 +306,8 @@ func TestTheRelayListIsWhatAClientNeedsToMeasure(t *testing.T) {
 func TestOnlyProbeAsksTheClientToMeasure(t *testing.T) {
 	for _, policy := range []string{config.PickSticky, config.PickNearest, config.PickRoundRobin} {
 		mux := control(t, policy,
-			config.Relay{Name: "shanghai", URL: "wss://sh.example.invalid", Region: "cn-east"},
-			config.Relay{Name: "tokyo", URL: "wss://jp.example.invalid", Region: "jp"},
+			store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid", Region: "cn-east"},
+			store.Relay{Name: "tokyo", URL: "wss://jp.example.invalid", Region: "jp"},
 		)
 
 		recorder := ask(mux, httptest.NewRequest(http.MethodGet, "/api/relays", nil))

@@ -206,6 +206,7 @@ const zhHant: Dictionary = {
 	"can change things": "人可以做修改",
 	"Can change things": "可以做修改",
 	"The last administrator who can change things cannot be removed": "最後一個可做修改的管理員不能被移除",
+	"Settings": "設定",
 };
 
 export default zhHant;

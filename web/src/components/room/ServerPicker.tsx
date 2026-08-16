@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/useT";
 import { say } from "@/live/i18n";
 import { type Relay, timings } from "@/live/relays";
-import { Check, ChevronDown, Loader2, RotateCw } from "lucide-react";
+import { Check, ChevronDown, Loader2, RotateCw, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -231,6 +231,10 @@ export function ServerPicker({
 						label={t("Automatic")}
 						describes={t("Whichever answers fastest")}
 						chosen={value === ""}
+						// Marked, because it is not one of the places below it: it
+						// is the absence of a choice, and a row that looked exactly
+						// like the relays would read as a machine called Automatic.
+						icon={<Wand2 className="size-3.5 shrink-0 text-fg-muted" />}
 						onPick={() => {
 							onChange("");
 							setOpen(false);
@@ -396,6 +400,7 @@ function Option({
 	describes,
 	chosen,
 	latency,
+	icon,
 	depth = 0,
 	delay = 0,
 	onPick,
@@ -404,6 +409,7 @@ function Option({
 	describes?: string;
 	chosen: boolean;
 	latency?: React.ReactNode;
+	icon?: React.ReactNode;
 	depth?: number;
 	delay?: number;
 	onPick: () => void;
@@ -441,6 +447,8 @@ function Option({
 						!chosen && "opacity-0",
 					)}
 				/>
+
+				{icon}
 
 				<span className="min-w-0 flex-1">
 					<span className="block truncate text-fg text-sm">{label}</span>

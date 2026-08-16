@@ -1,7 +1,18 @@
 import { cn } from "@/lib/utils";
 import { say, t } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
-import { Check, ChevronDown, ChevronUp, Copy, Loader2, Plus, Terminal, Trash2, X } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	ChevronUp,
+	Copy,
+	Loader2,
+	Plus,
+	RotateCw,
+	Terminal,
+	Trash2,
+	X,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 import { type Relay, api } from "./api";
 import { usePoll } from "./poll";
@@ -162,6 +173,10 @@ export function RelaysPanel({
 					}
 					onDrop={() => act(relay.name, () => api.dropRelay(relay.name))}
 					onEdit={(change) => act(relay.name, () => api.editRelay(relay.name, change))}
+					// The list is re-read, and reading it is what checks every
+					// relay: the reachability on this page is measured when it is
+					// drawn rather than remembered.
+					onRecheck={() => act(relay.name, refresh)}
 				/>
 			))}
 		</div>
@@ -176,6 +191,7 @@ function RelayRow({
 	onDrop,
 	onEdit,
 	onMove,
+	onRecheck,
 	first,
 	last,
 }: {
@@ -183,6 +199,7 @@ function RelayRow({
 	canModerate: boolean;
 	busy: boolean;
 	onMove: (by: number) => void;
+	onRecheck: () => void;
 	first: boolean;
 	last: boolean;
 	onToggle: () => void;
@@ -197,28 +214,60 @@ function RelayRow({
 }) {
 	const [confirming, setConfirming] = useState(false);
 
+	// Shut by default. The settings are four fields and two switches and they
+	// are read perhaps once in a machine's life, against a row that is looked at
+	// whenever anybody wonders whether a relay is up — so leaving them open made
+	// the page mostly forms and hid the one line anybody came for.
+	const [showing, setShowing] = useState(false);
+
 	return (
 		<Card title={say(relay.label || relay.name)} note={relay.label ? relay.name : relay.region}>
 			<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
 				<div className="min-w-0">
 					<div className="flex items-center gap-2">
-						<span
-							className={cn(
-								"size-2 shrink-0 rounded-full",
-								relay.reachable ? "bg-ok" : "bg-danger",
-							)}
-							aria-hidden
-						/>
 						<span className="truncate readout text-[12px]">{relay.url}</span>
 
+						{relay.fallback && (
+							<span className="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-[10.5px] text-fg-muted">
+								{t("Keep in reserve")}
+							</span>
+						)}
+
+						{relay.adminOnly && (
+							<span className="shrink-0 rounded bg-fg/10 px-1.5 py-0.5 text-[10.5px] text-fg-muted">
+								{t("Administrators only")}
+							</span>
+						)}
+
 						{!relay.enabled && (
-							<span className="rounded bg-warn/15 px-1.5 py-0.5 text-[11px] text-warn">
+							<span className="shrink-0 rounded bg-tally/15 px-1.5 py-0.5 text-[11px] text-tally">
 								{t("Not taking new calls")}
 							</span>
 						)}
 					</div>
 
-					<p className="mt-1 text-fg-muted text-xs">
+					{/*
+					  * A light before the sentence, on the same bands the client's
+					  * own picker uses. The dot that used to be here was painted a
+					  * colour this palette does not have, so on every reachable
+					  * relay it was an eight-pixel hole beside the address — which
+					  * is what anybody would read it as.
+					  */}
+					<p className="mt-1 flex items-center gap-2 text-fg-muted text-xs">
+						<span
+							className={cn(
+								"size-2 shrink-0 rounded-full",
+								!relay.reachable
+									? "bg-danger"
+									: (relay.latencyMs ?? 0) <= 150
+										? "bg-good"
+										: (relay.latencyMs ?? 0) <= 400
+											? "bg-tally"
+											: "bg-danger",
+							)}
+							aria-hidden
+						/>
+
 						{relay.reachable
 							? t("Answered in {ms} ms", { ms: relay.latencyMs ?? 0 })
 							: relay.detail
@@ -227,9 +276,46 @@ function RelayRow({
 					</p>
 				</div>
 
+				<div className="flex shrink-0 items-center gap-2">
+					{busy && <Loader2 className="size-4 animate-spin text-fg-muted" />}
+
+					{/* No cooldown on this one. It is one connection from one
+					    machine that already checks every relay on a timer; what
+					    the client's own button is rate limited against is every
+					    browser doing it at once. */}
+					<button
+						type="button"
+						onClick={onRecheck}
+						disabled={busy}
+						aria-label={t("Measure again")}
+						title={t("Measure again")}
+						className="rounded-md border border-border p-1.5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40"
+					>
+						<RotateCw className={cn("size-3.5", busy && "animate-spin")} />
+					</button>
+
+					{canModerate && (
+						<button
+							type="button"
+							onClick={() => setShowing(!showing)}
+							aria-expanded={showing}
+							aria-label={t("Settings")}
+							title={t("Settings")}
+							className={cn(
+								"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
+								"hover:bg-surface-2 hover:text-fg",
+								showing && "bg-surface-2 text-fg",
+							)}
+						>
+							<ChevronDown
+								className={cn("size-3.5 transition-transform duration-200", showing && "rotate-180")}
+							/>
+						</button>
+					)}
+				</div>
+
 				{canModerate && (
 					<div className="flex shrink-0 items-center gap-2">
-						{busy && <Loader2 className="size-4 animate-spin text-fg-muted" />}
 
 						{/* Order is not something this server can work out. Alphabetical
 						    puts a reserve above the relay holding every call, and by-date
@@ -305,12 +391,8 @@ function RelayRow({
 				)}
 			</div>
 
-			{canModerate && (
-				<Settings
-					relay={relay}
-					busy={busy}
-					onSave={(change) => onEdit(change)}
-				/>
+			{canModerate && showing && (
+				<Settings relay={relay} busy={busy} onSave={(change) => onEdit(change)} />
 			)}
 
 			{confirming && (
@@ -655,7 +737,7 @@ function AddByScript({
 				</button>
 			</div>
 
-			<p className="rounded-md border border-warn/40 bg-warn/10 px-3 py-2 text-[11px] text-warn">
+			<p className="rounded-md border border-tally/40 bg-tally/10 px-3 py-2 text-[11px] text-tally">
 				{t("This script carries the key to this deployment. Anybody who has it can add a relay, so do not put it anywhere it will be kept.")}
 			</p>
 

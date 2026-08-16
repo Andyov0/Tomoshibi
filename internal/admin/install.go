@@ -180,16 +180,23 @@ address="${ADDRESS:-}"
 
 if [ -z "$address" ]; then
     for resolver in resolver1.opendns.com resolver2.opendns.com; do
+        # Filtered to something that is only an address, and strictly.
+        #
+        # dig prints its troubles on standard output alongside the answer — a
+        # resolver that timed out over IPv6 contributes a line of prose — and a
+        # previous version stripped whitespace from the lot and posted the
+        # result as this machine's address. The control node refused it, which
+        # is the good outcome; the bad one was available.
         if command -v dig >/dev/null 2>&1; then
-            address=$(dig +short +time=3 +tries=1 myip.opendns.com "@$resolver" 2>/dev/null | tr -d '[:space:]')
+            address=$(dig -4 +short +time=3 +tries=1 myip.opendns.com "@$resolver" 2>/dev/null \
+                | grep -Eo '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -n 1)
         elif command -v nslookup >/dev/null 2>&1; then
-            address=$(nslookup myip.opendns.com "$resolver" 2>/dev/null | awk '/^Address: /{print $2}' | tail -1)
+            address=$(nslookup myip.opendns.com "$resolver" 2>/dev/null \
+                | awk '/^Address: /{print $2}' \
+                | grep -Eo '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | tail -n 1)
         fi
 
-        case "$address" in
-            *[0-9].[0-9]*) break ;;
-            *) address="" ;;
-        esac
+        [ -n "$address" ] && break
     done
 fi
 
@@ -197,11 +204,10 @@ fi
 if [ -z "$address" ]; then
     for echoer in https://api.ipify.org https://ipv4.icanhazip.com https://ifconfig.me/ip; do
         address=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
-            curl -fsS --noproxy '*' --max-time 6 "$echoer" 2>/dev/null | tr -d '[:space:]' || true)
-        case "$address" in
-            *[0-9].[0-9]*) break ;;
-            *) address="" ;;
-        esac
+            curl -fsS --noproxy '*' --max-time 6 "$echoer" 2>/dev/null \
+            | grep -Eo '^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$' | head -n 1 || true)
+
+        [ -n "$address" ] && break
     done
 fi
 

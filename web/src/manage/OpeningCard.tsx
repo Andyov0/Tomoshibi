@@ -59,46 +59,37 @@ export function OpeningCard({
 			{error && <Failed>{error}</Failed>}
 
 			<div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
-				<div
-					role="group"
-					aria-label="Who can start a new room"
-					className="grid grid-cols-3 gap-1 rounded-md border border-border bg-bg p-1"
-				>
+				{/*
+				  * Three rows rather than three segments. The labels are not the
+				  * same length and the difference between them is not a matter of
+				  * degree, so a segmented control gave one option twice the width
+				  * of another and still had to explain itself in a sentence
+				  * underneath — which meant reading two places to answer one
+				  * question. Each row now carries its own consequence.
+				  */}
+				<div role="radiogroup" aria-label="Who can start a new room" className="flex flex-col">
 					<Choice
 						label="Anyone"
+						describes="Anybody with a link can start one."
 						chosen={value?.chosen === "anyone"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("anyone")}
 					/>
-					{/*
-					  * The middle one, and the one most deployments want. An
-					  * anonymous visitor's signature is drawn from nothing and
-					  * changes on every tab, so this lets anybody who has set a
-					  * passphrase start a room and leaves everybody else able to
-					  * join one they were told about — which is the difference
-					  * between a meeting server and a thing strangers find.
-					  */}
 					<Choice
 						label="Named"
+						describes="Anybody with a passphrase can start one. Everybody else can still join."
 						chosen={value?.chosen === "signed"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("signed")}
 					/>
 					<Choice
 						label="Administrators"
+						describes="Only administrators can start one. Rooms already in use stay open."
 						chosen={value?.chosen === "admins"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("admins")}
 					/>
 				</div>
-
-				<p className="text-fg-muted text-xs leading-relaxed">
-					{value?.chosen === "admins"
-						? "Only administrators can start a room. Rooms already in use stay open."
-						: value?.chosen === "signed"
-							? "Anybody with a passphrase can start a room. Everybody else can still join one they have a link to."
-							: "Anyone with a link can start a room."}
-				</p>
 
 				{value && <HowLongItLasts remember={value.remember} />}
 				{value && <WhereItLives policy={value} />}
@@ -110,11 +101,13 @@ export function OpeningCard({
 
 function Choice({
 	label,
+	describes,
 	chosen,
 	disabled,
 	onChoose,
 }: {
 	label: string;
+	describes: string;
 	chosen: boolean;
 	disabled: boolean;
 	onChoose: () => void;
@@ -122,17 +115,42 @@ function Choice({
 	return (
 		<button
 			type="button"
-			aria-pressed={chosen}
+			role="radio"
+			aria-checked={chosen}
 			disabled={disabled}
 			onClick={onChoose}
 			className={cn(
-				"rounded px-3 py-1.5 text-[13px] transition-colors",
+				"group relative flex items-start gap-3 rounded-lg py-2.5 pr-3 pl-3 text-left",
+				"transition-colors duration-150",
 				"focus-visible:outline-2 focus-visible:outline-fg focus-visible:outline-offset-1",
-				chosen ? "bg-surface-hi font-medium text-fg" : "text-fg-muted hover:text-fg",
-				disabled && "cursor-not-allowed opacity-60 hover:text-fg-muted",
+				chosen ? "bg-fg/8" : "hover:bg-fg/5",
+				disabled && "cursor-not-allowed opacity-60 hover:bg-transparent",
 			)}
 		>
-			{label}
+			{/* A ring that fills rather than a tick that appears, so the three of
+			    them read as one question with one answer. */}
+			<span
+				className={cn(
+					"mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors duration-150",
+					chosen ? "border-tally" : "border-fg/25 group-hover:border-fg/40",
+				)}
+			>
+				<span
+					className={cn(
+						"size-2 rounded-full bg-tally transition-transform duration-150",
+						chosen ? "scale-100" : "scale-0",
+					)}
+				/>
+			</span>
+
+			<span className="min-w-0">
+				<span className={cn("block text-[13px]", chosen ? "font-medium text-fg" : "text-fg")}>
+					{label}
+				</span>
+				<span className="mt-0.5 block text-[11.5px] text-fg-muted leading-relaxed">
+					{describes}
+				</span>
+			</span>
 		</button>
 	);
 }

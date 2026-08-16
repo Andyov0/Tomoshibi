@@ -239,6 +239,7 @@ const en = {
 	"can change things": "can change things",
 	"Can change things": "Can change things",
 	"The last administrator who can change things cannot be removed": "The last administrator who can change things cannot be removed",
+	"Settings": "Settings",
 } as const;
 
 export default en;

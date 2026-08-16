@@ -44,10 +44,6 @@ const ja: Dictionary = {
 
 	"Share your screen": "画面を共有",
 	"Stop sharing": "共有を停止",
-	"Sharper text": "文字がくっきり",
-	"Code, documents, slides": "コード、文書、スライド",
-	"Smoother motion": "動きがなめらか",
-	"Video, animation, demos": "動画・アニメ・デモ",
 	"{name} is sharing": "{name} が共有しています",
 	"Watch": "見る",
 
@@ -137,9 +133,6 @@ const ja: Dictionary = {
 	Standard: "標準",
 	High: "高",
 	Ultra: "最高",
-	"1080p, up to 8 Mbps": "1080p、最大 8 Mbps",
-	"1440p, up to 16 Mbps": "1440p、最大 16 Mbps",
-	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K、最大 30 Mbps。速いマシンと上り回線が必要です。",
 	"Administrators": "管理者",
 	"Add somebody": "メンバーを追加",
 	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "署名はパスフレーズから作られるもので、公開情報です。参加したどの部屋でも名前の横に表示されます。パスフレーズではなく署名を訊いてください。パスフレーズはこのサーバーが知ることも保存することもありません。",
@@ -223,6 +216,15 @@ const ja: Dictionary = {
 	"out": "送信",
 	"in": "受信",
 	"Access denied. That server is for administrators.": "アクセスが拒否されました。このサーバーは管理者専用です。",
+	"Picture": "画質",
+	"Frames a second": "フレームレート",
+	"Adjusts to the connection": "回線に合わせて自動調整",
+	"Up to 240 frames a second": "最大 240 fps",
+	"Up to 120 frames a second": "最大 120 fps",
+	"Up to 60 frames a second": "最大 60 fps",
+	"1080p": "1080p",
+	"1440p": "1440p",
+	"4K": "4K",
 };
 
 export default ja;

@@ -10,161 +10,165 @@ import type { Join } from "./api";
 import { installNoValidate } from "./novalidate";
 
 /**
- * The two ways a screen can be shared.
+ * What a screen share is, as two questions.
  *
- * Labelled by frame rate because that is the number people look for, but the
- * choice reaches much further than that. A share of a terminal and a share of a
- * video want opposite answers to every question that follows from it: which
- * encoder tools to use, and which of sharpness and smoothness to give up first
- * when the network cannot carry both. Offering the frame rate alone and deciding
- * the rest centrally would mean deciding it wrong for one of the two.
+ * How large a picture, and how many frames of it. They were one choice once and
+ * that was wrong in both directions: asking for smooth motion also fixed the
+ * resolution and the ceiling, and asking for a sharp picture fixed the frame
+ * rate at thirty. They are independent — the size follows from the display, the
+ * rate follows from what is on it — so they are asked separately, with the rates
+ * a given size can actually carry.
+ *
+ * And an automatic setting, which is the only one that gives ground. Everything
+ * else is somebody saying what they want and is sent at the ceiling for it.
  */
-export const SHARE_FRAME_RATES = [30, 60] as const;
+export const SHARE_QUALITIES = ["auto", "1080p", "1440p", "4k"] as const;
+export type ShareQuality = (typeof SHARE_QUALITIES)[number];
+
+export const SHARE_FRAME_RATES = [15, 30, 60, 120, 240] as const;
 export type ShareFrameRate = (typeof SHARE_FRAME_RATES)[number];
 
 /**
- * How much picture to send, separately from what kind of picture it is.
+ * How many frames each size can be asked for.
  *
- * These were one choice until somebody wanted a sharp share at sixty frames and
- * found that asking for smooth motion also fixed the resolution at 1080p and the
- * ceiling at eight megabits. The two questions are genuinely independent — what
- * is on the screen decides how to encode it, and how much bandwidth there is
- * decides how much of it to send — so they are asked separately now.
+ * Ceilings rather than preferences, and they come from what an encoder can
+ * actually do rather than from taste. Every rate below a size's ceiling is
+ * offered, because a slow rate is always available: somebody sharing a page of
+ * code at 4K wants fifteen frames and the sharpest possible picture, and
+ * refusing them that would be refusing the better answer.
  *
- * The heights are what the browser is asked to capture. It is a request rather
- * than a guarantee: a display smaller than the number gets its own size, and a
- * machine that cannot encode what it captured will drop frames or scale down on
- * its own. Nothing here can promise 4K on a laptop that has other ideas.
+ * What is not offered is a combination that cannot be delivered. 4K at 120
+ * frames is a billion pixels a second; the encoder does not fail loudly, it
+ * falls behind, and a share that drifts further behind the longer it runs is
+ * worse than one that was never offered.
  */
-export const SHARE_QUALITIES = ["standard", "high", "ultra"] as const;
-export type ShareQuality = (typeof SHARE_QUALITIES)[number];
+const RATES_FOR: Record<Exclude<ShareQuality, "auto">, readonly ShareFrameRate[]> = {
+	"1080p": [15, 30, 60, 120, 240],
+	"1440p": [15, 30, 60, 120],
+	"4k": [15, 30, 60],
+};
 
-interface QualityProfile {
+/** The frame rates this size may be asked for. */
+export function ratesFor(quality: ShareQuality): readonly ShareFrameRate[] {
+	return quality === "auto" ? SHARE_FRAME_RATES : RATES_FOR[quality];
+}
+
+/** Whether a pairing is one this offers at all. */
+export function offers(quality: ShareQuality, frameRate: ShareFrameRate): boolean {
+	return ratesFor(quality).includes(frameRate);
+}
+
+interface Size {
 	width: number;
 	height: number;
-	/**
-	 * A ceiling, not a target — congestion control decides the rest, and on a
-	 * network that cannot carry this the encoder simply sends less.
-	 *
-	 * Scaled with the pixels rather than set flat. Four times the area at the
-	 * same bitrate is not a sharper picture, it is the same bitrate spread
-	 * thinner, which is how a 4K option ends up looking worse than the 1080p one
-	 * it replaced.
-	 */
-	maxBitrate: number;
 }
 
-const QUALITY_PROFILES: Record<ShareQuality, QualityProfile> = {
-	// What a share was before this existed, and still the right default: 1080p
-	// is most people's screen, and eight megabits is more than most uploads have
-	// to spare.
-	standard: { width: 1920, height: 1080, maxBitrate: 8_000_000 },
-
-	// For a display that has more than 1080p to show and an upload that can
-	// carry it. Sixteen megabits for 1.8 times the pixels — deliberately more
-	// than proportional, because detail is what somebody choosing this wants and
-	// the encoder should not have to choose between it and motion.
-	high: { width: 2560, height: 1440, maxBitrate: 16_000_000 },
-
-	// Everything the browser will give. Worth it for a 4K display showing small
-	// text, and wasted on anything else: four times the standard area costs four
-	// times the encoding, and a machine that cannot keep up drops frames rather
-	// than degrading gently.
-	ultra: { width: 3840, height: 2160, maxBitrate: 30_000_000 },
+const SIZES: Record<Exclude<ShareQuality, "auto">, Size> = {
+	"1080p": { width: 1920, height: 1080 },
+	"1440p": { width: 2560, height: 1440 },
+	"4k": { width: 3840, height: 2160 },
 };
-
-/** Everything that follows from what a share is for. */
-interface ShareProfile {
-	/** What the picture is, told to the encoder in its own vocabulary. */
-	contentHint: "text" | "motion";
-	videoCodec: VideoCodec;
-	/** What to sacrifice when the two cannot both be had. */
-	degradationPreference: RTCDegradationPreference;
-	/**
-	 * How much of the quality's ceiling this kind of picture needs.
-	 *
-	 * A still page of code and a playing video at the same resolution do not
-	 * want the same bitrate: most of the code frame is identical to the one
-	 * before it and costs almost nothing to send, while the video changes
-	 * everywhere at once. Handing both the same ceiling either starves the video
-	 * or reserves bandwidth the text was never going to use.
-	 *
-	 * This was briefly dropped when resolution became its own choice, and an
-	 * existing test caught it: the busier picture must keep the larger ceiling.
-	 */
-	bitrateShare: number;
-}
 
 /**
- * Neither profile uses VP9, though the camera does and it compresses better.
+ * What automatic sends.
  *
- * The SDK rewrites a share published with an SVC codec: it pins the stream to a
- * single spatial layer and overwrites `contentHint` with `motion`, working around
- * what its own source calls an untested and buggy path in the browser. The hint
- * below would therefore never reach the encoder, and the sharper of the two
- * profiles is built entirely on that hint. A codec whose advantage is unreachable
- * is not an advantage.
+ * 1080p at thirty, and the only mode that gives ground: the bitrate floats, the
+ * encoder may drop resolution, and somebody on a bad connection ends up with a
+ * smaller picture rather than a stalled one.
+ *
+ * Every other choice is a person saying what they want, and is sent at the
+ * ceiling for it. That is the whole distinction: automatic is for somebody who
+ * does not want to think about it, and the named sizes are for somebody who
+ * does and has already decided.
  */
-const SHARE_PROFILES: Record<ShareFrameRate, ShareProfile> = {
-	// Text, and everything shaped like it: code, a document, slides. The hint is
-	// `text` rather than `detail` because the two differ exactly here — both ask
-	// for sharp frames over smooth ones, but only `text` lets an encoder reach
-	// for the tools it keeps for rendering type.
-	//
-	// VP8 rather than H.264: software encoding, which a mostly-still screen at
-	// thirty frames can afford, and it honours the hint rather than handing the
-	// picture to a hardware encoder tuned for faces, where small type is the
-	// first thing to go soft.
-	30: {
-		contentHint: "text",
-		videoCodec: "vp8",
-		degradationPreference: "maintain-resolution",
-		// Two thirds. A mostly-still screen reaches nothing like the ceiling
-		// anyway, and leaving the rest unclaimed is bandwidth somebody else's
-		// camera can have.
-		bitrateShare: 0.65,
-	},
+const AUTOMATIC = { width: 1920, height: 1080, frameRate: 30 as ShareFrameRate };
 
-	// Anything that moves: a video, an animation, a demonstration of something
-	// being used. Sixty frames of it is more than software encoding should be
-	// asked to carry, so this one takes the codec with hardware encoding almost
-	// everywhere, and asks to keep the frame rate that was the whole reason for
-	// choosing it.
-	60: {
-		contentHint: "motion",
-		videoCodec: "h264",
-		degradationPreference: "maintain-framerate",
-		// All of it. Sixty frames of a picture that changes everywhere is the
-		// case the ceiling was chosen for.
-		bitrateShare: 1,
-	},
-};
+/**
+ * How many bits a picture of this size and rate is worth.
+ *
+ * Roughly a tenth of a bit per pixel per frame, which is about what H.264 wants
+ * for screen content — text and flat colour compress far better than camera
+ * noise, and the number is chosen for the moment a page scrolls rather than for
+ * the seconds it sits still.
+ *
+ * Scaled with both dimensions rather than set per size, because the failure it
+ * prevents is the same either way: four times the pixels at the same ceiling is
+ * not a sharper picture but the same bitrate spread thinner, and eight times the
+ * frames at the same ceiling is every frame getting an eighth of the data.
+ *
+ * Capped, because the curve keeps going and networks do not. 1080p at 240 and 4K
+ * at 60 both land near the cap, which is the right place for them to land: past
+ * it, the limit is not this number.
+ */
+const BITS_PER_PIXEL_PER_FRAME = 0.1;
+const BITRATE_CAP = 60_000_000;
+const BITRATE_FLOOR = 2_500_000;
+
+function bitrateFor(width: number, height: number, frameRate: number): number {
+	const wanted = width * height * frameRate * BITS_PER_PIXEL_PER_FRAME;
+
+	return Math.round(Math.min(BITRATE_CAP, Math.max(BITRATE_FLOOR, wanted)));
+}
 
 /**
  * What to send, given both choices.
  *
- * VP8 above 1080p is the one combination that has to be overridden. Software
- * encoding 1440p or 4K at thirty frames asks more of a CPU than most have, and
- * the failure is not a softer picture — it is an encoder falling behind, which
- * arrives as a share that stutters and lags further behind the longer it runs.
- * H.264 has hardware encoding almost everywhere and keeps up.
+ * The codec is H.264 everywhere except a still 1080p picture. H.264 has
+ * hardware encoding on essentially every machine, and above 1080p or above
+ * thirty frames the alternative is not a softer picture but an encoder falling
+ * behind — which arrives as a share that stutters and drifts, and never
+ * announces itself.
+ *
+ * VP8 is kept for 1080p at fifteen or thirty because it honours the `text`
+ * content hint, and a hardware H.264 encoder tuned for faces makes small type
+ * the first thing to go soft. That is a real difference on a page of code, and
+ * it is affordable at that size and rate and at no other.
+ *
+ * Nothing here is a promise. The heights are what the browser is asked to
+ * capture: a smaller display gives its own size, and a machine that cannot
+ * encode what it captured will scale down on its own.
  */
 export function settingsForTest(frameRate: ShareFrameRate, quality: ShareQuality) {
 	return settingsFor(frameRate, quality);
 }
 
 function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
-	const profile = SHARE_PROFILES[frameRate];
-	const size = QUALITY_PROFILES[quality];
+	if (quality === "auto") {
+		return {
+			...AUTOMATIC,
+			frameRate: AUTOMATIC.frameRate,
+			maxBitrate: bitrateFor(AUTOMATIC.width, AUTOMATIC.height, AUTOMATIC.frameRate),
+			videoCodec: "h264" as VideoCodec,
+			contentHint: "detail" as const,
+			// The one mode that gives ground, and it gives resolution first:
+			// somebody who did not choose a size is better served by a smaller
+			// picture that keeps up than a large one that stalls.
+			degradationPreference: "balanced" as RTCDegradationPreference,
+			adapts: true,
+		};
+	}
 
-	const videoCodec: VideoCodec =
-		profile.videoCodec === "vp8" && size.height > 1080 ? "h264" : profile.videoCodec;
+	const size = SIZES[quality];
+
+	// Clamped rather than refused. A rate remembered from a larger allowance —
+	// 240 chosen at 1080p and then 4K picked — would otherwise be sent to an
+	// encoder that cannot do it, and the failure is silent.
+	const rates = RATES_FOR[quality];
+	const capped = rates.includes(frameRate) ? frameRate : (rates[rates.length - 1] ?? 30);
+
+	const still = capped <= 30;
 
 	return {
-		...profile,
 		...size,
-		videoCodec,
-		maxBitrate: Math.round(size.maxBitrate * profile.bitrateShare),
+		frameRate: capped,
+		maxBitrate: bitrateFor(size.width, size.height, capped),
+		videoCodec: (still && size.height <= 1080 ? "vp8" : "h264") as VideoCodec,
+		contentHint: (still ? "text" : "motion") as "text" | "motion" | "detail",
+		// Never smaller than was asked for. Somebody who picked a size picked it,
+		// and quietly sending less is the complaint rather than the mitigation —
+		// so what gives, where something must, is the frame rate.
+		degradationPreference: "maintain-resolution" as RTCDegradationPreference,
+		adapts: false,
 	};
 }
 
@@ -272,7 +276,7 @@ export async function share(
 	room: Room,
 	wanted: boolean,
 	frameRate: ShareFrameRate,
-	quality: ShareQuality = "standard",
+	quality: ShareQuality = "auto",
 ): Promise<LocalTrackPublication | undefined> {
 	const profile = settingsFor(frameRate, quality);
 
@@ -283,7 +287,11 @@ export async function share(
 			resolution: {
 				width: profile.width,
 				height: profile.height,
-				frameRate,
+				// The clamped rate, not what was asked for: a rate remembered
+				// from a size that allowed it would otherwise be requested from a
+				// capture that cannot do it, and the browser answers by giving
+				// whatever it likes rather than by saying no.
+				frameRate: profile.frameRate,
 			},
 			// The picker should not offer this tab, which would be a mirror tunnel.
 			selfBrowserSurface: "exclude",
@@ -301,7 +309,7 @@ export async function share(
 		{
 			screenShareEncoding: {
 				maxBitrate: profile.maxBitrate,
-				maxFramerate: frameRate,
+				maxFramerate: profile.frameRate,
 			},
 			videoCodec: profile.videoCodec,
 			degradationPreference: profile.degradationPreference,
@@ -324,7 +332,18 @@ export async function share(
 			//
 			// The bitrate still adapts. What stops is switching to a smaller
 			// picture behind the person who chose one.
-			simulcast: false,
+			// One encode for anything chosen, and layers only for automatic.
+			//
+			// A share is published with simulcast by default: two encodes of the
+			// same screen, so a subscriber whose tile is small or whose network
+			// dips is served the smaller one. That is what automatic is for, and
+			// it is exactly wrong for a size somebody picked — being quietly
+			// handed 1080p after choosing 4K is the complaint rather than the
+			// mitigation. The second encode is also not free: at four times the
+			// pixels it is what makes an encoder fall behind, so the machinery
+			// for coping with a slow connection was itself making the picture
+			// slow.
+			simulcast: profile.adapts,
 		},
 	);
 
@@ -355,7 +374,7 @@ export function rememberedQuality(): ShareQuality {
 		// a share should still be possible when it is.
 	}
 
-	return "standard";
+	return "auto";
 }
 
 /** Remember a quality for next time. */
@@ -364,5 +383,39 @@ export function rememberQuality(quality: ShareQuality): void {
 		localStorage.setItem(QUALITY_KEY, quality);
 	} catch {
 		// As above: worth doing, never worth failing over.
+	}
+}
+
+/**
+ * Where the chosen frame rate is remembered.
+ *
+ * Beside the size rather than with it, because they change for different
+ * reasons: the size follows from the display and almost never moves, and the
+ * rate follows from what is being shown and moves whenever that does.
+ *
+ * Read back through the same clamp the settings use, so a rate stored while a
+ * larger size was chosen cannot come back and be sent to an encoder that cannot
+ * do it.
+ */
+const RATE_KEY = "meet-live.share-frame-rate";
+
+export function rememberedFrameRate(): ShareFrameRate {
+	try {
+		const stored = Number(localStorage.getItem(RATE_KEY));
+		if ((SHARE_FRAME_RATES as readonly number[]).includes(stored)) {
+			return stored as ShareFrameRate;
+		}
+	} catch {
+		// Storage can be unavailable, and a share should still be possible.
+	}
+
+	return 30;
+}
+
+export function rememberFrameRate(frameRate: ShareFrameRate): void {
+	try {
+		localStorage.setItem(RATE_KEY, String(frameRate));
+	} catch {
+		// Worth doing, never worth failing over.
 	}
 }

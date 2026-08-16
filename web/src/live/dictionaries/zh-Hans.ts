@@ -44,10 +44,6 @@ const zhHans: Dictionary = {
 
 	"Share your screen": "共享屏幕",
 	"Stop sharing": "停止共享",
-	"Sharper text": "文字更锐利",
-	"Code, documents, slides": "代码、文档、幻灯片",
-	"Smoother motion": "画面更流畅",
-	"Video, animation, demos": "视频、动画、演示",
 	"{name} is sharing": "{name} 正在共享",
 	"Watch": "查看",
 
@@ -137,9 +133,6 @@ const zhHans: Dictionary = {
 	Standard: "标准",
 	High: "高",
 	Ultra: "极高",
-	"1080p, up to 8 Mbps": "1080p，最高 8 Mbps",
-	"1440p, up to 16 Mbps": "1440p，最高 16 Mbps",
-	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K，最高 30 Mbps。需要够快的机器和上行带宽。",
 	"Administrators": "管理员",
 	"Add somebody": "添加成员",
 	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "签名是口令生成的,而且是公开的——他们进任何房间时都会显示在名字旁边。向对方要签名,不要口令;口令本服务器从来不会知道,也无法保存。",
@@ -223,6 +216,15 @@ const zhHans: Dictionary = {
 	"out": "出站",
 	"in": "入站",
 	"Access denied. That server is for administrators.": "拒绝访问:该服务器仅限管理员使用。",
+	"Picture": "画面",
+	"Frames a second": "帧率",
+	"Adjusts to the connection": "随网络自动调整",
+	"Up to 240 frames a second": "最高 240 帧",
+	"Up to 120 frames a second": "最高 120 帧",
+	"Up to 60 frames a second": "最高 60 帧",
+	"1080p": "1080p",
+	"1440p": "1440p",
+	"4K": "4K",
 };
 
 export default zhHans;

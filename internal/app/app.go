@@ -470,19 +470,24 @@ type relayEntry struct {
 	// can only ever select one of ours.
 	Name string `json:"name"`
 
-	// URL is the WebSocket origin to measure and, if chosen, to dial.
+	// URL is the WebSocket origin, sent only where it is needed.
 	//
-	// Sent to everybody. It was briefly held back from anyone without a
-	// management session, to keep the whole fleet out of an ordinary visitor's
-	// network log — and it took the fallback measurement with it, because a
-	// relay that cannot answer STUN is timed by opening this. The deployment
-	// then showed a relay as having timed out when nothing had been tried.
+	// A relay that answers STUN does not need it here: the picker measures over
+	// UDP to Probe, and the address a call is held at arrives in the join for
+	// the one relay chosen. So it is withheld from anybody without a management
+	// session — a visitor's network log then holds the machine they were sent
+	// to rather than the whole fleet.
 	//
-	// The address was never much of a secret: anybody who joins learns one, and
-	// anybody who watches their own traffic learns it whatever this does. What
-	// keeps a relay for administrators is the refusal at the join, which is
-	// where it belongs.
-	URL string `json:"url"`
+	// A relay with no probe does need it, because opening this is the only way
+	// left to time it, and a relay reported as having timed out when nothing was
+	// tried is worse than a visible address. Sending it for those is the honest
+	// trade: one address instead of six.
+	//
+	// None of this is a secret kept. Anybody who joins learns one address and
+	// anybody watching their own traffic learns it regardless; what this stops
+	// is the whole fleet being readable by anybody who opens the page. What
+	// keeps a relay for administrators is the refusal at the join.
+	URL string `json:"url,omitempty"`
 
 	// Region is the deployment's own label, shown to somebody who wants to know
 	// where their call is being held. Never used to choose under this policy —
@@ -549,10 +554,16 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 	entries := make([]relayEntry, 0, len(list))
 	for _, relay := range list {
 		entry := relayEntry{
-			Name: relay.Name, URL: relay.URL, Region: relay.Region,
+			Name: relay.Name, Region: relay.Region,
 			Label: relay.Shown(), Probe: relay.Probe,
 			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Maintenance: !relay.Enabled,
+		}
+
+		// Where it is needed, which is an administrator or a relay that cannot
+		// be measured any other way.
+		if admin || relay.Probe == "" {
+			entry.URL = relay.URL
 		}
 
 		entries = append(entries, entry)

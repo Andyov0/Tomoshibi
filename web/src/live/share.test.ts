@@ -1,17 +1,17 @@
 /**
  * What these guard is a combination that looks fine and fails slowly.
  *
- * The sharp profile encodes in VP8, in software, which a mostly-still 1080p
- * screen affords comfortably. At 1440p it is 1.8 times the pixels and at 4K it
- * is four times, and software encoding that much does not produce a softer
- * picture — it produces an encoder falling behind, which arrives as a share that
- * stutters and drifts further behind the longer it runs. Nothing reports an
- * error; it simply gets worse.
+ * A screen share does not fail loudly when it is asked for more than the machine
+ * can do. The encoder falls behind, and the picture stutters and drifts further
+ * behind the longer it runs, and nothing anywhere reports an error. So the
+ * pairings that cannot be delivered must not be offered, the ones that are
+ * offered must be sent with settings that can carry them, and a rate remembered
+ * from a larger allowance must not survive being applied to a smaller one.
  *
- * So the codec is decided from both choices rather than from the intent alone,
- * and the bitrate rises with the pixels: four times the area at the same ceiling
- * is the same bitrate spread thinner, which is how an Ultra option ends up
- * looking worse than the Standard one it replaced.
+ * The other half is the promise the automatic setting makes and the named ones
+ * do not. Somebody who picked 4K picked it: being quietly given 1080p is the
+ * complaint rather than the mitigation, and only automatic is allowed to make
+ * that trade.
  */
 
 import { describe, expect, it } from "vitest";
@@ -21,82 +21,115 @@ import {
 	SHARE_QUALITIES,
 	type ShareFrameRate,
 	type ShareQuality,
+	offers,
+	ratesFor,
 	settingsForTest,
 } from "./room";
 
-describe("share settings", () => {
-	it("offers every combination of intent and quality", () => {
-		for (const rate of SHARE_FRAME_RATES) {
-			for (const quality of SHARE_QUALITIES) {
+const named = SHARE_QUALITIES.filter((one) => one !== "auto") as Exclude<ShareQuality, "auto">[];
+
+describe("what is offered", () => {
+	it("offers every rate a size can carry, slow ones included", () => {
+		// A slow rate is always available: a page of code at 4K wants fifteen
+		// frames and the sharpest picture, and refusing that refuses the better
+		// answer.
+		for (const quality of named) {
+			expect(ratesFor(quality)).toContain(15);
+			expect(ratesFor(quality)).toContain(30);
+		}
+	});
+
+	it("stops each size where an encoder would stop keeping up", () => {
+		expect(ratesFor("1080p")).toEqual([15, 30, 60, 120, 240]);
+		expect(ratesFor("1440p")).toEqual([15, 30, 60, 120]);
+		expect(ratesFor("4k")).toEqual([15, 30, 60]);
+
+		expect(offers("4k", 120)).toBe(false);
+		expect(offers("1440p", 240)).toBe(false);
+	});
+
+	// The one that would be silent. A rate chosen at 1080p and remembered, then
+	// applied to 4K, must not reach an encoder that cannot do it.
+	it("clamps a rate carried over from a size that allowed it", () => {
+		expect(settingsForTest(240, "4k").frameRate).toBe(60);
+		expect(settingsForTest(240, "1440p").frameRate).toBe(120);
+		expect(settingsForTest(240, "1080p").frameRate).toBe(240);
+	});
+});
+
+describe("what is sent", () => {
+	it("has a size, a rate and a bitrate for every pairing offered", () => {
+		for (const quality of named) {
+			for (const rate of ratesFor(quality)) {
 				const got = settingsForTest(rate, quality);
 
 				expect(got.width).toBeGreaterThan(0);
 				expect(got.height).toBeGreaterThan(0);
 				expect(got.maxBitrate).toBeGreaterThan(0);
+				expect(got.frameRate).toBe(rate);
 			}
 		}
 	});
 
-	// The one that matters. VP8 is chosen for the text hint it honours, and
-	// above 1080p that hint is not worth an encoder that cannot keep up.
-	it("does not ask software encoding for more than 1080p", () => {
-		expect(settingsForTest(30, "standard").videoCodec).toBe("vp8");
+	// More pixels or more frames at the same ceiling is not more detail, it is
+	// the same bitrate spread thinner — which is how a 4K option comes to look
+	// worse than the 1080p one it replaced.
+	it("raises the bitrate with both the pixels and the frames", () => {
+		expect(settingsForTest(30, "4k").maxBitrate).toBeGreaterThan(
+			settingsForTest(30, "1080p").maxBitrate,
+		);
 
-		for (const quality of ["high", "ultra"] as ShareQuality[]) {
-			expect(settingsForTest(30, quality).videoCodec).toBe("h264");
-		}
+		expect(settingsForTest(120, "1080p").maxBitrate).toBeGreaterThan(
+			settingsForTest(30, "1080p").maxBitrate,
+		);
 	});
 
-	it("leaves the motion profile on hardware encoding throughout", () => {
-		for (const quality of SHARE_QUALITIES) {
-			expect(settingsForTest(60, quality).videoCodec).toBe("h264");
-		}
-	});
+	// Software encoding is affordable for a still 1080p picture and for nothing
+	// else. Above either bound the failure is not a softer picture but an
+	// encoder falling behind.
+	it("only asks software encoding for a still 1080p picture", () => {
+		expect(settingsForTest(15, "1080p").videoCodec).toBe("vp8");
+		expect(settingsForTest(30, "1080p").videoCodec).toBe("vp8");
 
-	// More pixels at the same ceiling is not more detail, it is the same bitrate
-	// spread thinner — the failure that makes a 4K option look worse than 1080p.
-	it("raises the bitrate at least as fast as the pixel count", () => {
-		// Pairs rather than indices: this project compiles with checked index
-		// access, and a loop over positions makes every lookup an optional.
-		const steps: [ShareQuality, ShareQuality][] = [
-			["standard", "high"],
-			["high", "ultra"],
-		];
-
-		for (const [from, to] of steps) {
-			const smaller = settingsForTest(60, from);
-			const larger = settingsForTest(60, to);
-
-			expect(larger.width * larger.height).toBeGreaterThan(smaller.width * smaller.height);
-
-			const pixelRatio = (larger.width * larger.height) / (smaller.width * smaller.height);
-			const bitrateRatio = larger.maxBitrate / smaller.maxBitrate;
-
-			expect(bitrateRatio).toBeGreaterThanOrEqual(pixelRatio * 0.5);
-		}
-	});
-
-	// The intent decides what to give up, and quality must not quietly change
-	// it: somebody who chose smooth motion at 4K still wants motion.
-	it("keeps what each intent sacrifices, at every quality", () => {
-		for (const quality of SHARE_QUALITIES) {
-			expect(settingsForTest(30, quality).degradationPreference).toBe("maintain-resolution");
-			expect(settingsForTest(30, quality).contentHint).toBe("text");
-
-			expect(settingsForTest(60, quality).degradationPreference).toBe("maintain-framerate");
-			expect(settingsForTest(60, quality).contentHint).toBe("motion");
-		}
+		expect(settingsForTest(60, "1080p").videoCodec).toBe("h264");
+		expect(settingsForTest(30, "1440p").videoCodec).toBe("h264");
+		expect(settingsForTest(15, "4k").videoCodec).toBe("h264");
+		expect(settingsForTest(60, "4k").videoCodec).toBe("h264");
 	});
 
 	it("never publishes a share with an SVC codec", () => {
 		// The SDK pins an SVC share to one spatial layer and overwrites the
-		// content hint, so VP9 here would silently discard the sharper profile's
-		// entire reason for existing.
-		for (const rate of SHARE_FRAME_RATES) {
-			for (const quality of SHARE_QUALITIES) {
+		// content hint, so VP9 here would silently discard the reason the
+		// sharper settings exist.
+		for (const quality of SHARE_QUALITIES) {
+			for (const rate of SHARE_FRAME_RATES) {
 				expect(settingsForTest(rate as ShareFrameRate, quality)).not.toHaveProperty(
 					"videoCodec",
 					"vp9",
+				);
+			}
+		}
+	});
+});
+
+describe("automatic", () => {
+	it("is the only setting that gives ground", () => {
+		expect(settingsForTest(30, "auto").adapts).toBe(true);
+
+		for (const quality of named) {
+			for (const rate of ratesFor(quality)) {
+				expect(settingsForTest(rate, quality).adapts).toBe(false);
+			}
+		}
+	});
+
+	// Somebody who picked a size picked it. What gives, where something must, is
+	// the frame rate — never the picture they asked for.
+	it("never lets a chosen size be quietly reduced", () => {
+		for (const quality of named) {
+			for (const rate of ratesFor(quality)) {
+				expect(settingsForTest(rate, quality).degradationPreference).toBe(
+					"maintain-resolution",
 				);
 			}
 		}

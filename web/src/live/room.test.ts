@@ -1,6 +1,7 @@
 import type { Room } from "livekit-client";
 import { describe, expect, it, vi } from "vitest";
-import { SHARE_FRAME_RATES, type ShareFrameRate, share } from "./room";
+import { SHARE_FRAME_RATES, type ShareFrameRate,
+	type ShareQuality, share } from "./room";
 
 /*
  * What these guard is a control that lied.
@@ -26,9 +27,17 @@ function watchShare() {
 	return {
 		room,
 		/** The capture options and the publish options, as they were passed. */
-		async started(frameRate: ShareFrameRate) {
+		/**
+		 * A size is always given, because automatic chooses the rate itself.
+		 *
+		 * These tests are about a rate reaching the encoder, and under the
+		 * automatic setting there is nothing to reach it with — it picks 1080p
+		 * at thirty and adapts. Passing a size is what makes the question
+		 * askable.
+		 */
+		async started(frameRate: ShareFrameRate, quality: ShareQuality = "1080p") {
 			setScreenShareEnabled.mockClear();
-			await share(room, true, frameRate);
+			await share(room, true, frameRate, quality);
 
 			const call = setScreenShareEnabled.mock.calls[0];
 			if (!call) throw new Error("share did not ask for a screen");
@@ -42,6 +51,7 @@ function watchShare() {
 describe("share", () => {
 	it.each(SHARE_FRAME_RATES)("carries %i frames all the way to the encoder", async (rate) => {
 		const { started } = watchShare();
+		// 1080p, which is the size that can carry every rate offered.
 		const { capture, publish } = await started(rate);
 
 		// Both halves, because either one alone is a number with no effect: a
@@ -75,19 +85,22 @@ describe("share", () => {
 		expect(publish.degradationPreference).toBe("maintain-resolution");
 	});
 
-	it("asks for motion when the picture moves, and keeps the frames", async () => {
+	it("asks for motion when the picture moves, and keeps the size that was chosen", async () => {
 		const { started } = watchShare();
 		const { capture, publish } = await started(60);
 
 		expect(capture.contentHint).toBe("motion");
 		expect(["vp8", "h264"]).toContain(publish.videoCodec);
-		expect(publish.degradationPreference).toBe("maintain-framerate");
+
+		// The size, never the size. Somebody who picked one picked it, and what
+		// gives where something must is the frame rate.
+		expect(publish.degradationPreference).toBe("maintain-resolution");
 	});
 
 	it("gives the busier picture the larger ceiling", async () => {
 		const { started } = watchShare();
 		const gentle = await started(30);
-		const busy = await started(60);
+		const busy = await started(120);
 
 		expect(busy.publish.screenShareEncoding.maxBitrate).toBeGreaterThan(
 			gentle.publish.screenShareEncoding.maxBitrate,

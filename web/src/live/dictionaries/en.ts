@@ -60,10 +60,6 @@ const en = {
 	// Sharing a screen.
 	"Share your screen": "Share your screen",
 	"Stop sharing": "Stop sharing",
-	"Sharper text": "Sharper text",
-	"Code, documents, slides": "Code, documents, slides",
-	"Smoother motion": "Smoother motion",
-	"Video, animation, demos": "Video, animation, demos",
 	"{name} is sharing": "{name} is sharing",
 	"Watch": "Watch",
 
@@ -170,9 +166,6 @@ const en = {
 	Standard: "Standard",
 	High: "High",
 	Ultra: "Ultra",
-	"1080p, up to 8 Mbps": "1080p, up to 8 Mbps",
-	"1440p, up to 16 Mbps": "1440p, up to 16 Mbps",
-	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K, up to 30 Mbps. Needs a fast machine and upload.",
 	"Administrators": "Administrators",
 	"Add somebody": "Add somebody",
 	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.",
@@ -256,6 +249,15 @@ const en = {
 	"out": "out",
 	"in": "in",
 	"Access denied. That server is for administrators.": "Access denied. That server is for administrators.",
+	"Picture": "Picture",
+	"Frames a second": "Frames a second",
+	"Adjusts to the connection": "Adjusts to the connection",
+	"Up to 240 frames a second": "Up to 240 frames a second",
+	"Up to 120 frames a second": "Up to 120 frames a second",
+	"Up to 60 frames a second": "Up to 60 frames a second",
+	"1080p": "1080p",
+	"1440p": "1440p",
+	"4K": "4K",
 } as const;
 
 export default en;

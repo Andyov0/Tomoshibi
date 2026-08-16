@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -11,11 +12,13 @@ import {
 import { useT } from "@/hooks/useT";
 import type { Phrase } from "@/live/i18n";
 import {
-	SHARE_FRAME_RATES,
 	SHARE_QUALITIES,
 	type ShareFrameRate,
 	type ShareQuality,
+	ratesFor,
+	rememberFrameRate,
 	rememberQuality,
+	rememberedFrameRate,
 	rememberedQuality,
 } from "@/live/room";
 import { MonitorOff, MonitorUp } from "lucide-react";
@@ -60,6 +63,7 @@ export function ShareButton({
 	// crashes at the moment somebody starts sharing — but it is invisible to
 	// anything that only renders the component once.
 	const [quality, setQuality] = useState<ShareQuality>(rememberedQuality);
+	const [frameRate, setFrameRate] = useState<ShareFrameRate>(rememberedFrameRate);
 
 	// Stopping is not a choice, so while a share is running the button is a
 	// button. Opening a menu to answer a question that has already been answered
@@ -78,6 +82,9 @@ export function ShareButton({
 		);
 	}
 
+	const rates = ratesFor(quality);
+	const rate = rates.includes(frameRate) ? frameRate : (rates[rates.length - 1] ?? 30);
+
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
@@ -92,80 +99,83 @@ export function ShareButton({
 				</Button>
 			</DropdownMenuTrigger>
 
-			<DropdownMenuContent align="center" side="top">
-				<DropdownMenuLabel>{t("Share your screen")}</DropdownMenuLabel>
-
-				{/* The kind of picture starts the share. It is the question somebody
-				    came here to answer, so it is what the items do. */}
-				{SHARE_FRAME_RATES.map((rate) => (
-					<DropdownMenuItem
-						key={rate}
-						onSelect={() => onStart(rate, quality)}
-						className="flex-col items-start gap-0"
-					>
-						<span className="text-fg">{t(SHARE_INTENT[rate].label)}</span>
-						{/* What each one is good for, rather than what it does to the
-						    encoder. The frame rate is the mechanism; the kind of
-						    picture is the question being asked. */}
-						<span className="text-fg-muted text-xs">{t(SHARE_INTENT[rate].describes)}</span>
-					</DropdownMenuItem>
-				))}
-
-				<DropdownMenuSeparator />
-
-				{/* How much to send, which follows from the display and the upload
-				    rather than from what is on screen — so it is a setting that
-				    stays put rather than a choice made every time. Checkboxes
-				    rather than items: selecting one changes what the two above will
-				    do, and does not itself start anything. */}
-				<DropdownMenuLabel>{t("Quality")}</DropdownMenuLabel>
+			<DropdownMenuContent align="center" side="top" className="min-w-56">
+				{/* The two settings first, because they are what somebody came to
+				    change, and the button that starts the share last — pressing it
+				    is the end of the errand rather than the middle of it. */}
+				<DropdownMenuLabel>{t("Picture")}</DropdownMenuLabel>
 
 				{SHARE_QUALITIES.map((option) => (
 					<DropdownMenuCheckboxItem
 						key={option}
 						checked={quality === option}
 						onSelect={(event) => {
-							// Kept open: somebody adjusting the quality is usually
-							// about to start a share, and closing the menu would make
-							// them open it again to do the thing they came for.
+							// Kept open: this is a setting, and closing the menu would
+							// make somebody reopen it to do the thing they came for.
 							event.preventDefault();
 							setQuality(option);
 							rememberQuality(option);
 						}}
 						className="flex-col items-start gap-0"
 					>
-						<span className="text-fg">{t(SHARE_QUALITY_LABELS[option].label)}</span>
-						<span className="text-fg-muted text-xs">
-							{t(SHARE_QUALITY_LABELS[option].describes)}
-						</span>
+						<span className="text-fg">{t(QUALITY_LABELS[option].label)}</span>
+						<span className="text-fg-muted text-xs">{t(QUALITY_LABELS[option].describes)}</span>
 					</DropdownMenuCheckboxItem>
 				))}
+
+				{/* Absent for automatic, which chooses the rate as well. A control
+				    that did nothing would be a control somebody set and believed. */}
+				{quality !== "auto" && (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuLabel>{t("Frames a second")}</DropdownMenuLabel>
+
+						<div className="flex flex-wrap gap-1 px-2 pb-1.5">
+							{rates.map((option) => (
+								<button
+									key={option}
+									type="button"
+									onClick={() => {
+										setFrameRate(option);
+										rememberFrameRate(option);
+									}}
+									className={cn(
+										"rounded-md border px-2 py-1 text-[12px] tabular-nums transition-colors",
+										option === rate
+											? "border-tally/50 bg-tally/15 text-fg"
+											: "border-border text-fg-muted hover:bg-surface-2 hover:text-fg",
+									)}
+								>
+									{option}
+								</button>
+							))}
+						</div>
+					</>
+				)}
+
+				<DropdownMenuSeparator />
+
+				<DropdownMenuItem onSelect={() => onStart(rate, quality)} className="gap-2">
+					<MonitorUp className="size-4" />
+					<span className="text-fg">{t("Share your screen")}</span>
+				</DropdownMenuItem>
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
 }
 
 /**
- * The two kinds of screen, in the words of somebody about to share one.
+ * The sizes, in what somebody is choosing between rather than in pixels.
  *
- * Named for the picture rather than for the number, because the number is not
- * the choice: a share of a terminal and a share of a video want opposite answers
- * to everything that follows, and the frame rate is only the first of them.
+ * The resolution is named because whoever is choosing is looking at a display
+ * and knows what it is. What is worth saying beside it is the part they cannot
+ * see: automatic is the only setting that will quietly send less, and every
+ * other one is a promise to send what was asked for.
  */
-const SHARE_INTENT: Record<ShareFrameRate, { label: Phrase; describes: Phrase }> = {
-	30: { label: "Sharper text", describes: "Code, documents, slides" },
-	60: { label: "Smoother motion", describes: "Video, animation, demos" },
+const QUALITY_LABELS: Record<ShareQuality, { label: Phrase; describes: Phrase }> = {
+	auto: { label: "Automatic", describes: "Adjusts to the connection" },
+	"1080p": { label: "1080p", describes: "Up to 240 frames a second" },
+	"1440p": { label: "1440p", describes: "Up to 120 frames a second" },
+	"4k": { label: "4K", describes: "Up to 60 frames a second" },
 };
 
-/**
- * The three amounts of picture, in what they cost rather than in pixels.
- *
- * The resolution is named because somebody choosing this is looking at a display
- * and knows what it is, and the bandwidth beside it is the part they cannot see
- * — which is the half that decides whether the choice is a good one.
- */
-const SHARE_QUALITY_LABELS: Record<ShareQuality, { label: Phrase; describes: Phrase }> = {
-	standard: { label: "Standard", describes: "1080p, up to 8 Mbps" },
-	high: { label: "High", describes: "1440p, up to 16 Mbps" },
-	ultra: { label: "Ultra", describes: "4K, up to 30 Mbps. Needs a fast machine and upload." },
-};

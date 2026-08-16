@@ -44,10 +44,6 @@ const zhHant: Dictionary = {
 
 	"Share your screen": "分享螢幕",
 	"Stop sharing": "停止分享",
-	"Sharper text": "文字更銳利",
-	"Code, documents, slides": "程式碼、文件、簡報",
-	"Smoother motion": "畫面更流暢",
-	"Video, animation, demos": "影片、動畫、示範",
 	"{name} is sharing": "{name} 正在分享",
 	"Watch": "查看",
 
@@ -137,9 +133,6 @@ const zhHant: Dictionary = {
 	Standard: "標準",
 	High: "高",
 	Ultra: "極高",
-	"1080p, up to 8 Mbps": "1080p，最高 8 Mbps",
-	"1440p, up to 16 Mbps": "1440p，最高 16 Mbps",
-	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K，最高 30 Mbps。需要夠快的機器和上行頻寬。",
 	"Administrators": "管理員",
 	"Add somebody": "新增成員",
 	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "簽名是通行語生成的,而且是公開的——他們進任何房間時都會顯示在名字旁邊。向對方要簽名,不要通行語;通行語本伺服器從來不會知道,也無法保存。",
@@ -223,6 +216,15 @@ const zhHant: Dictionary = {
 	"out": "出站",
 	"in": "入站",
 	"Access denied. That server is for administrators.": "拒絕存取:該伺服器僅限管理員使用。",
+	"Picture": "畫面",
+	"Frames a second": "幀率",
+	"Adjusts to the connection": "隨網路自動調整",
+	"Up to 240 frames a second": "最高 240 幀",
+	"Up to 120 frames a second": "最高 120 幀",
+	"Up to 60 frames a second": "最高 60 幀",
+	"1080p": "1080p",
+	"1440p": "1440p",
+	"4K": "4K",
 };
 
 export default zhHant;

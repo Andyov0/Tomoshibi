@@ -16,6 +16,7 @@ import (
 
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
+	"tomoshibi/internal/store"
 )
 
 // How long a session lasts without being used.
@@ -55,6 +56,9 @@ type Session struct {
 	Expires time.Time
 	// Opened does not, and is what the ceiling is measured from.
 	Opened time.Time
+	// Written is when the renewal was last written down, so that a page polling
+	// every five seconds does not write to disk every five seconds.
+	Written time.Time
 }
 
 // Allows reports whether this session holds a capability.
@@ -68,6 +72,17 @@ func (s Session) Allows(capability string) bool {
 // out. That is the honest behaviour for a process that keeps no other state
 // about people, and it means a session cannot outlive the configuration that
 // authorised it.
+// Kept is where sessions survive a restart.
+//
+// An interface of four methods rather than the store, so that the sign-in can
+// be tested without one — and nil, on a deployment that has no store, which
+// falls back to memory alone exactly as this always worked.
+type Kept interface {
+	KeepSession(token string, session store.Session) error
+	Session(token string) (store.Session, bool)
+	DropSession(token string) error
+}
+
 type Sessions struct {
 	// admins is asked each time rather than captured once.
 	//
@@ -79,10 +94,17 @@ type Sessions struct {
 	admins  func() []config.Admin
 	tripKey []byte
 
+	// kept is where they are written down, so that restarting the process does
+	// not sign everybody out. Nil where there is nowhere to write.
+	kept Kept
+
 	mu    sync.Mutex
 	open  map[string]Session
 	limit *attempts
 }
+
+// Remember gives the sessions somewhere to survive a restart.
+func (s *Sessions) Remember(kept Kept) { s.kept = kept }
 
 // NewSessions prepares the sign-in for a set of administrators.
 func NewSessions(admins func() []config.Admin, tripKey []byte) *Sessions {
@@ -128,6 +150,13 @@ func (s *Sessions) Open(name string, passphrase room.Passphrase) (Session, strin
 	s.open[token] = session
 	s.mu.Unlock()
 
+	// Written down as well as held. A failure here is not a failure to sign in
+	// — the session works for as long as this process runs — so it is not
+	// reported to somebody who has just typed their passphrase correctly.
+	if s.kept != nil {
+		_ = s.kept.KeepSession(token, session.stored())
+	}
+
 	return session, token, true
 }
 
@@ -142,6 +171,18 @@ func (s *Sessions) Of(r *http.Request) (Session, bool) {
 	defer s.mu.Unlock()
 
 	session, held := s.open[cookie.Value]
+
+	// Not in memory, which after a restart is every session there is. Read from
+	// where they were written down instead, and put back in memory so the next
+	// request does not read it again.
+	if !held && s.kept != nil {
+		if stored, ok := s.kept.Session(cookie.Value); ok {
+			session = fromStored(stored)
+			s.open[cookie.Value] = session
+			held = true
+		}
+	}
+
 	if !held {
 		return Session{}, false
 	}
@@ -153,6 +194,11 @@ func (s *Sessions) Of(r *http.Request) (Session, bool) {
 	// session is ever looked at.
 	if now.After(session.Expires) || now.Sub(session.Opened) > sessionMax {
 		delete(s.open, cookie.Value)
+
+		if s.kept != nil {
+			_ = s.kept.DropSession(cookie.Value)
+		}
+
 		return Session{}, false
 	}
 
@@ -161,7 +207,32 @@ func (s *Sessions) Of(r *http.Request) (Session, bool) {
 	session.Expires = now.Add(sessionIdle)
 	s.open[cookie.Value] = session
 
+	// Written back so the renewal survives a restart too. Once a minute at
+	// most: this runs on every request the management pages make, which is one
+	// every five seconds per open tab, and a disk write on each of those would
+	// be a write per tab per five seconds for a field nobody reads until the
+	// process comes back up.
+	if s.kept != nil && now.Sub(session.Written) > time.Minute {
+		session.Written = now
+		s.open[cookie.Value] = session
+		_ = s.kept.KeepSession(cookie.Value, session.stored())
+	}
+
 	return session, true
+}
+
+func (s Session) stored() store.Session {
+	return store.Session{
+		Trip: s.Trip, Name: s.Name, Can: s.Can,
+		Opened: s.Opened, Expires: s.Expires,
+	}
+}
+
+func fromStored(kept store.Session) Session {
+	return Session{
+		Trip: kept.Trip, Name: kept.Name, Can: kept.Can,
+		Opened: kept.Opened, Expires: kept.Expires,
+	}
 }
 
 // Close signs somebody out.
@@ -174,6 +245,12 @@ func (s *Sessions) Close(r *http.Request) {
 	s.mu.Lock()
 	delete(s.open, cookie.Value)
 	s.mu.Unlock()
+
+	// And from where it was written down, or signing out would last only until
+	// the next restart brought it back.
+	if s.kept != nil {
+		_ = s.kept.DropSession(cookie.Value)
+	}
 }
 
 // Grant writes the cookie that carries a session.

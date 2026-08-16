@@ -76,8 +76,8 @@ export function OpeningCard({
 						onChoose={() => choose("anyone")}
 					/>
 					<Choice
-						label="Named"
-						describes="Anybody with a passphrase can start one. Everybody else can still join."
+						label="Users & administrators"
+						describes="Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to."
 						chosen={value?.chosen === "signed"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("signed")}

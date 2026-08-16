@@ -120,6 +120,11 @@ func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte
 	if st != nil {
 		api.relays = st
 		api.roster = st
+
+		// So that restarting the process does not sign everybody out. It used
+		// to, and during an afternoon of deployments that reads as the sign-in
+		// being broken rather than as the server having been restarted.
+		api.sessions.Remember(st)
 	}
 
 	// Assigned inside the guard and never outside it. A nil *rtc.Server put

@@ -7,8 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"sync"
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
+	"tomoshibi/internal/store"
 )
 
 // roster hands a fixed list to a Sessions that reads a live one.
@@ -346,5 +348,98 @@ func TestSigningInStillWorksForSomebodyWithNoName(t *testing.T) {
 		if _, _, ok := sessions.Open(name, "correct"); !ok {
 			t.Errorf("an administrator with no name recorded was refused with name %q", name)
 		}
+	}
+}
+
+// vault is somewhere sessions survive, standing in for the store.
+type vault struct {
+	mu   sync.Mutex
+	held map[string]store.Session
+}
+
+func newVault() *vault { return &vault{held: map[string]store.Session{}} }
+
+func (k *vault) KeepSession(token string, session store.Session) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	k.held[token] = session
+	return nil
+}
+
+func (k *vault) Session(token string) (store.Session, bool) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	session, ok := k.held[token]
+	return session, ok
+}
+
+func (k *vault) DropSession(token string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+
+	delete(k.held, token)
+	return nil
+}
+
+/*
+A restart used to sign everybody out.
+
+Sessions were held in memory and nowhere else, on the reasoning that one should
+not outlive the configuration that authorised it. That was true while the
+administrators lived in a file and changing them meant a restart. Once the list
+moved into the store it stopped being true — removing somebody takes effect on
+the next request — and all the behaviour did was throw everybody out whenever
+the process was upgraded, which during an afternoon of deployments is every few
+minutes and reads as the sign-in being broken.
+*/
+
+func TestASessionSurvivesARestart(t *testing.T) {
+	listed := []config.Admin{{Trip: room.Trip(key, "correct"), Name: "andy"}}
+
+	vaulted := newVault()
+
+	before := NewSessions(roster(listed), key)
+	before.Remember(vaulted)
+
+	_, token, ok := before.Open("andy", "correct")
+	if !ok {
+		t.Fatal("signing in was refused")
+	}
+
+	// A different Sessions with nothing in memory, which is what comes back up.
+	after := NewSessions(roster(listed), key)
+	after.Remember(vaulted)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/admin/now", nil)
+	request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+
+	if _, ok := after.Of(request); !ok {
+		t.Error("a session did not survive a restart; every deployment signs everybody out")
+	}
+}
+
+func TestSigningOutSurvivesARestartToo(t *testing.T) {
+	listed := []config.Admin{{Trip: room.Trip(key, "correct"), Name: "andy"}}
+
+	vaulted := newVault()
+
+	sessions := NewSessions(roster(listed), key)
+	sessions.Remember(vaulted)
+
+	_, token, _ := sessions.Open("andy", "correct")
+
+	request := httptest.NewRequest(http.MethodGet, "/api/admin/now", nil)
+	request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+
+	sessions.Close(request)
+
+	// Otherwise signing out would last exactly until the next deployment.
+	after := NewSessions(roster(listed), key)
+	after.Remember(vaulted)
+
+	if _, ok := after.Of(request); ok {
+		t.Error("a session signed out came back after a restart")
 	}
 }

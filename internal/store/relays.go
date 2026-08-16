@@ -48,6 +48,18 @@ type Relay struct {
 
 	// Added is when somebody put it here, for a page that wants to say so.
 	Added time.Time `json:"added"`
+
+	// Fallback keeps a relay out of the ordinary rotation without taking it out
+	// of service.
+	//
+	// The case it exists for: a relay abroad, kept for when the domestic ones
+	// cannot be reached. It works, it should be dialled when nothing else can
+	// be, and it should never be the answer to "which relay is nearest" — every
+	// byte of a call held there crosses a border twice and arrives late.
+	//
+	// Distinct from Enabled, which means the machine should take no calls at
+	// all. This one means: not unless there is nothing else.
+	Fallback bool `json:"fallback"`
 }
 
 // What a relay can be wrong in.

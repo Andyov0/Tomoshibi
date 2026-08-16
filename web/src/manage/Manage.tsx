@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { type Who, api } from "./api";
 import { usePoll } from "./poll";
 import { AuditPanel } from "./AuditPanel";
-import { HealthPanel } from "./HealthPanel";
 import { NowPanel } from "./NowPanel";
 import { RelaysPanel } from "./RelaysPanel";
 import { RoomsPanel } from "./RoomsPanel";
@@ -84,7 +83,6 @@ export function Manage() {
 			{panel === "Relays" && (
 				<RelaysPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
 			)}
-			{panel === "Health" && <HealthPanel onSignedOut={signedOut} />}
 			{panel === "Runtime" && <RuntimePanel onSignedOut={signedOut} />}
 			{panel === "Audit" && <AuditPanel onSignedOut={signedOut} />}
 		</Shell>

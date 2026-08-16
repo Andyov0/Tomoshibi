@@ -244,7 +244,6 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/history", a.observe(a.trend))
 	mux.HandleFunc("GET /api/admin/rooms", a.observe(a.rooms))
 	mux.HandleFunc("GET /api/admin/rooms/{room}/participants", a.observe(a.participants))
-	mux.HandleFunc("GET /api/admin/health", a.observe(a.health))
 	mux.HandleFunc("GET /api/admin/runtime", a.observe(a.runtime))
 	mux.HandleFunc("GET /api/admin/audit", a.observe(a.audit))
 	mux.HandleFunc("GET /api/admin/policy", a.observe(a.readPolicy))
@@ -576,54 +575,6 @@ func tracksOf(one *livekit.ParticipantInfo) []map[string]any {
 	}
 
 	return out
-}
-
-func (a *API) health(_ Session, w http.ResponseWriter, r *http.Request) {
-	// On a control node the checks that ask about a media server are asked of
-	// each relay instead, and the answer is one list per machine. Reporting
-	// this node's own configuration alone would be describing the one machine
-	// in the deployment that holds no calls.
-	if !a.local() {
-		if a.fleet == nil {
-			a.detached(w)
-			return
-		}
-
-		reading := readFleet(r.Context(), a.fleet, a.relayNames())
-
-		checks := make([]map[string]any, 0, len(reading.Nodes))
-		for _, node := range reading.Nodes {
-			name := node.Name
-			if name == "" {
-				name = node.URL
-			}
-
-			checks = append(checks, map[string]any{
-				"name":      name,
-				"url":       node.URL,
-				"ok":        node.Reachable,
-				"detail":    node.Detail,
-				"node":      node.Node,
-				"ip":        node.IP,
-				"rooms":     node.Rooms,
-				"clients":   node.Clients,
-				"load":      node.Load,
-				"cpus":      node.CPUs,
-				"startedAt": node.StartedAt,
-			})
-		}
-
-		respond(w, map[string]any{
-			"fleet":    true,
-			"relays":   checks,
-			"asked":    reading.Asked,
-			"answered": reading.Answered,
-		})
-		return
-	}
-
-	_, ip := a.media.Node()
-	respond(w, Health(a.conf, ip))
 }
 
 // runtime reports what the process is actually running with.

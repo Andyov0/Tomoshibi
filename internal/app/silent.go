@@ -35,7 +35,7 @@ readable, because being able to ask whether it is up is worth having.
 // nothing to say should look like.
 func silence(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isUpgrade(r) {
+		if isUpgrade(r) || carriesCredentials(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -57,6 +57,24 @@ func silence(next http.Handler) http.Handler {
 
 		_ = conn.Close()
 	})
+}
+
+// carriesCredentials reports whether a request presented a bearer token.
+//
+// The control node's management calls are ordinary HTTPS — listing the rooms on
+// this relay, reading its counters — and the first version of this silenced them
+// along with everything else. The dashboard then reported the relay unreachable
+// while calls were running on it perfectly, because the one thing that could
+// not reach it was the page saying so.
+//
+// Only the presence of a token is checked here, never its validity: this is a
+// gate deciding whether to answer at all, and the handlers behind it already
+// refuse a token that does not verify. A prober sends no Authorization header,
+// so it still learns nothing; somebody who sends a made-up one learns that the
+// port speaks HTTP, which is worth exactly as much as guessing that a relay is
+// a relay.
+func carriesCredentials(r *http.Request) bool {
+	return strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
 }
 
 // isUpgrade reports whether this request is asking to become a WebSocket.

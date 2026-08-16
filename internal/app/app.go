@@ -186,17 +186,19 @@ func (a *App) Handler() http.Handler {
 			return silence(mux)
 		}
 
-		// Answered for any origin, because the point of this endpoint on a relay
-		// is to be timed by a client served from somewhere else: the control
-		// node's page measures every relay before choosing one, and a browser
-		// will not report the timing of a cross-origin request it was not given
-		// permission to make. Nothing is disclosed — the body is empty and the
-		// address was published to that client a moment ago.
-		mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Cache-Control", "no-store")
-			w.WriteHeader(http.StatusNoContent)
-		})
+		// No health endpoint, and this is deliberate rather than an omission.
+		//
+		// A relay has no use for one. Both things that ever measured it — the
+		// control node's dashboard and the client choosing where to call —
+		// time the signalling upgrade instead, which is the request a call
+		// actually makes and therefore the honest thing to measure.
+		//
+		// What it did have was a use to somebody else. A relay in mainland China
+		// is probed by something that sends an ordinary HTTPS request and reads
+		// the answer; a port that replies is a website, and an unregistered one
+		// is taken off the air. An endpoint answering 204 to anybody who asks is
+		// that probe's evidence, served continuously and by us. There is nothing
+		// to gain by keeping it and a deployment to lose.
 
 		// This relay's own counters, for a control node's dashboard. Behind the
 		// deployment's credentials: the figures say how many people are in calls
@@ -204,15 +206,6 @@ func (a *App) Handler() http.Handler {
 		// should not be readable by whoever finds the port.
 		mux.Handle("GET "+rtc.StatsPath,
 			rtc.StatsHandler(a.media, a.conf.Key, a.conf.Secret, admin.Started))
-
-		// The preflight a browser sends before a timed request that carries
-		// anything but the simplest headers.
-		mux.HandleFunc("OPTIONS /api/health", func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-			w.Header().Set("Access-Control-Max-Age", "86400")
-			w.WriteHeader(http.StatusNoContent)
-		})
 
 		return mux
 	}

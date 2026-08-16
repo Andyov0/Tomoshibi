@@ -7,10 +7,18 @@
  * block, not how long a packet takes to get there. The browser about to make the
  * call is the only party that can answer, and it can answer by asking.
  *
- * So each relay publishes an empty health endpoint, this measures every one of
- * them at once, and the fastest name travels with the join. The server treats
- * that name as a preference and looks it up in its own list, so nothing here can
- * send a meeting anywhere the deployment did not already choose.
+ * So this opens the signalling socket to every relay at once, times it, and the
+ * fastest name travels with the join. The server treats that name as a
+ * preference and looks it up in its own list, so nothing here can send a meeting
+ * anywhere the deployment did not already choose.
+ *
+ * Timed by opening the socket rather than by fetching a health endpoint, and the
+ * health endpoint no longer exists. Two reasons, and the second is the one that
+ * settled it. A WebSocket upgrade is the request a call actually begins with, so
+ * it measures the thing being chosen between rather than something adjacent to
+ * it. And a relay in mainland China is taken off the air by something that sends
+ * an ordinary HTTPS request and reads the answer — an endpoint replying to
+ * anybody who asks is that probe's evidence, served continuously and by us.
  */
 
 /** One relay, as the control node describes it. */
@@ -74,43 +82,60 @@ export async function relays(): Promise<RelayList> {
 /**
  * Time one relay, returning how long it took or nothing if it failed.
  *
- * The request is deliberately the smallest thing the relay serves: an empty 204
- * with no body to download, so what is measured is the round trip rather than
- * the size of an answer. Cache is bypassed for the same reason a stopwatch is
- * started before the race — a response served from cache would return instantly
- * and report a relay on another continent as the nearest one.
+ * Opened as a WebSocket rather than fetched over HTTPS, and the reason is not
+ * that it is tidier. A relay in mainland China is probed by something that sends
+ * an ordinary HTTPS request and reads what comes back; a port that answers is a
+ * website, and an unregistered one is taken off the air. Every client measuring
+ * every relay with a plain fetch before every join is that probe, arriving from
+ * the deployment's own users, continuously.
+ *
+ * The upgrade is also the honest measurement. It is the exact request the call
+ * is about to make, so what is timed is the path that will carry it rather than
+ * one that merely runs alongside — a relay can serve a small GET quickly and
+ * still refuse or stall the signalling socket.
+ *
+ * No token is sent, so the relay refuses and closes. That refusal is a complete
+ * round trip, which is all this needs.
  */
-async function probe(relay: Relay): Promise<number | undefined> {
-	// The health endpoint sits beside the signalling one, on the same origin the
-	// WebSocket will use, so the address is derived from it rather than
-	// configured twice.
-	const origin = relay.url.replace(/^ws/, "http").replace(/\/+$/, "");
+function probe(relay: Relay): Promise<number | undefined> {
+	return new Promise((resolve) => {
+		const started = performance.now();
 
-	const control = new AbortController();
-	const timer = setTimeout(() => control.abort(), PROBE_TIMEOUT_MS);
+		let socket: WebSocket;
+		try {
+			socket = new WebSocket(`${relay.url.replace(/\/+$/, "")}/rtc`);
+		} catch {
+			resolve(undefined);
+			return;
+		}
 
-	const started = performance.now();
+		let settled = false;
+		const finish = (took: number | undefined) => {
+			if (settled) return;
+			settled = true;
 
-	try {
-		const response = await fetch(`${origin}/api/health`, {
-			method: "GET",
-			cache: "no-store",
-			signal: control.signal,
-			// The relay answers any origin for this one path, so no credentials
-			// are involved and none are sent.
-			credentials: "omit",
-		});
+			clearTimeout(timer);
+			// Closed in every outcome. A socket left open holds a connection on a
+			// relay this client may not even use, once per relay per join.
+			try {
+				socket.close();
+			} catch {
+				// Already closing, which is one of the outcomes that gets here.
+			}
 
-		if (!response.ok && response.status !== 204) return undefined;
+			resolve(took);
+		};
 
-		return performance.now() - started;
-	} catch {
-		// Aborted, refused, or blocked. All three mean the same thing here:
-		// this is not the relay to hold a call on.
-		return undefined;
-	} finally {
-		clearTimeout(timer);
-	}
+		const timer = setTimeout(() => finish(undefined), PROBE_TIMEOUT_MS);
+
+		// Either of these is the relay answering. `open` means it accepted the
+		// upgrade; `close` arrives when it refused the missing token, which it
+		// can only do after the same round trip. `error` fires alongside a close
+		// for a refusal, so the timing is taken from whichever lands first.
+		socket.onopen = () => finish(performance.now() - started);
+		socket.onclose = () => finish(performance.now() - started);
+		socket.onerror = () => finish(performance.now() - started);
+	});
 }
 
 /**

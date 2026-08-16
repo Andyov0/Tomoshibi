@@ -159,18 +159,27 @@ func TestARelayCarriesNothingButMedia(t *testing.T) {
 		}
 	}
 
-	// The one thing it does answer, because a client times it to decide which
-	// relay to use, from a page served somewhere else.
+	// And not a health endpoint either, which it used to answer and which was
+	// the last ordinary HTTPS request anything made to a relay.
+	//
+	// Asserted rather than merely deleted, because putting one back is a small,
+	// reasonable-looking change: a relay that answers a cheap GET is easier to
+	// monitor, and every monitoring tool ever written wants one. The cost is not
+	// paid here. A relay in mainland China is taken off the air by something
+	// that opens its port, sends an ordinary request, and reads what comes back
+	// — an answer identifies a website, and an unregistered website is blocked.
+	// An endpoint replying to anybody who asks is that probe's evidence, served
+	// continuously and by us.
+	//
+	// What replaced it measures the thing being chosen between rather than
+	// something adjacent to it: the control node opens a TCP connection and says
+	// nothing, and a browser times the signalling upgrade, which is the request
+	// a call actually begins with.
 	recorder := ask(mux, httptest.NewRequest(http.MethodGet, "/api/health", nil))
-	if recorder.Code != http.StatusNoContent {
-		t.Errorf("a relay answered its health endpoint with %d, wanted %d",
-			recorder.Code, http.StatusNoContent)
-	}
-
-	if origin := recorder.Header().Get("Access-Control-Allow-Origin"); origin != "*" {
-		t.Errorf("the health endpoint allowed origin %q; a browser on the control node's "+
-			"page cannot time it without permission, so every relay would look unreachable "+
-			"and the measurement would choose nothing", origin)
+	if recorder.Code != http.StatusNotFound {
+		t.Errorf("a relay answered /api/health with %d; it must not be there at all, and "+
+			"an endpoint that replies to anybody who asks is what gets a relay blocked",
+			recorder.Code)
 	}
 }
 

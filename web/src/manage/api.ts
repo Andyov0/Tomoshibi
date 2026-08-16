@@ -77,13 +77,6 @@ export interface Participant {
 	tracks: Track[];
 }
 
-export interface Check {
-	name: string;
-	verdict: "good" | "warn" | "unknown";
-	found: string;
-	remedy?: string;
-}
-
 export interface Entry {
 	at: string;
 	trip: string;
@@ -216,7 +209,6 @@ export const api = {
 	rooms: () => call<{ live: LiveRoom[]; known: KnownRoom[] | null }>("/rooms"),
 	participants: (room: string) =>
 		call<Participant[]>(`/rooms/${encodeURIComponent(room)}/participants`),
-	health: () => call<Check[]>("/health"),
 	runtime: () => call<Runtime>("/runtime"),
 	audit: () => call<Entry[]>("/audit"),
 	policy: () => call<Policy>("/policy"),

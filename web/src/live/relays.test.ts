@@ -27,8 +27,26 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
-/** A fetch that answers /api/relays with a list, and each relay after a delay. */
+/**
+ * How many sockets were opened, so a test can say a measurement was not retaken.
+ *
+ * Counted rather than read off the fetch mock, because measuring no longer goes
+ * through fetch: a probe opens the signalling socket, which is the request a
+ * call actually begins with and, unlike a plain GET, not the shape of thing that
+ * gets a relay in mainland China blocked.
+ */
+let opened: string[] = [];
+
+/**
+ * Serve the relay list over fetch, and answer each relay's socket after a delay.
+ *
+ * The delay is how long that relay takes to refuse, which is what is being
+ * timed. A relay absent from the map never answers at all, and is left to the
+ * probe's own timeout — the case a down relay has to fall into.
+ */
 function serve(list: unknown, measure: boolean, delays: Record<string, number>) {
+	opened = [];
+
 	vi.stubGlobal(
 		"fetch",
 		vi.fn(async (input: string) => {
@@ -39,16 +57,31 @@ function serve(list: unknown, measure: boolean, delays: Record<string, number>) 
 				});
 			}
 
-			const host = new URL(input).host;
-			const delay = delays[host];
-
-			// Undefined means this relay does not answer at all.
-			if (delay === undefined) throw new Error("unreachable");
-
-			await new Promise((resolve) => setTimeout(resolve, delay));
-			return new Response(null, { status: 204 });
+			throw new Error(`nothing should be fetched but the list, got ${input}`);
 		}),
 	);
+
+	class Socket {
+		onopen: (() => void) | null = null;
+		onclose: (() => void) | null = null;
+		onerror: (() => void) | null = null;
+
+		constructor(url: string) {
+			opened.push(url);
+
+			const delay = delays[new URL(url).host];
+			if (delay === undefined) return;
+
+			// Closed rather than opened: with no token the relay refuses, and it
+			// can only refuse after the same round trip that would have carried
+			// a call. That refusal is the measurement.
+			setTimeout(() => this.onclose?.(), delay);
+		}
+
+		close() {}
+	}
+
+	vi.stubGlobal("WebSocket", Socket);
 }
 
 describe("relays", () => {
@@ -108,12 +141,15 @@ describe("fastest", () => {
 	});
 
 	it("does not measure when there is no choice", async () => {
-		const fetcher = vi.fn();
-		vi.stubGlobal("fetch", fetcher);
+		serve([sh], true, { "sh.example.com": 5 });
 
 		expect(await fastest([sh])).toBe("shanghai");
+		forget();
 		expect(await fastest([])).toBeUndefined();
-		expect(fetcher).not.toHaveBeenCalled();
+
+		// Not one socket opened. Measuring a list of one costs a round trip and
+		// cannot change the answer.
+		expect(opened).toEqual([]);
 	});
 
 	it("reuses a recent measurement rather than taking it again", async () => {
@@ -121,10 +157,10 @@ describe("fastest", () => {
 
 		expect(await fastest([sh, hk])).toBe("hongkong");
 
-		const before = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+		const before = opened.length;
 		expect(await fastest([sh, hk])).toBe("hongkong");
 
-		expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before);
+		expect(opened.length).toBe(before);
 	});
 
 	// A cached name that is no longer offered must not be sent: the deployment

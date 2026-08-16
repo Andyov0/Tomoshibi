@@ -20,6 +20,7 @@ package rtc
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -185,40 +186,76 @@ func unreachable(err error) bool {
 
 // Check says whether a relay is answering, and how quickly.
 //
-// The health endpoint rather than the management API, because this is asked
-// once per relay every time a page is drawn: it is the cheapest thing a relay
-// serves, needs no token, and answers the question actually being asked, which
-// is whether the machine is there.
+// A TCP connection and nothing else. Not one byte is sent: the socket is opened,
+// the time is taken, and it is closed.
+//
+// It used to be an HTTPS request to a health endpoint, which was the mistake
+// this whole file now exists to avoid. A relay in mainland China is probed by
+// something that opens its TLS port, sends an ordinary request, and reads the
+// answer — a port that replies is a website, and an unregistered one is taken
+// off the air. A dashboard checking every relay every fifteen seconds over
+// HTTPS is that probe, running against our own machines, forever. The endpoint
+// it asked for has been removed and nothing here speaks HTTP any more.
+//
+// What is lost is the difference between a machine that is up and a relay that
+// is working. A TCP handshake proves something is listening, not that it will
+// accept a call. That is a fair trade: the thing which does prove it — a client
+// opening the signalling socket — happens on every join anyway, and a relay
+// broken above the socket shows up as calls failing rather than as a green row,
+// which is a fault an operator can see either way.
 func (c *Cluster) Check(ctx context.Context, url string) (bool, time.Duration, string) {
-	origin := strings.Replace(strings.Replace(url, "wss://", "https://", 1), "ws://", "http://", 1)
-	origin = strings.TrimRight(origin, "/")
-
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, origin+"/api/health", nil)
+	address, err := hostPort(url)
 	if err != nil {
 		return false, 0, err.Error()
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
 	started := time.Now()
 
-	response, err := c.client.Do(request)
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", address)
 	if err != nil {
-		// Trimmed: the full transport error names the address twice and wraps
-		// it in three layers, none of which tell an operator anything the
-		// address at the top of the row does not.
 		return false, time.Since(started), summarise(err)
 	}
-	defer response.Body.Close()
 
 	took := time.Since(started)
-
-	if response.StatusCode != http.StatusNoContent && response.StatusCode != http.StatusOK {
-		return false, took, fmt.Sprintf("answered %d", response.StatusCode)
-	}
+	_ = conn.Close()
 
 	return true, took, ""
+}
+
+// hostPort turns a relay's WebSocket address into something to dial.
+//
+// The port is explicit in every address this deployment hands out, and where it
+// is not, the scheme decides it — the same defaults a browser would use.
+func hostPort(url string) (string, error) {
+	trimmed := strings.TrimRight(url, "/")
+
+	secure := strings.HasPrefix(trimmed, "wss://") || strings.HasPrefix(trimmed, "https://")
+
+	for _, scheme := range []string{"wss://", "ws://", "https://", "http://"} {
+		trimmed = strings.TrimPrefix(trimmed, scheme)
+	}
+
+	// Anything after the authority is a path, which a socket has no use for.
+	if slash := strings.IndexByte(trimmed, '/'); slash >= 0 {
+		trimmed = trimmed[:slash]
+	}
+
+	if trimmed == "" {
+		return "", fmt.Errorf("%q has no host to dial", url)
+	}
+
+	if _, _, err := net.SplitHostPort(trimmed); err == nil {
+		return trimmed, nil
+	}
+
+	if secure {
+		return net.JoinHostPort(trimmed, "443"), nil
+	}
+
+	return net.JoinHostPort(trimmed, "80"), nil
 }
 
 // summarise reduces a transport error to the part worth showing.

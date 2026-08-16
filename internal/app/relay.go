@@ -152,6 +152,24 @@ func (r *relays) offered() []store.Relay {
 	return r.live()
 }
 
+// preferred splits a list into the relays to use and the ones held in reserve.
+//
+// A fallback relay is not a worse relay — it is a relay whose cost is paid in
+// distance rather than in quality, and one that should therefore be reached for
+// only when the alternative is no call at all. Returning both halves rather than
+// filtering keeps that decision here, where the list is already in hand.
+func preferred(list []store.Relay) (ordinary, reserve []store.Relay) {
+	for _, relay := range list {
+		if relay.Fallback {
+			reserve = append(reserve, relay)
+			continue
+		}
+		ordinary = append(ordinary, relay)
+	}
+
+	return ordinary, reserve
+}
+
 // pick returns the relay for this room and this client.
 //
 // Room first and client second, because the room is what the policies are
@@ -161,7 +179,24 @@ func (r *relays) offered() []store.Relay {
 //
 // chosen is what a client measured and asked for, empty when it did not ask.
 func (r *relays) pick(room string, chosen string, req *http.Request, trustProxy bool) store.Relay {
-	list := r.live()
+	all := r.live()
+
+	// The reserve is used only when nothing else is available. A deployment
+	// whose only relay is a fallback still holds calls — the setting means
+	// "prefer anything else", not "never".
+	list, reserve := preferred(all)
+	if len(list) == 0 {
+		list = reserve
+	}
+
+	// A client that measured a reserve relay as fastest is honoured anyway: it
+	// asked for that one specifically, and being told otherwise would be this
+	// server overruling a measurement it cannot make itself.
+	if r.policy == config.PickProbe && chosen != "" {
+		if relay, ok := r.byName(all, chosen); ok {
+			return relay
+		}
+	}
 
 	switch {
 	case len(list) == 0:

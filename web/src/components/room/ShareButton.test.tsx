@@ -18,12 +18,21 @@ import { ShareButton } from "./ShareButton";
  * and only at the moment it is needed.
  */
 
-/** Radix opens on the pointer going down rather than on a completed click. */
+/**
+ * Open the menu the way a keyboard does.
+ *
+ * A pointer would be the truer gesture — Radix opens the menu on the pointer
+ * going down rather than on a completed click — but jsdom defines no
+ * PointerEvent, so React registers no listener for one and a synthesised
+ * pointerdown reaches nothing. The menu simply stays shut, and the failure
+ * reads as though the menu were missing rather than as though the environment
+ * could not press it.
+ *
+ * Enter opens it through the same handler and the same state, so everything
+ * asserted below is unchanged by which of the two did the opening.
+ */
 function open() {
-	fireEvent.pointerDown(screen.getByRole("button", { name: "Share your screen" }), {
-		button: 0,
-		ctrlKey: false,
-	});
+	fireEvent.keyDown(screen.getByRole("button", { name: "Share your screen" }), { key: "Enter" });
 }
 
 describe("ShareButton", () => {

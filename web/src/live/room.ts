@@ -7,6 +7,7 @@ import {
 	VideoPresets,
 } from "livekit-client";
 import type { Join } from "./api";
+import { installNoValidate } from "./novalidate";
 
 /**
  * The two ways a screen can be shared.
@@ -178,6 +179,11 @@ function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
  * spare.
  */
 export function create(): Room {
+	// Before anything can connect, because the request it removes is made by
+	// the SDK during a failed connection and there is no later moment to do
+	// it in.
+	installNoValidate();
+
 	return new Room({
 		// Measured against the screen's own pixels rather than the layout's.
 		//

@@ -123,6 +123,9 @@ func TestSilentSaysNothingToAnOrdinaryRequest(t *testing.T) {
 
 	for _, request := range []string{
 		"GET / HTTP/1.1\r\nHost: relay.example.invalid\r\n\r\n",
+		// The health endpoint included. Nothing measures it any more — both the
+		// control node and the client time the signalling upgrade — so under
+		// silence it is one more thing a prober must not be able to read.
 		"GET /api/health HTTP/1.1\r\nHost: relay.example.invalid\r\n\r\n",
 		"HEAD / HTTP/1.1\r\nHost: relay.example.invalid\r\n\r\n",
 		"POST /rtc HTTP/1.1\r\nHost: relay.example.invalid\r\nContent-Length: 0\r\n\r\n",
@@ -170,6 +173,45 @@ func TestSilentAcceptsAConnectionHeaderWithAList(t *testing.T) {
 	if len(got) < 12 || got[:12] != "HTTP/1.1 101" {
 		t.Fatalf("an upgrade behind a proxy was answered %q; the Connection header carries a "+
 			"list and has to be searched rather than compared", firstLine(got))
+	}
+}
+
+// The control node's management calls are ordinary HTTPS, and silencing them
+// along with everything else made the dashboard report a relay unreachable
+// while calls were running on it perfectly — the one thing that could not reach
+// it was the page saying so.
+func TestSilentAnswersAnAuthenticatedRequest(t *testing.T) {
+	addr, stop := silentServer(t)
+	defer stop()
+
+	got, _ := speak(t, addr, "GET /twirp/livekit.RoomService/ListRooms HTTP/1.1\r\n"+
+		"Host: relay.example.invalid\r\n"+
+		"Authorization: Bearer a.token.here\r\n\r\n")
+
+	if got == "" {
+		t.Fatal("a request carrying a bearer token got no answer; the control node cannot " +
+			"list rooms or read counters, and every page about this relay says it is down")
+	}
+}
+
+// A token is required, not merely an Authorization header of any shape. Basic
+// auth is what a scanner tries, and it should learn no more than one that tried
+// nothing.
+func TestSilentIgnoresAnAuthorizationThatIsNotABearer(t *testing.T) {
+	addr, stop := silentServer(t)
+	defer stop()
+
+	for _, header := range []string{
+		"Authorization: Basic dXNlcjpwYXNz",
+		"Authorization: token abc",
+		"Authorization: ",
+	} {
+		got, _ := speak(t, addr, "GET / HTTP/1.1\r\nHost: relay.example.invalid\r\n"+
+			header+"\r\n\r\n")
+
+		if got != "" {
+			t.Errorf("%q was answered with %q", header, firstLine(got))
+		}
 	}
 }
 

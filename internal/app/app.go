@@ -26,19 +26,27 @@ import (
 
 // App holds what the handlers need.
 type App struct {
-	conf    *config.Config
-	store   *store.Store
-	limit   *limit.Limiter
+	conf *config.Config
+	// store is nil on a relay, which records nothing.
+	store *store.Store
+	limit *limit.Limiter
+	// media is nil on a control node, which starts no media server of its own.
+	// Every use is guarded; the signalling paths are simply not mounted.
 	media   *rtc.Server
 	web     http.Handler
 	tripKey []byte
 	admin   *admin.API
+	// relays is where a control node sends clients. Empty everywhere else.
+	relays *relays
 
 	stop    chan struct{}
 	closing sync.Once
 }
 
 // New assembles the application.
+//
+// media may be nil, which is what a control node passes: it signs tokens for
+// meetings held on relays elsewhere and has no media server to forward to.
 func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handler, tripKey []byte) *App {
 	a := &App{
 		conf:    conf,
@@ -48,10 +56,13 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 		web:     web,
 		tripKey: tripKey,
 		admin:   admin.New(conf, media, st, tripKey),
+		relays:  newRelays(conf),
 		stop:    make(chan struct{}),
 	}
 
-	if conf.Meet.Rooms.Remember > 0 {
+	// Guarded on the store as well as the setting: a relay keeps none, and a
+	// sweeper with nothing to sweep would dereference it on its first tick.
+	if conf.Meet.Rooms.Remember > 0 && st != nil {
 		go a.forgetting()
 	}
 
@@ -147,8 +158,45 @@ func (a *App) forget() {
 func (a *App) Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	for _, path := range rtc.Paths {
-		mux.Handle(path, a.media.Handler())
+	// Only where there is a media server to forward to. A control node has
+	// none: these paths belong to the relays, whose addresses it hands out.
+	if a.media != nil {
+		for _, path := range rtc.Paths {
+			mux.Handle(path, a.media.Handler())
+		}
+	}
+
+	// A relay is the signalling paths above and nothing else.
+	//
+	// Returned here rather than by skipping each registration below, because
+	// the point is not that the client and the join endpoint are unnecessary on
+	// a relay — it is that they must not be there. A relay reachable at a name
+	// somebody could type is one that would serve a join endpoint signing
+	// tokens against a store it does not keep, and management pages for
+	// administrators it was told nothing about.
+	if a.conf.Meet.Role == config.RoleRelay {
+		// Answered for any origin, because the point of this endpoint on a relay
+		// is to be timed by a client served from somewhere else: the control
+		// node's page measures every relay before choosing one, and a browser
+		// will not report the timing of a cross-origin request it was not given
+		// permission to make. Nothing is disclosed — the body is empty and the
+		// address was published to that client a moment ago.
+		mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Cache-Control", "no-store")
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		// The preflight a browser sends before a timed request that carries
+		// anything but the simplest headers.
+		mux.HandleFunc("OPTIONS /api/health", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		return mux
 	}
 
 	// Registered before the client's fallback, and only where somebody
@@ -158,6 +206,7 @@ func (a *App) Handler() http.Handler {
 
 	mux.HandleFunc("POST /api/rooms/{room}/join", a.join)
 	mux.HandleFunc("GET /api/deployment", a.deployment)
+	mux.HandleFunc("GET /api/relays", a.relayList)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -186,6 +235,14 @@ func (a *App) Handler() http.Handler {
 }
 
 type joinRequest struct {
+	// Relay is the name of the relay this client measured as fastest.
+	//
+	// A name from the list at /api/relays and never an address, so the worst a
+	// forged one can do is pick a different relay of ours — and an unknown one
+	// is ignored entirely. Empty from any client that did not measure, which is
+	// every client under the other policies.
+	Relay string `json:"relay"`
+
 	// Identity a client was given previously, if it has one.
 	Identity string `json:"identity"`
 	// Name they would like to be called.
@@ -316,11 +373,61 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond(w, joinResponse{
-		URL:      a.signallingURL(r),
+		URL:      a.signallingURLFor(name, body.Relay, r),
 		Token:    grant.Token,
 		Identity: grant.Identity,
 		Room:     name,
 	})
+}
+
+// relayEntry is one relay as a client is told about it.
+type relayEntry struct {
+	// Name is what the client sends back after measuring. The relay is
+	// identified by this and never by its address, so that a client's answer
+	// can only ever select one of ours.
+	Name string `json:"name"`
+
+	// URL is the WebSocket origin to measure and, if chosen, to dial.
+	URL string `json:"url"`
+
+	// Region is the deployment's own label, shown to somebody who wants to know
+	// where their call is being held. Never used to choose under this policy —
+	// that is what the measurement is for.
+	Region string `json:"region,omitempty"`
+}
+
+// relayList is what a client measures before it joins.
+//
+// Answered under every policy rather than only under probe, because the list is
+// also the honest answer to where a meeting might be held, and a client that
+// wants to show somebody that is not doing anything it needs permission for.
+// Under the other policies a client's measurement is simply not consulted.
+//
+// Empty on a full deployment, which holds its own media and has nothing to
+// choose between. A client seeing an empty list measures nothing and joins as
+// it always did.
+func (a *App) relayList(w http.ResponseWriter, _ *http.Request) {
+	list := a.relays.offered()
+
+	entries := make([]relayEntry, 0, len(list))
+	for _, relay := range list {
+		entries = append(entries, relayEntry{Name: relay.Name, URL: relay.URL, Region: relay.Region})
+	}
+
+	respond(w, relayListResponse{
+		Relays: entries,
+		// Said rather than inferred, so a client does not have to guess from an
+		// empty list whether measuring would be listened to. Under anything but
+		// probe it would not be, and measuring would be a delay before every
+		// join that changed nothing.
+		Measure: a.conf.Meet.RelayPolicy == config.PickProbe && len(entries) > 1,
+	})
+}
+
+type relayListResponse struct {
+	Relays []relayEntry `json:"relays"`
+	// Measure says whether this deployment will act on a measurement.
+	Measure bool `json:"measure"`
 }
 
 // deployment is what a client needs to know before somebody types a room name.
@@ -346,6 +453,26 @@ func (a *App) opening() room.Opening {
 // address is frequently a wildcard and always the server's own view. A caller
 // reached us somehow, and that host is by definition one that works for them.
 func (a *App) signallingURL(r *http.Request) string {
+	return a.signallingURLFor("", "", r)
+}
+
+// signallingURLFor is where a client joining this room should open its
+// WebSocket.
+//
+// The room matters because of what the relay policies do with it: gathering a
+// meeting onto one relay is the difference between media crossing between
+// machines and staying on one, and that is only possible if the answer depends
+// on which meeting is being joined rather than on who is joining it.
+//
+// Order is deliberate. A configured relay list is a deployment saying where
+// media lives, and it outranks public_url — which on a control node describes
+// where the *client* is served and would send everybody to a machine running no
+// media server at all.
+func (a *App) signallingURLFor(name, chosen string, r *http.Request) string {
+	if a.relays.any() {
+		return a.relays.pick(name, chosen, r, a.conf.Meet.TrustProxy).URL
+	}
+
 	if a.conf.Meet.PublicURL != "" {
 		return a.conf.Meet.PublicURL
 	}

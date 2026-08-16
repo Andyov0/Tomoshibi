@@ -185,30 +185,47 @@ func serve(args []string) error {
 
 	logging(conf.LiveKit.Logging.Level)
 
-	web, err := client(conf.Meet.WebRoot)
-	if err != nil {
-		return err
+	// What this process is made of follows from its role. A relay carries media
+	// and keeps nothing; a control node keeps everything and carries none.
+	var (
+		web     http.Handler
+		st      *store.Store
+		tripKey []byte
+		media   *rtc.Server
+	)
+
+	if conf.Meet.Role != config.RoleRelay {
+		var err error
+
+		if web, err = client(conf.Meet.WebRoot); err != nil {
+			return err
+		}
+
+		if st, err = store.Open(conf.Meet.Database); err != nil {
+			return err
+		}
+		defer st.Close()
+
+		if err := adoptOpening(st, conf); err != nil {
+			return err
+		}
+
+		if tripKey, err = room.LoadTripKey(conf.Meet.TripcodeKey); err != nil {
+			return err
+		}
 	}
 
-	st, err := store.Open(conf.Meet.Database)
-	if err != nil {
-		return err
-	}
-	defer st.Close()
-
-	if err := adoptOpening(st, conf); err != nil {
-		return err
-	}
-
-	tripKey, err := room.LoadTripKey(conf.Meet.TripcodeKey)
-	if err != nil {
-		return err
+	// A control node starts none: the meetings it authorises are held on the
+	// relays it lists, and a media server here would sit idle holding a UDP
+	// port open on a machine nobody was ever told to dial.
+	if conf.Meet.Role != config.RoleControl {
+		var err error
+		if media, err = rtc.Start(conf.LiveKit); err != nil {
+			return err
+		}
 	}
 
-	media, err := rtc.Start(conf.LiveKit)
-	if err != nil {
-		return err
-	}
+	announceRole(conf)
 
 	application := app.New(conf, st, media, web, tripKey)
 	defer application.Close()
@@ -250,7 +267,11 @@ func serve(args []string) error {
 	// Sessions first, then the listener: draining the media server while the
 	// door is still open lets a participant finish their sentence, where the
 	// other order would drop them and then wait politely for nothing.
-	media.Stop(false)
+	//
+	// A control node has none to drain.
+	if media != nil {
+		media.Stop(false)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -384,6 +405,51 @@ func adoptOpening(st *store.Store, conf *config.Config) error {
 	slog.Info("rooms", "opened by", chosen, "administrators", admins)
 
 	return nil
+}
+
+// announceRole says which half of a deployment this process is, and what that
+// means for the ports it is about to open.
+//
+// Said out loud because the roles fail quietly when confused. A relay nobody
+// realises is a relay looks like a broken server: the address serves no client
+// and answers 404 for everything a browser asks for, which is correct and looks
+// exactly like a deployment gone wrong.
+func announceRole(conf *config.Config) {
+	switch conf.Meet.Role {
+	case config.RoleRelay:
+		slog.Info("relay: media and signalling only, no client and no join endpoint",
+			"udp", conf.LiveKit.RTC.UDPPort, "tcp", conf.LiveKit.RTC.TCPPort)
+
+		// A relay's whole purpose is being dialled from elsewhere, and the
+		// address it advertises comes from this. Left false it hands out an
+		// address only the machine itself can reach, and every connection to it
+		// fails after appearing to succeed.
+		if !conf.LiveKit.RTC.UseExternalIP {
+			slog.Warn("rtc.use_external_ip is false on a relay: clients will be handed an " +
+				"address only this machine can reach. Set it unless a proxy rewrites candidates")
+		}
+
+		if conf.LiveKit.Redis.Address == "" {
+			slog.Warn("no redis is configured: this relay cannot join others in a cluster, so " +
+				"a meeting split across relays will not be able to hear itself")
+		}
+
+	case config.RoleControl:
+		slog.Info("control: client, joins and management; media is held on the relays below",
+			"relays", len(conf.Meet.Relays), "policy", conf.Meet.RelayPolicy)
+
+		for _, relay := range conf.Meet.Relays {
+			slog.Info("relay", "name", relay.Name, "url", relay.URL, "region", relay.Region)
+		}
+
+		if conf.LiveKit.Redis.Address == "" {
+			slog.Warn("no redis is configured: the relays cannot route between themselves, so " +
+				"everybody in one meeting must land on one relay. The sticky policy does that")
+		}
+
+	default:
+		slog.Info("serving the client, the joins and the media from this one process")
+	}
 }
 
 func announce(addr net.Addr) {

@@ -1,4 +1,5 @@
 import { t } from "./i18n";
+import { preferred } from "./relays";
 /*
  * The keys below still say the name this was called before.
  *
@@ -97,13 +98,19 @@ export interface Join {
 export async function join(room: string, name: string, passphrase = ""): Promise<Join> {
 	const previous = sessionStorage.getItem(IDENTITY_KEY) ?? undefined;
 
+	// Which relay answered fastest, on a deployment that spreads its media over
+	// several. Empty everywhere else, and empty here if measuring failed: the
+	// server treats it as a preference and falls back to keeping the room
+	// together, so a call still happens either way.
+	const relay = await preferred();
+
 	const response = await fetch(`/api/rooms/${encodeURIComponent(room)}/join`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		// The passphrase goes in the body and nowhere else. A query parameter
 		// would reach the access log, the browser history, and any Referer sent
 		// onward, and none of those are places a secret can be taken back from.
-		body: JSON.stringify({ identity: previous, name, passphrase }),
+		body: JSON.stringify({ identity: previous, name, passphrase, relay }),
 	});
 
 	if (!response.ok) {

@@ -22,8 +22,109 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Role is which half of a split deployment this process is.
+//
+// One binary, three ways to run it. Undivided is what upstream does and stays
+// the default: a single process holding the client, the join endpoint, and the
+// media. The other two exist because media and web have opposite requirements —
+// media wants to sit close to the people sending it and is charged by the byte,
+// while the client wants a name, a certificate, and somewhere cheap to serve a
+// few kilobytes from. Splitting them lets each go where it belongs.
+type Role string
+
+const (
+	// RoleFull serves everything from one process. The default, and what a
+	// deployment that has not thought about this wants.
+	RoleFull Role = "full"
+
+	// RoleRelay carries media and nothing else: the embedded media server and
+	// the signalling paths in front of it. No client, no join endpoint, no
+	// store, no management pages. Several of these sit behind one control.
+	RoleRelay Role = "relay"
+
+	// RoleControl serves the client, the join endpoint, and the management
+	// pages, and starts no media server of its own. It signs the tokens the
+	// relays verify and tells each client which relay to dial.
+	RoleControl Role = "control"
+)
+
+// Valid reports whether a role is one this binary knows how to be.
+func (r Role) Valid() bool {
+	switch r {
+	case RoleFull, RoleRelay, RoleControl:
+		return true
+	}
+	return false
+}
+
+// Relay is one media server a control node can hand clients to.
+type Relay struct {
+	// URL is what a client dials, as a WebSocket origin: `wss://sh.example.com`.
+	// Handed to the client verbatim, so it must be reachable from a browser
+	// rather than from the control node.
+	URL string `yaml:"url"`
+
+	// Name identifies this relay in logs and on the management pages.
+	Name string `yaml:"name"`
+
+	// Region is a label this deployment gives a place. Compared against a
+	// client's own, never interpreted, so whatever vocabulary a deployment
+	// already uses works: `cn-east`, `hk`, `eu`.
+	Region string `yaml:"region"`
+}
+
+// How a control node picks which relay a client is told to dial.
+const (
+	// PickSticky sends everybody in a room to the same relay, chosen by the
+	// room's name.
+	//
+	// The default, and the one that costs least. Media between two people on
+	// one relay never leaves it; between two relays it is carried twice, once
+	// to cross and once to deliver. On metered egress that difference is the
+	// whole bill, so participants are gathered unless something asks otherwise.
+	PickSticky = "sticky"
+
+	// PickNearest sends each client to the relay whose region matches their
+	// own, falling back to sticky when nothing matches.
+	//
+	// Trades the saving above for latency: a meeting spread over three regions
+	// becomes three relays forwarding to each other. Worth it when the people
+	// are genuinely far apart, and only then.
+	PickNearest = "nearest"
+
+	// PickRoundRobin spreads clients over the relays in turn, ignoring both
+	// room and region. For levelling load across identical machines.
+	PickRoundRobin = "round_robin"
+
+	// PickProbe lets the client measure the relays and say which answered
+	// fastest, falling back to sticky when it does not say.
+	//
+	// The only policy that knows what a network is actually doing. A region
+	// label is somebody's belief about where the packets go, written once and
+	// wrong the day a route changes; a measurement is the route as it is this
+	// minute, taken from the one place that can see it — the browser making the
+	// call. It costs one small request per relay before joining, in parallel,
+	// which is nothing beside a call that is about to run for an hour.
+	//
+	// What a client sends is a name from the list it was given, never an
+	// address: a policy that took a URL from the request would let anybody be
+	// told to send their meeting anywhere.
+	PickProbe = "probe"
+)
+
 // Meet is everything the media server has no opinion about.
 type Meet struct {
+	// Role is which half of a split deployment this is. Empty means full.
+	Role Role `yaml:"role"`
+
+	// Relays are the media servers a control node hands clients to. Only read
+	// under RoleControl; a full deployment is its own relay and a relay is
+	// never asked to choose one.
+	Relays []Relay `yaml:"relays"`
+
+	// RelayPolicy is how a control node chooses between them.
+	RelayPolicy string `yaml:"relay_policy"`
+
 	// Listen is the address serving the client, the API, and the signalling
 	// proxy. The one port anybody outside this machine talks to over TCP.
 	Listen string `yaml:"listen"`
@@ -177,6 +278,8 @@ type Config struct {
 // working server. The burst covers a large meeting arriving at once; the rate is
 // what a script is left with afterwards.
 var defaults = Meet{
+	Role:        RoleFull,
+	RelayPolicy: PickSticky,
 	Listen:      ":8080",
 	Database:    "meet.db",
 	TripcodeKey: "tripcode.key",
@@ -236,7 +339,123 @@ func Load(path string) (*Config, error) {
 			meet.Rooms.OpenedBy, room.ByAnyone, room.ByAdmins)
 	}
 
+	if err := checkRole(&meet); err != nil {
+		return nil, err
+	}
+
 	return &Config{Meet: meet, LiveKit: lk, Key: key, Secret: secret}, nil
+}
+
+// checkRole refuses a split that cannot work, at startup.
+//
+// Every one of these is a configuration that starts cleanly and then fails at
+// the moment somebody tries to join — a control node with nowhere to send them,
+// a relay policy nobody implements. The failure is far from the cause by then,
+// and the person reading the logs is looking at a join that broke rather than
+// at the file that broke it.
+func checkRole(meet *Meet) error {
+	if meet.Role == "" {
+		meet.Role = RoleFull
+	}
+
+	if !meet.Role.Valid() {
+		return fmt.Errorf(
+			"meet.role: %q is not a role. The three are %q, %q and %q",
+			meet.Role, RoleFull, RoleRelay, RoleControl)
+	}
+
+	if meet.RelayPolicy == "" {
+		meet.RelayPolicy = PickSticky
+	}
+
+	switch meet.RelayPolicy {
+	case PickSticky, PickNearest, PickRoundRobin, PickProbe:
+	default:
+		return fmt.Errorf(
+			"meet.relay_policy: %q is not a way to choose a relay. The four are %q, %q, %q and %q",
+			meet.RelayPolicy, PickSticky, PickNearest, PickRoundRobin, PickProbe)
+	}
+
+	switch meet.Role {
+	case RoleControl:
+		if len(meet.Relays) == 0 {
+			return fmt.Errorf(
+				"meet.role is %q, which starts no media server of its own, and no relays are "+
+					"listed under `meet.relays` — every join would authorise somebody for a "+
+					"meeting with nowhere to hold it", RoleControl)
+		}
+
+		seen := make(map[string]bool, len(meet.Relays))
+		named := make(map[string]bool, len(meet.Relays))
+		for i, relay := range meet.Relays {
+			where := fmt.Sprintf("meet.relays[%d]", i)
+			if relay.Name != "" {
+				where = fmt.Sprintf("%s (%s)", where, relay.Name)
+			}
+
+			// A name is how a client refers to a relay it has measured, and how
+			// an operator recognises one in a log. Required under probe because
+			// the protocol turns on it; checked for collisions always, since two
+			// relays answering to one name make both the client's choice and the
+			// log ambiguous.
+			if relay.Name == "" && meet.RelayPolicy == PickProbe {
+				return fmt.Errorf(
+					"meet.relay_policy is %q, where a client measures the relays and names the "+
+						"one that answered fastest, but meet.relays[%d] has no name to send back",
+					PickProbe, i)
+			}
+
+			if relay.Name != "" {
+				if named[relay.Name] {
+					return fmt.Errorf("%s: the name %q is used by another relay", where, relay.Name)
+				}
+				named[relay.Name] = true
+			}
+
+			if relay.URL == "" {
+				return fmt.Errorf("%s has no url. A client is handed this verbatim, so it "+
+					"needs the address a browser would dial, like wss://relay.example.com", where)
+			}
+
+			if !strings.HasPrefix(relay.URL, "ws://") && !strings.HasPrefix(relay.URL, "wss://") {
+				return fmt.Errorf(
+					"%s: %q is not a WebSocket address. It is dialled by a browser, so it "+
+						"begins ws:// or wss://", where, relay.URL)
+			}
+
+			if seen[relay.URL] {
+				return fmt.Errorf("%s: %q is listed twice", where, relay.URL)
+			}
+			seen[relay.URL] = true
+		}
+
+		if meet.RelayPolicy == PickNearest {
+			for i, relay := range meet.Relays {
+				if relay.Region == "" {
+					return fmt.Errorf(
+						"meet.relay_policy is %q, which chooses by region, but meet.relays[%d] "+
+							"has none. A relay without one can never be the nearest and would "+
+							"only ever be reached by the fallback", PickNearest, i)
+				}
+			}
+		}
+
+	case RoleRelay:
+		if len(meet.Relays) > 0 {
+			return fmt.Errorf(
+				"meet.role is %q and `meet.relays` is set. A relay carries media; choosing "+
+					"between relays is the control node's job, and listing them here would do "+
+					"nothing", RoleRelay)
+		}
+
+		if len(meet.Admins) > 0 {
+			return fmt.Errorf(
+				"meet.role is %q and administrators are listed. A relay serves no management "+
+					"pages, so these would grant nothing — put them on the control node", RoleRelay)
+		}
+	}
+
+	return nil
 }
 
 // checkAdmins refuses an administrator entry that cannot mean what it says.

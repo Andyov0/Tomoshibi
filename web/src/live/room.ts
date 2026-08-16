@@ -305,6 +305,26 @@ export async function share(
 			},
 			videoCodec: profile.videoCodec,
 			degradationPreference: profile.degradationPreference,
+
+			// One encode, at the size that was asked for.
+			//
+			// A share is published with simulcast by default: two encodes of the
+			// same screen, and a subscriber whose tile is small — or whose
+			// connection dips — is served the smaller one. That is right for a
+			// camera, where nobody chose the resolution and a worse picture is
+			// better than a stall.
+			//
+			// It is wrong here, twice over. Somebody who picked 4K picked it,
+			// and being quietly given 1080p instead is the complaint rather than
+			// the mitigation. And the second encode is not free: at four times
+			// the pixels it is what makes a software encoder fall behind, which
+			// arrives as a share that stutters and drifts — so the machinery for
+			// coping with a slow connection was itself the reason the picture
+			// was slow.
+			//
+			// The bitrate still adapts. What stops is switching to a smaller
+			// picture behind the person who chose one.
+			simulcast: false,
 		},
 	);
 

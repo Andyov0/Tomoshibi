@@ -252,6 +252,9 @@ const en = {
 	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.",
 	"This passphrase cannot join. Ask the organiser.": "This passphrase cannot join. Ask the organiser.",
 	"Timeout": "Timeout",
+	"carried": "carried",
+	"out": "out",
+	"in": "in",
 } as const;
 
 export default en;

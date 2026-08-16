@@ -4,6 +4,7 @@ import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
 import { Trend } from "./Trend";
 import { LINK_BITS, rate, since, size } from "./units";
+import { t } from "@/live/i18n";
 
 /**
  * How the server is doing, and how it got here.
@@ -152,11 +153,24 @@ function Fleet({ now }: { now: Now }) {
 						{one.reachable ? (
 							<>
 								<span className="readout text-fg-muted text-[12px]">{one.ip || "—"}</span>
-								<span className="ml-auto flex gap-4 text-fg-muted text-xs tabular-nums">
+
+								<span className="ml-auto flex flex-wrap justify-end gap-x-4 gap-y-0.5 text-fg-muted text-xs tabular-nums">
 									<span>{one.rooms} rooms</span>
 									<span>{one.clients} people</span>
 									<span>{rate(one.outPerSec ?? 0)}</span>
 									<span>{Math.round((one.load ?? 0) * 100)}% cpu</span>
+
+									{/* What this machine has actually carried, which is the
+									    figure a bill is made of — and the one that was
+									    missing, because a rate says how busy a relay is now
+									    and nothing about what it has cost. Since its own
+									    process started, which is not the same date on every
+									    machine, so it is said rather than assumed. */}
+									<span className="w-full text-right text-fg-muted/70 text-[11px]">
+										{t("carried")} {size(one.bytesOut ?? 0)} {t("out")} ·{" "}
+										{size(one.bytesIn ?? 0)} {t("in")}
+										{one.startedAt ? ` · ${since(one.startedAt)}` : ""}
+									</span>
 								</span>
 							</>
 						) : (

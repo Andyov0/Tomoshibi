@@ -219,6 +219,9 @@ const zhHant: Dictionary = {
 	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "封鎖會拒絕他們下一次加入。不會中斷他們已經在進行的通話,也攔不住對方換一個通行語——它封的是那個簽名,而簽名是這台伺服器唯一能認出的東西。",
 	"This passphrase cannot join. Ask the organiser.": "該通行語已被禁止加入,請聯絡主辦者。",
 	"Timeout": "逾時",
+	"carried": "已承載",
+	"out": "出站",
+	"in": "入站",
 };
 
 export default zhHant;

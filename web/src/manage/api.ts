@@ -32,6 +32,10 @@ export interface NodeReading {
 	tracksIn: number;
 	tracksOut: number;
 	outPerSec: number;
+	inPerSec: number;
+	/** Since this relay's process started, not since the month began. */
+	bytesIn: number;
+	bytesOut: number;
 	cpus: number;
 	load: number;
 	startedAt?: string;

@@ -219,6 +219,9 @@ const ja: Dictionary = {
 	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "ブロックは次回の参加を拒否します。進行中の通話は終了させませんし、別のパスフレーズを選ばれれば止められません。止められるのはその署名だけで、それがこのサーバーに識別できる唯一のものです。",
 	"This passphrase cannot join. Ask the organiser.": "このパスフレーズでは参加できません。主催者にお問い合わせください。",
 	"Timeout": "タイムアウト",
+	"carried": "転送量",
+	"out": "送信",
+	"in": "受信",
 };
 
 export default ja;

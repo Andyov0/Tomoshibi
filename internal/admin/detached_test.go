@@ -7,6 +7,7 @@ import (
 
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
+	"tomoshibi/internal/rtc"
 )
 
 /*
@@ -88,6 +89,58 @@ func TestManagementSurvivesHavingNoMediaServer(t *testing.T) {
 				t.Errorf("%s %s answered nothing at all", tc.method, tc.path)
 			}
 		}()
+	}
+}
+
+// A control node that can reach relays still has no media server of its own.
+//
+// This is the state a real one is in a moment after starting: New leaves the
+// control interface nil, and the cluster is attached immediately afterwards.
+// The first version of this file tested only the state before that, so the
+// sampler's guard was written against the wrong question — attached rather than
+// local — and passed. In production it dereferenced a nil media server one
+// second after start, on a timer, and the crash arrived detached from anything
+// anybody had done.
+//
+// The distinction is real and worth keeping: with a cluster this node can list
+// rooms and remove somebody from one, and it still cannot report its own
+// throughput, because those counters are read from the process holding them.
+func TestSamplingIsHarmlessOnceACusterIsAttached(t *testing.T) {
+	key := make([]byte, 32)
+
+	conf := &config.Config{
+		Key:    "APIkey",
+		Secret: "a secret long enough for the media server to accept it",
+		Meet: config.Meet{
+			Role:   config.RoleControl,
+			Admins: []config.Admin{{Trip: room.Trip(key, "a passphrase"), Name: "adam"}},
+		},
+	}
+
+	api := New(conf, nil, nil, key)
+	t.Cleanup(api.Close)
+
+	// What a control node does at startup, right after New.
+	api.UseCluster(rtc.NewCluster(func() []string { return []string{"wss://relay.invalid"} },
+		conf.Key, conf.Secret))
+
+	if !api.attached() {
+		t.Fatal("a cluster was attached and the pages still report nothing to ask")
+	}
+
+	if api.local() {
+		t.Fatal("a control node reported a media server of its own; every figure read from " +
+			"one would be a nil dereference")
+	}
+
+	defer func() {
+		if fell := recover(); fell != nil {
+			t.Fatalf("sampling panicked on a control node with a cluster: %v", fell)
+		}
+	}()
+
+	if got := api.sample(); got.In != 0 || got.Out != 0 {
+		t.Errorf("a node with no media server of its own reported %+v", got)
 	}
 }
 

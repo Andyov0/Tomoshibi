@@ -125,9 +125,13 @@ func (a *API) Close() {
 
 // sample reads one moment for the history.
 func (a *API) sample() Sample {
-	// A control node has nothing to sample. Watch is not started there either,
-	// so this is belt and braces for anybody who calls it directly.
-	if !a.attached() {
+	// local and not attached: every figure below is read from the media server
+	// in this process, and a control node has none however many relays it can
+	// reach. Guarded on the wrong one of the two, this sampler ran a second
+	// after a control node started, dereferenced a nil media server, and took
+	// the process down — on a timer, so the crash arrived detached from
+	// anything anybody had just done.
+	if !a.local() {
 		return Sample{At: time.Now().UTC()}
 	}
 

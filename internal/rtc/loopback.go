@@ -3,6 +3,7 @@ package rtc
 import (
 	"context"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,10 +33,30 @@ type loopback struct {
 
 	once  sync.Once
 	local map[string]bool
+
+	// declared is what a deployment said this machine answers on, for the
+	// addresses NAT keeps off the interfaces.
+	declared map[string]bool
 }
 
-func newLoopback() *loopback {
-	return &loopback{dialer: &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}}
+// newLoopback builds a dialler that turns connections to this machine around.
+//
+// extra names addresses this machine answers on that its interfaces do not
+// carry. Behind NAT — which is most cloud machines and every container — the
+// public address is mapped rather than held, so reading the interfaces finds
+// the private one and misses the address the relay actually publishes. Without
+// this the short-circuit never fires on exactly the deployments that need it.
+func newLoopback(extra ...string) *loopback {
+	l := &loopback{dialer: &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}}
+
+	l.declared = map[string]bool{}
+	for _, addr := range extra {
+		if addr = strings.TrimSpace(addr); addr != "" {
+			l.declared[addr] = true
+		}
+	}
+
+	return l
 }
 
 // addresses is every address this machine answers on.
@@ -57,6 +78,10 @@ func (l *loopback) addresses() map[string]bool {
 			if ipnet, ok := addr.(*net.IPNet); ok {
 				l.local[ipnet.IP.String()] = true
 			}
+		}
+
+		for addr := range l.declared {
+			l.local[addr] = true
 		}
 	})
 

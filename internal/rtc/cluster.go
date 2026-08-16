@@ -50,7 +50,7 @@ type Cluster struct {
 }
 
 // NewCluster builds one.
-func NewCluster(relays func() []string, key, secret string) *Cluster {
+func NewCluster(relays func() []string, key, secret string, ownAddresses ...string) *Cluster {
 	return &Cluster{
 		relays: relays,
 		key:    key,
@@ -69,7 +69,7 @@ func NewCluster(relays func() []string, key, secret string) *Cluster {
 		client: &http.Client{
 			Timeout: 4 * time.Second,
 			Transport: &http.Transport{
-				DialContext:         newLoopback().DialContext,
+				DialContext:         newLoopback(ownAddresses...).DialContext,
 				TLSHandshakeTimeout: 3 * time.Second,
 				MaxIdleConnsPerHost: 4,
 				IdleConnTimeout:     90 * time.Second,

@@ -153,6 +153,21 @@ type Meet struct {
 	// behind a proxy or a name the request does not already carry.
 	PublicURL string `yaml:"public_url"`
 
+	// PublicAddresses are addresses this machine answers on that its interfaces
+	// do not carry.
+	//
+	// Only a control node reads these, and only to recognise its own relay. It
+	// reaches a relay by the name that relay publishes; where that relay is this
+	// same machine, the name resolves to a public address which NAT maps rather
+	// than assigns — so reading the interfaces finds the private address and
+	// misses the one being dialled. The connection then goes out to the network
+	// and, on most hosts, never comes back: not refused, just waiting.
+	//
+	// Measured on the deployment that prompted this: twelve seconds per
+	// management call, and a 502 on the busiest page because the proxy in front
+	// gave up first. Declaring the address here makes it eleven milliseconds.
+	PublicAddresses []string `yaml:"public_addresses"`
+
 	// Silent answers nothing but a WebSocket upgrade.
 	//
 	// For a relay on a network that decides what a machine is by asking it.

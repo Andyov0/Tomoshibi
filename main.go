@@ -245,6 +245,7 @@ func serve(args []string) error {
 		application.UseCluster(rtc.NewCluster(
 			func() []string { return application.RelayURLs() },
 			conf.Key, conf.Secret,
+			conf.Meet.PublicAddresses...,
 		))
 
 		if enrolment := enrolFrom(conf); enrolment != nil {

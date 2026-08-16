@@ -1,15 +1,25 @@
 import { Button } from "@/components/ui/button";
 import {
 	DropdownMenu,
+	DropdownMenuCheckboxItem,
 	DropdownMenuContent,
 	DropdownMenuItem,
 	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useT } from "@/hooks/useT";
 import type { Phrase } from "@/live/i18n";
-import { SHARE_FRAME_RATES, type ShareFrameRate } from "@/live/room";
+import {
+	SHARE_FRAME_RATES,
+	SHARE_QUALITIES,
+	type ShareFrameRate,
+	type ShareQuality,
+	rememberQuality,
+	rememberedQuality,
+} from "@/live/room";
 import { MonitorOff, MonitorUp } from "lucide-react";
+import { useState } from "react";
 
 /**
  * Starting and stopping a screen share.
@@ -38,10 +48,18 @@ export function ShareButton({
 }: {
 	sharing: boolean;
 	/** Begin, in the manner chosen. */
-	onStart: (frameRate: ShareFrameRate) => void;
+	onStart: (frameRate: ShareFrameRate, quality: ShareQuality) => void;
 	onStop: () => void;
 }) {
 	const t = useT();
+
+	// Before the early return below, and it has to stay there. A hook after a
+	// conditional return is called on some renders and not others, and React
+	// counts them: the render where sharing first becomes true finds fewer hooks
+	// than the one before it and throws. The failure is not subtle — the button
+	// crashes at the moment somebody starts sharing — but it is invisible to
+	// anything that only renders the component once.
+	const [quality, setQuality] = useState<ShareQuality>(rememberedQuality);
 
 	// Stopping is not a choice, so while a share is running the button is a
 	// button. Opening a menu to answer a question that has already been answered
@@ -77,10 +95,12 @@ export function ShareButton({
 			<DropdownMenuContent align="center" side="top">
 				<DropdownMenuLabel>{t("Share your screen")}</DropdownMenuLabel>
 
+				{/* The kind of picture starts the share. It is the question somebody
+				    came here to answer, so it is what the items do. */}
 				{SHARE_FRAME_RATES.map((rate) => (
 					<DropdownMenuItem
 						key={rate}
-						onSelect={() => onStart(rate)}
+						onSelect={() => onStart(rate, quality)}
 						className="flex-col items-start gap-0"
 					>
 						<span className="text-fg">{t(SHARE_INTENT[rate].label)}</span>
@@ -89,6 +109,36 @@ export function ShareButton({
 						    picture is the question being asked. */}
 						<span className="text-fg-muted text-xs">{t(SHARE_INTENT[rate].describes)}</span>
 					</DropdownMenuItem>
+				))}
+
+				<DropdownMenuSeparator />
+
+				{/* How much to send, which follows from the display and the upload
+				    rather than from what is on screen — so it is a setting that
+				    stays put rather than a choice made every time. Checkboxes
+				    rather than items: selecting one changes what the two above will
+				    do, and does not itself start anything. */}
+				<DropdownMenuLabel>{t("Quality")}</DropdownMenuLabel>
+
+				{SHARE_QUALITIES.map((option) => (
+					<DropdownMenuCheckboxItem
+						key={option}
+						checked={quality === option}
+						onSelect={(event) => {
+							// Kept open: somebody adjusting the quality is usually
+							// about to start a share, and closing the menu would make
+							// them open it again to do the thing they came for.
+							event.preventDefault();
+							setQuality(option);
+							rememberQuality(option);
+						}}
+						className="flex-col items-start gap-0"
+					>
+						<span className="text-fg">{t(SHARE_QUALITY_LABELS[option].label)}</span>
+						<span className="text-fg-muted text-xs">
+							{t(SHARE_QUALITY_LABELS[option].describes)}
+						</span>
+					</DropdownMenuCheckboxItem>
 				))}
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -105,4 +155,17 @@ export function ShareButton({
 const SHARE_INTENT: Record<ShareFrameRate, { label: Phrase; describes: Phrase }> = {
 	30: { label: "Sharper text", describes: "Code, documents, slides" },
 	60: { label: "Smoother motion", describes: "Video, animation, demos" },
+};
+
+/**
+ * The three amounts of picture, in what they cost rather than in pixels.
+ *
+ * The resolution is named because somebody choosing this is looking at a display
+ * and knows what it is, and the bandwidth beside it is the part they cannot see
+ * — which is the half that decides whether the choice is a good one.
+ */
+const SHARE_QUALITY_LABELS: Record<ShareQuality, { label: Phrase; describes: Phrase }> = {
+	standard: { label: "Standard", describes: "1080p, up to 8 Mbps" },
+	high: { label: "High", describes: "1440p, up to 16 Mbps" },
+	ultra: { label: "Ultra", describes: "4K, up to 30 Mbps. Needs a fast machine and upload." },
 };

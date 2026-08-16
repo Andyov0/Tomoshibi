@@ -165,6 +165,13 @@ const en = {
 	Copy: "Copy",
 	Copied: "Copied",
 	Done: "Done",
+	Quality: "Quality",
+	Standard: "Standard",
+	High: "High",
+	Ultra: "Ultra",
+	"1080p, up to 8 Mbps": "1080p, up to 8 Mbps",
+	"1440p, up to 16 Mbps": "1440p, up to 16 Mbps",
+	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K, up to 30 Mbps. Needs a fast machine and upload.",
 } as const;
 
 export default en;

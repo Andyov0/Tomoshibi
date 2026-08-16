@@ -51,7 +51,51 @@ describe("ShareButton", () => {
 		open();
 		fireEvent.click(screen.getByRole("menuitem", { name: new RegExp(answer) }));
 
-		expect(onStart).toHaveBeenCalledWith(rate);
+		// Both halves of the choice: the kind of picture, which is what was just
+		// clicked, and the amount of it, which was decided beforehand and is
+		// carried along rather than asked again.
+		expect(onStart).toHaveBeenCalledWith(rate, "standard");
+	});
+
+	/*
+	 * How much picture to send is a separate question from what kind it is, and
+	 * it is answered on a different schedule: the kind changes with whatever is
+	 * on screen this minute, the amount follows from a display and an upload
+	 * that do not change between meetings.
+	 *
+	 * So it is a setting rather than a step. These guard that it stays one —
+	 * that choosing it starts nothing, and that what was chosen is what the next
+	 * share uses.
+	 */
+	it("offers an amount of picture separately from the kind", () => {
+		render(<ShareButton sharing={false} onStart={vi.fn()} onStop={vi.fn()} />);
+
+		open();
+
+		for (const label of ["Standard", "High", "Ultra"]) {
+			expect(screen.getByText(label)).toBeDefined();
+		}
+	});
+
+	it("does not start a share when the quality is chosen", () => {
+		const onStart = vi.fn();
+		render(<ShareButton sharing={false} onStart={onStart} onStop={vi.fn()} />);
+
+		open();
+		fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Ultra/ }));
+
+		expect(onStart).not.toHaveBeenCalled();
+	});
+
+	it("shares at the quality that was chosen", () => {
+		const onStart = vi.fn();
+		render(<ShareButton sharing={false} onStart={onStart} onStop={vi.fn()} />);
+
+		open();
+		fireEvent.click(screen.getByRole("menuitemcheckbox", { name: /Ultra/ }));
+		fireEvent.click(screen.getByRole("menuitem", { name: /Smoother motion/ }));
+
+		expect(onStart).toHaveBeenCalledWith(60, "ultra");
 	});
 
 	/*

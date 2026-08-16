@@ -132,6 +132,13 @@ const zhHant: Dictionary = {
 	Copy: "複製",
 	Copied: "已複製",
 	Done: "完成",
+	Quality: "畫質",
+	Standard: "標準",
+	High: "高",
+	Ultra: "極高",
+	"1080p, up to 8 Mbps": "1080p，最高 8 Mbps",
+	"1440p, up to 16 Mbps": "1440p，最高 16 Mbps",
+	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K，最高 30 Mbps。需要夠快的機器和上行頻寬。",
 };
 
 export default zhHant;

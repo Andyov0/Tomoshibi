@@ -21,15 +21,77 @@ import type { Join } from "./api";
 export const SHARE_FRAME_RATES = [30, 60] as const;
 export type ShareFrameRate = (typeof SHARE_FRAME_RATES)[number];
 
+/**
+ * How much picture to send, separately from what kind of picture it is.
+ *
+ * These were one choice until somebody wanted a sharp share at sixty frames and
+ * found that asking for smooth motion also fixed the resolution at 1080p and the
+ * ceiling at eight megabits. The two questions are genuinely independent — what
+ * is on the screen decides how to encode it, and how much bandwidth there is
+ * decides how much of it to send — so they are asked separately now.
+ *
+ * The heights are what the browser is asked to capture. It is a request rather
+ * than a guarantee: a display smaller than the number gets its own size, and a
+ * machine that cannot encode what it captured will drop frames or scale down on
+ * its own. Nothing here can promise 4K on a laptop that has other ideas.
+ */
+export const SHARE_QUALITIES = ["standard", "high", "ultra"] as const;
+export type ShareQuality = (typeof SHARE_QUALITIES)[number];
+
+interface QualityProfile {
+	width: number;
+	height: number;
+	/**
+	 * A ceiling, not a target — congestion control decides the rest, and on a
+	 * network that cannot carry this the encoder simply sends less.
+	 *
+	 * Scaled with the pixels rather than set flat. Four times the area at the
+	 * same bitrate is not a sharper picture, it is the same bitrate spread
+	 * thinner, which is how a 4K option ends up looking worse than the 1080p one
+	 * it replaced.
+	 */
+	maxBitrate: number;
+}
+
+const QUALITY_PROFILES: Record<ShareQuality, QualityProfile> = {
+	// What a share was before this existed, and still the right default: 1080p
+	// is most people's screen, and eight megabits is more than most uploads have
+	// to spare.
+	standard: { width: 1920, height: 1080, maxBitrate: 8_000_000 },
+
+	// For a display that has more than 1080p to show and an upload that can
+	// carry it. Sixteen megabits for 1.8 times the pixels — deliberately more
+	// than proportional, because detail is what somebody choosing this wants and
+	// the encoder should not have to choose between it and motion.
+	high: { width: 2560, height: 1440, maxBitrate: 16_000_000 },
+
+	// Everything the browser will give. Worth it for a 4K display showing small
+	// text, and wasted on anything else: four times the standard area costs four
+	// times the encoding, and a machine that cannot keep up drops frames rather
+	// than degrading gently.
+	ultra: { width: 3840, height: 2160, maxBitrate: 30_000_000 },
+};
+
 /** Everything that follows from what a share is for. */
 interface ShareProfile {
-	/** A ceiling, not a target. Congestion control decides the rest. */
-	maxBitrate: number;
 	/** What the picture is, told to the encoder in its own vocabulary. */
 	contentHint: "text" | "motion";
 	videoCodec: VideoCodec;
 	/** What to sacrifice when the two cannot both be had. */
 	degradationPreference: RTCDegradationPreference;
+	/**
+	 * How much of the quality's ceiling this kind of picture needs.
+	 *
+	 * A still page of code and a playing video at the same resolution do not
+	 * want the same bitrate: most of the code frame is identical to the one
+	 * before it and costs almost nothing to send, while the video changes
+	 * everywhere at once. Handing both the same ceiling either starves the video
+	 * or reserves bandwidth the text was never going to use.
+	 *
+	 * This was briefly dropped when resolution became its own choice, and an
+	 * existing test caught it: the busier picture must keep the larger ceiling.
+	 */
+	bitrateShare: number;
 }
 
 /**
@@ -53,10 +115,13 @@ const SHARE_PROFILES: Record<ShareFrameRate, ShareProfile> = {
 	// picture to a hardware encoder tuned for faces, where small type is the
 	// first thing to go soft.
 	30: {
-		maxBitrate: 5_000_000,
 		contentHint: "text",
 		videoCodec: "vp8",
 		degradationPreference: "maintain-resolution",
+		// Two thirds. A mostly-still screen reaches nothing like the ceiling
+		// anyway, and leaving the rest unclaimed is bandwidth somebody else's
+		// camera can have.
+		bitrateShare: 0.65,
 	},
 
 	// Anything that moves: a video, an animation, a demonstration of something
@@ -65,12 +130,42 @@ const SHARE_PROFILES: Record<ShareFrameRate, ShareProfile> = {
 	// everywhere, and asks to keep the frame rate that was the whole reason for
 	// choosing it.
 	60: {
-		maxBitrate: 8_000_000,
 		contentHint: "motion",
 		videoCodec: "h264",
 		degradationPreference: "maintain-framerate",
+		// All of it. Sixty frames of a picture that changes everywhere is the
+		// case the ceiling was chosen for.
+		bitrateShare: 1,
 	},
 };
+
+/**
+ * What to send, given both choices.
+ *
+ * VP8 above 1080p is the one combination that has to be overridden. Software
+ * encoding 1440p or 4K at thirty frames asks more of a CPU than most have, and
+ * the failure is not a softer picture — it is an encoder falling behind, which
+ * arrives as a share that stutters and lags further behind the longer it runs.
+ * H.264 has hardware encoding almost everywhere and keeps up.
+ */
+export function settingsForTest(frameRate: ShareFrameRate, quality: ShareQuality) {
+	return settingsFor(frameRate, quality);
+}
+
+function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
+	const profile = SHARE_PROFILES[frameRate];
+	const size = QUALITY_PROFILES[quality];
+
+	const videoCodec: VideoCodec =
+		profile.videoCodec === "vp8" && size.height > 1080 ? "h264" : profile.videoCodec;
+
+	return {
+		...profile,
+		...size,
+		videoCodec,
+		maxBitrate: Math.round(size.maxBitrate * profile.bitrateShare),
+	};
+}
 
 /**
  * Build the room.
@@ -171,16 +266,17 @@ export async function share(
 	room: Room,
 	wanted: boolean,
 	frameRate: ShareFrameRate,
+	quality: ShareQuality = "standard",
 ): Promise<LocalTrackPublication | undefined> {
-	const profile = SHARE_PROFILES[frameRate];
+	const profile = settingsFor(frameRate, quality);
 
 	const published = await room.localParticipant.setScreenShareEnabled(
 		wanted,
 		{
 			audio: true,
 			resolution: {
-				width: 1920,
-				height: 1080,
+				width: profile.width,
+				height: profile.height,
 				frameRate,
 			},
 			// The picker should not offer this tab, which would be a mirror tunnel.
@@ -207,4 +303,40 @@ export async function share(
 	);
 
 	return published;
+}
+
+/**
+ * Where the chosen quality is remembered.
+ *
+ * A person's answer to this follows from their display and their upload, and
+ * neither changes between meetings. Asking again every time would be asking a
+ * question whose answer they already gave.
+ *
+ * Local storage rather than session: it belongs to the machine, which is the
+ * thing that decides it.
+ */
+const QUALITY_KEY = "meet.share.quality";
+
+/** The quality to use, as last chosen on this machine. */
+export function rememberedQuality(): ShareQuality {
+	try {
+		const stored = localStorage.getItem(QUALITY_KEY);
+		if (stored && (SHARE_QUALITIES as readonly string[]).includes(stored)) {
+			return stored as ShareQuality;
+		}
+	} catch {
+		// Storage can be unavailable — a private window, a blocked origin — and
+		// a share should still be possible when it is.
+	}
+
+	return "standard";
+}
+
+/** Remember a quality for next time. */
+export function rememberQuality(quality: ShareQuality): void {
+	try {
+		localStorage.setItem(QUALITY_KEY, quality);
+	} catch {
+		// As above: worth doing, never worth failing over.
+	}
 }

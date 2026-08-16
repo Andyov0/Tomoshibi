@@ -132,6 +132,13 @@ const ja: Dictionary = {
 	Copy: "コピー",
 	Copied: "コピーしました",
 	Done: "完了",
+	Quality: "画質",
+	Standard: "標準",
+	High: "高",
+	Ultra: "最高",
+	"1080p, up to 8 Mbps": "1080p、最大 8 Mbps",
+	"1440p, up to 16 Mbps": "1440p、最大 16 Mbps",
+	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K、最大 30 Mbps。速いマシンと上り回線が必要です。",
 };
 
 export default ja;

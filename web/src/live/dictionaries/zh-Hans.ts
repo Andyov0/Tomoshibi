@@ -132,6 +132,13 @@ const zhHans: Dictionary = {
 	Copy: "复制",
 	Copied: "已复制",
 	Done: "完成",
+	Quality: "画质",
+	Standard: "标准",
+	High: "高",
+	Ultra: "极高",
+	"1080p, up to 8 Mbps": "1080p，最高 8 Mbps",
+	"1440p, up to 16 Mbps": "1440p，最高 16 Mbps",
+	"4K, up to 30 Mbps. Needs a fast machine and upload.": "4K，最高 30 Mbps。需要够快的机器和上行带宽。",
 };
 
 export default zhHans;

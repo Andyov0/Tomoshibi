@@ -115,7 +115,7 @@ export function ControlBar({
 			{canShareScreen() && (
 				<ShareButton
 					sharing={local.screen}
-					onStart={(frameRate) => void guard(() => share(room, true, frameRate))()}
+					onStart={(frameRate, quality) => void guard(() => share(room, true, frameRate, quality))()}
 					onStop={() => void guard(() => share(room, false, 30))()}
 				/>
 			)}

@@ -52,6 +52,7 @@ export function ServerPicker({
 	const [measured, setMeasured] = useState<Map<string, number | undefined>>();
 	const [measuring, setMeasuring] = useState(false);
 	const [ready, setReady] = useState(true);
+	const [upward, setUpward] = useState(false);
 	const frame = useRef<HTMLDivElement>(null);
 	const alive = useRef(true);
 
@@ -111,6 +112,37 @@ export function ServerPicker({
 
 		measure();
 	}, [open, measured, measuring, measure]);
+
+	/**
+	 * Which way the sheet opens.
+	 *
+	 * Downward unless it would not fit, and on a deployment with a dozen relays
+	 * it will not: the menu runs off the bottom of the window and somebody has
+	 * to scroll the whole page to read the options for a control they can see.
+	 * Opening upward puts the list between the control and the top of the
+	 * window, which is where there is room on a join screen — everything below
+	 * the button is the button.
+	 *
+	 * Measured when it opens rather than assumed from where the control sits,
+	 * because the answer depends on the window as it is now.
+	 */
+	useEffect(() => {
+		if (!open) return;
+
+		const box = frame.current?.getBoundingClientRect();
+		if (!box) return;
+
+		// Roughly what the sheet will be: a row for each relay, one for
+		// automatic, and the strip along the top. Approximate on purpose — the
+		// menu has not been laid out yet, and being a little wrong here costs a
+		// menu that opens the same way it would have.
+		const wants = Math.min(360, 44 + (relays.length + 1) * 56);
+
+		const below = window.innerHeight - box.bottom;
+		const above = box.top;
+
+		setUpward(below < wants && above > below);
+	}, [open, relays.length]);
 
 	// Closed by anything that is not this. A menu that stays open behind the
 	// rest of the page is one somebody has to find their way out of.
@@ -189,14 +221,21 @@ export function ServerPicker({
 				<ul
 					role="listbox"
 					className={cn(
-						"absolute top-full right-0 left-0 z-20 mt-2 overflow-hidden rounded-xl",
+						"absolute right-0 left-0 z-20 overflow-y-auto overscroll-contain rounded-xl",
+						// Room to breathe against the edge it is opening towards, so
+						// a long list scrolls inside the sheet rather than off the
+						// window.
+						upward ? "bottom-full mb-2 max-h-[60vh]" : "top-full mt-2 max-h-[60vh]",
 						// A ring as well as a border, and a real shadow. It has to
 						// read as a sheet above the page rather than as more page:
 						// on a dark interface a one-pixel border alone disappears.
 						"border border-fg/15 bg-surface-hi shadow-2xl ring-1 ring-black/40",
-						// Arrives from just under the control rather than appearing:
-						// a menu that fades in from nowhere reads as a page redraw.
-						"origin-top animate-arrive",
+						// Arrives from the edge it is anchored to rather than
+						// appearing: a menu that fades in from nowhere reads as a
+						// page redraw, and one that grows the wrong way reads as a
+						// mistake.
+						"animate-arrive",
+						upward ? "origin-bottom" : "origin-top",
 					)}
 				>
 					<li className="flex items-center justify-between gap-2 border-fg/10 border-b bg-black/15 px-3 py-2">

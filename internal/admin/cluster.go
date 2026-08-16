@@ -61,7 +61,7 @@ func readFleet(ctx context.Context, fleet Fleet, named map[string]string) fleetR
 
 	reading := fleetReading{Asked: len(relays), Nodes: make([]nodeReading, len(relays))}
 
-	ctx, cancel := context.WithTimeout(ctx, 6*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	var wait sync.WaitGroup

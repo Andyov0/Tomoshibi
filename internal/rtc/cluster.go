@@ -55,11 +55,26 @@ func NewCluster(relays func() []string, key, secret string) *Cluster {
 		relays: relays,
 		key:    key,
 		secret: secret,
-		// Longer than the loopback client, and not by much. This crosses the
-		// public internet to a relay that may be on another continent, and a
-		// management page that hangs is still worse than one that says it could
-		// not find out.
-		client: &http.Client{Timeout: 8 * time.Second},
+		// Four seconds, not eight. A relay that has not answered in four is one
+		// the page should say nothing about rather than one worth waiting
+		// longer for: these are drawn several at a time behind a person who is
+		// looking at the screen, and the slowest decides how long they wait.
+		//
+		// The dialler turns a connection to this machine's own address around
+		// at the socket. A control node running a relay beside it reaches that
+		// relay by its published name, which resolves to the public address —
+		// and a packet sent to your own public address usually never comes
+		// back, so every call waited out its full timeout. That deployment
+		// spent twelve seconds a request and answered 502 on the slowest page.
+		client: &http.Client{
+			Timeout: 4 * time.Second,
+			Transport: &http.Transport{
+				DialContext:         newLoopback().DialContext,
+				TLSHandshakeTimeout: 3 * time.Second,
+				MaxIdleConnsPerHost: 4,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		},
 	}
 }
 
@@ -178,7 +193,7 @@ func (c *Cluster) Check(ctx context.Context, url string) (bool, time.Duration, s
 	origin := strings.Replace(strings.Replace(url, "wss://", "https://", 1), "ws://", "http://", 1)
 	origin = strings.TrimRight(origin, "/")
 
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, origin+"/api/health", nil)

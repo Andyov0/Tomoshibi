@@ -39,14 +39,89 @@ die() { printf '\nerror: %%s\n' "$1" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || die "curl is needed and is not installed"
 
 # The prefix names this relay: in the zone above, and on the management pages.
-if [ -n "${PREFIX:-}" ]; then
-    prefix="$PREFIX"
-else
-    printf 'Prefix for this relay (it becomes <prefix>.%%s): ' "$DOMAIN"
-    read -r prefix </dev/tty
-fi
+#
+# Checked against the deployment before anything else happens. A prefix already
+# in use, typed by mistake, would move an existing relay's name to this machine
+# while the relay it belonged to went on holding calls at an address that no
+# longer reached it — and nothing anywhere would say so.
+replace=false
 
-[ -n "$prefix" ] || die "a prefix is needed"
+ask_prefix() {
+    while :; do
+        if [ -n "${PREFIX:-}" ]; then
+            prefix="$PREFIX"
+        else
+            printf 'Prefix for this relay (it becomes <prefix>.%%s): ' "$DOMAIN"
+            read -r prefix </dev/tty
+        fi
+
+        prefix=$(printf '%%s' "$prefix" | tr 'A-Z' 'a-z' | tr -d '[:space:]')
+
+        if [ -z "$prefix" ]; then
+            printf '  a prefix is needed
+'
+            unset PREFIX
+            continue
+        fi
+
+        # Lowercase letters, digits and dashes, not starting or ending in one.
+        if ! printf '%%s' "$prefix" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'; then
+            printf '  %%s cannot be a name: use lowercase letters, digits and dashes
+' "$prefix"
+            unset PREFIX
+            continue
+        fi
+
+        answer=$(curl -fsS --max-time 15 -X POST "$CONTROL/api/enrol/taken"             -H 'Content-Type: application/json'             -d "{"secret":"$SECRET","prefix":"$prefix"}" 2>/dev/null || true)
+
+        case "$answer" in
+            *'"taken":true'*)
+                printf '
+  %%s.%%s is already in use by another relay.
+' "$prefix" "$DOMAIN"
+
+                if [ -n "${REPLACE:-}" ]; then
+                    printf '  REPLACE is set, so this machine will take it over.
+
+'
+                    replace=true
+                    return
+                fi
+
+                printf '  Type another prefix, or "replace" to take it over
+'
+                printf '  (only do that if this machine is a rebuild of that one).
+'
+                printf '  Replace %%s? [y/N] ' "$prefix"
+                read -r confirm </dev/tty
+
+                case "$confirm" in
+                    y|Y|yes|YES)
+                        replace=true
+                        return
+                        ;;
+                esac
+
+                unset PREFIX
+                continue
+                ;;
+            *'"taken":false'*)
+                return
+                ;;
+            *)
+                # The control node could not be asked. Carrying on rather than
+                # stopping: the enrolment below refuses a taken prefix anyway,
+                # and this check exists to ask nicely rather than to be the
+                # thing that enforces it.
+                printf '  (could not check whether %%s is free; carrying on)
+' "$prefix"
+                return
+                ;;
+        esac
+    done
+}
+
+ask_prefix
 region="${REGION:-}"
 
 # The address browsers will reach this machine on. Asked of the outside rather
@@ -79,8 +154,8 @@ fi
 say "Claiming this deployment's configuration"
 package=$(curl -fsS --max-time 30 -X POST "$CONTROL/api/enrol" \
     -H 'Content-Type: application/json' \
-    -d "{\"secret\":\"$SECRET\",\"prefix\":\"$prefix\",\"region\":\"$region\",\"address\":\"$address\"}") \
-    || die "the control node refused this machine; check the prefix and that this script is current"
+    -d "{\"secret\":\"$SECRET\",\"prefix\":\"$prefix\",\"region\":\"$region\",\"address\":\"$address\",\"replace\":$replace}") \
+    || die "the control node refused this machine. If it said the prefix is in use, run this again and pick another"
 
 # Read with sed rather than a JSON parser, because a machine this new may have
 # neither python nor jq, and installing one to read six fields is a dependency

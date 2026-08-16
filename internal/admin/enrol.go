@@ -156,6 +156,14 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 		Prefix  string `json:"prefix"`
 		Region  string `json:"region"`
 		Address string `json:"address"`
+		// Replace says this prefix is meant to be taken over.
+		//
+		// Off by default, which is the change that matters: a prefix somebody
+		// typed twice by accident used to quietly move an existing relay's
+		// address to the new machine, and the relay it belonged to went on
+		// holding calls at a name that no longer pointed at it. Nothing said
+		// so. Now it is refused and the script asks for another.
+		Replace bool `json:"replace"`
 	}
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192)).Decode(&body); err != nil {
@@ -221,9 +229,19 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The record before the relay is listed. A relay listed before its name
-	// resolves shows as unreachable for as long as DNS takes, and somebody
-	// watching reads that as a failed install.
+	// Whether this prefix is taken, checked before anything is changed. The DNS
+	// record used to be created first, so a prefix that was then refused had
+	// already had the name moved to the new machine — the refusal was honest
+	// and the damage was done.
+	if taken, err := a.prefixTaken(relay.Name); err == nil && taken && !body.Replace {
+		a.log.Record(Entry{
+			Action: "enrol", Trip: "-", Target: relay.Name,
+			Failed: true, Reason: "prefix already in use",
+		})
+		refuse(w, http.StatusConflict, "relay_exists")
+		return
+	}
+
 	named := false
 	if a.enrolment.Naming != nil {
 		if err := a.enrolment.Naming.Point(host, address); err != nil {
@@ -238,15 +256,29 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Re-enrolling an existing name updates it rather than refusing. A machine
-	// rebuilt under the same prefix is the ordinary case, and refusing would
-	// leave somebody deleting the relay from a page before they could run the
-	// script again.
+	// A prefix already in use is refused unless somebody said to take it over.
+	//
+	// The dangerous case is not the deliberate rebuild — it is the typo. Two
+	// machines given one prefix means the name points at the second while the
+	// first goes on holding calls at an address that no longer reaches it, and
+	// nothing anywhere says so. Refusing costs a rebuild one extra word and
+	// costs a typo nothing at all.
 	if err := a.relays.AddRelay(relay); errors.Is(err, store.ErrRelayExists) {
+		if !body.Replace {
+			a.log.Record(Entry{
+				Action: "enrol", Trip: "-", Target: relay.Name,
+				Failed: true, Reason: "prefix already in use",
+			})
+			refuse(w, http.StatusConflict, "relay_exists")
+			return
+		}
+
 		if err := a.relays.UpdateRelay(relay); err != nil {
 			refuse(w, http.StatusInternalServerError, relayReason(err))
 			return
 		}
+
+		slog.Info("a relay took over a prefix already in use", "name", relay.Name)
 	} else if err != nil {
 		refuse(w, http.StatusInternalServerError, relayReason(err))
 		return
@@ -296,4 +328,68 @@ func (a *API) installScript(_ Session, w http.ResponseWriter, _ *http.Request) {
 		a.enrolment.Secret,
 		a.enrolment.Domain,
 		a.enrolment.ListenPort, a.enrolment.UDPPort, a.enrolment.TCPPort)
+}
+
+// prefixTaken says whether a relay already answers to this name.
+func (a *API) prefixTaken(name string) (bool, error) {
+	list, err := a.relays.Relays()
+	if err != nil {
+		return false, err
+	}
+
+	for _, relay := range list {
+		if relay.Name == name {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// taken answers whether a prefix is free, for a script about to ask somebody to
+// type one.
+//
+// Behind the enrolment secret, because the list of relay names is not something
+// to hand to whoever asks — and whoever holds the secret can read the whole list
+// by enrolling anyway.
+func (a *API) taken(w http.ResponseWriter, r *http.Request) {
+	if !a.enrolment.Configured() || a.relays == nil {
+		refuse(w, http.StatusServiceUnavailable, "no_enrolment")
+		return
+	}
+
+	caller := addressOf(r, a.conf.Meet.TrustProxy)
+	if !a.sessions.limit.Allow(caller) {
+		refuse(w, http.StatusTooManyRequests, "too_many_attempts")
+		return
+	}
+
+	var body struct {
+		Secret string `json:"secret"`
+		Prefix string `json:"prefix"`
+	}
+
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
+		refuse(w, http.StatusBadRequest, "unreadable")
+		return
+	}
+
+	if subtle.ConstantTimeCompare([]byte(body.Secret), []byte(a.enrolment.Secret)) != 1 {
+		refuse(w, http.StatusForbidden, "wrong_secret")
+		return
+	}
+
+	prefix := strings.ToLower(strings.TrimSpace(body.Prefix))
+	if !validPrefix(prefix) {
+		refuse(w, http.StatusBadRequest, "bad_prefix")
+		return
+	}
+
+	held, err := a.prefixTaken(prefix)
+	if err != nil {
+		refuse(w, http.StatusInternalServerError, "store_unavailable")
+		return
+	}
+
+	respond(w, map[string]any{"prefix": prefix, "taken": held})
 }

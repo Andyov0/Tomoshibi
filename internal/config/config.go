@@ -239,6 +239,16 @@ type Enrol struct {
 	CertFile string `yaml:"cert_file"`
 	KeyFile  string `yaml:"key_file"`
 
+	// RedisAddr is how a *relay* reaches redis, which is not how this node
+	// does.
+	//
+	// A control node running redis beside it says 127.0.0.1, and sending that
+	// to another machine points it at its own loopback — where there is nothing,
+	// so the relay fails to start with an error about redis that names an
+	// address it was never meant to try. Empty falls back to this node's own,
+	// which is right only when redis is somewhere else entirely.
+	RedisAddr string `yaml:"redis_addr"`
+
 	// Binary is the file served to a new relay. The control node hands out the
 	// build it is running, so a fleet cannot drift apart by version.
 	Binary string `yaml:"binary"`

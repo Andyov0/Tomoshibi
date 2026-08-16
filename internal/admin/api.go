@@ -280,6 +280,7 @@ func (a *API) MountEnrolment(mux *http.ServeMux) {
 	}
 
 	mux.HandleFunc("POST /api/enrol", a.claim)
+	mux.HandleFunc("POST /api/enrol/taken", a.taken)
 }
 
 // open signs somebody in.

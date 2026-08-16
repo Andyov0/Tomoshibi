@@ -317,10 +317,13 @@ func TestTheCallersAddressIsUsedWhenNoneIsGiven(t *testing.T) {
 	}
 }
 
-// Re-running the script on a rebuilt machine is the ordinary case. It must
-// update rather than refuse, or somebody has to delete the relay from a page
-// before they can reinstall it.
-func TestReEnrollingUpdatesRatherThanRefusing(t *testing.T) {
+// A prefix already in use is refused, and nothing is touched.
+//
+// The dangerous case is the typo rather than the deliberate rebuild. Two
+// machines given one prefix means the name points at the second while the first
+// goes on holding calls at an address that no longer reaches it — and nothing
+// anywhere says so. This used to update silently.
+func TestATakenPrefixIsRefusedAndChangesNothing(t *testing.T) {
 	_, relays, names, mux := enrolling(t)
 
 	first := httptest.NewRecorder()
@@ -335,17 +338,51 @@ func TestReEnrollingUpdatesRatherThanRefusing(t *testing.T) {
 	mux.ServeHTTP(second, enrolRequest(
 		`{"secret":"`+enrolSecret+`","prefix":"tokyo","address":"198.51.100.10"}`))
 
-	if second.Code != http.StatusOK {
-		t.Fatalf("re-enrolment answered %d: %s", second.Code, second.Body)
+	if second.Code != http.StatusConflict {
+		t.Fatalf("a second machine took the prefix %q and answered %d, wanted 409",
+			"tokyo", second.Code)
+	}
+
+	// And crucially: the name still points where it did. An earlier version
+	// created the record before checking, so the refusal was honest and the
+	// existing relay had already been unreachable by then.
+	if got := names.pointed["tokyo.relay.example.invalid"]; got != "198.51.100.9" {
+		t.Errorf("the name moved to %q on a refused enrolment; the relay holding calls "+
+			"there is now at an address nobody resolves", got)
 	}
 
 	list, _ := relays.Relays()
-	if len(list) != 1 {
-		t.Errorf("re-enrolling produced %d relays, wanted 1", len(list))
+	if len(list) != 1 || list[0].URL != "wss://tokyo.relay.example.invalid:13377" {
+		t.Errorf("the relay list changed on a refused enrolment: %+v", list)
+	}
+}
+
+// Saying so takes it over, which is what a rebuilt machine needs.
+func TestReplacingATakenPrefixIsAllowedWhenAsked(t *testing.T) {
+	_, relays, names, mux := enrolling(t)
+
+	first := httptest.NewRecorder()
+	mux.ServeHTTP(first, enrolRequest(
+		`{"secret":"`+enrolSecret+`","prefix":"tokyo","address":"198.51.100.9"}`))
+
+	if first.Code != http.StatusOK {
+		t.Fatalf("first enrolment answered %d", first.Code)
+	}
+
+	second := httptest.NewRecorder()
+	mux.ServeHTTP(second, enrolRequest(
+		`{"secret":"`+enrolSecret+`","prefix":"tokyo","address":"198.51.100.10","replace":true}`))
+
+	if second.Code != http.StatusOK {
+		t.Fatalf("an asked-for replacement answered %d: %s", second.Code, second.Body)
+	}
+
+	if list, _ := relays.Relays(); len(list) != 1 {
+		t.Errorf("replacing produced %d relays, wanted 1", len(list))
 	}
 
 	if got := names.pointed["tokyo.relay.example.invalid"]; got != "198.51.100.10" {
-		t.Errorf("the name still points at %q after the machine moved", got)
+		t.Errorf("the name still points at %q after the machine was replaced", got)
 	}
 }
 

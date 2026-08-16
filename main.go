@@ -451,7 +451,7 @@ func enrolFrom(conf *config.Config) *admin.Enrolment {
 		Secret:        conf.Meet.Enrol.Secret,
 		Domain:        conf.Meet.Enrol.Domain,
 		PublicURL:     conf.Meet.Enrol.PublicURL,
-		RedisAddr:     conf.LiveKit.Redis.Address,
+		RedisAddr:     relayRedis(conf),
 		RedisPassword: conf.LiveKit.Redis.Password,
 		CertPath:      conf.Meet.Enrol.Cert(conf.Meet.TLSCert),
 		KeyPath:       conf.Meet.Enrol.Key(conf.Meet.TLSKey),
@@ -468,6 +468,37 @@ func enrolFrom(conf *config.Config) *admin.Enrolment {
 	}
 
 	return enrolment
+}
+
+// relayRedis is the address a relay should use, which is not always the one
+// this node uses.
+//
+// A control node with redis beside it reaches it on loopback, and handing that
+// to another machine points it at its own — where there is nothing. The failure
+// is loud but misleading: the relay says it cannot reach redis and names an
+// address nobody configured for it.
+func relayRedis(conf *config.Config) string {
+	if configured := conf.Meet.Enrol.RedisAddr; configured != "" {
+		return configured
+	}
+
+	address := conf.LiveKit.Redis.Address
+
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return address
+	}
+
+	// Only the addresses that mean "this machine" are a problem. Anything else
+	// is a name or address that means the same thing everywhere, and is what a
+	// relay should use too.
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() || host == "localhost" {
+		slog.Warn("redis is configured on loopback, which no relay can reach. Set "+
+			"meet.enrol.redis_addr to the address relays should use",
+			"configured", address, "port", port)
+	}
+
+	return address
 }
 
 func adoptRelays(st *store.Store, conf *config.Config) error {

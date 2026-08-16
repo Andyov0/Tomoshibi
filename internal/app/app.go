@@ -447,6 +447,18 @@ type relayEntry struct {
 	// a person deciding where to hold a meeting.
 	Label string `json:"label,omitempty"`
 
+	// Probe is where this relay answers STUN binding requests, as host:port. A
+	// client with one times a single round trip over UDP; a client without one
+	// times the signalling socket, which is three over TLS.
+	Probe string `json:"probe,omitempty"`
+
+	// Maintenance marks a relay that is here but not taking calls.
+	//
+	// Sent rather than the relay being left out, so a picker can show it greyed
+	// instead of hiding it: one that vanishes looks deleted, and somebody who
+	// used it yesterday has no way to tell those apart.
+	Maintenance bool `json:"maintenance,omitempty"`
+
 	// Fallback marks a relay the deployment keeps in reserve. Sent so that a
 	// picker can say so rather than presenting it as an equal choice — a person
 	// who picks it should know they are asking for the long way round.
@@ -489,7 +501,9 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 	for _, relay := range list {
 		entries = append(entries, relayEntry{
 			Name: relay.Name, URL: relay.URL, Region: relay.Region,
-			Label: relay.Shown(), Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
+			Label: relay.Shown(), Probe: relay.Probe,
+			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
+			Maintenance: !relay.Enabled,
 		})
 	}
 

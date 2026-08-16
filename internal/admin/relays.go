@@ -43,6 +43,7 @@ type relayView struct {
 	URL       string `json:"url"`
 	Region    string `json:"region,omitempty"`
 	Label     string `json:"label,omitempty"`
+	Probe     string `json:"probe,omitempty"`
 	Fallback  bool   `json:"fallback,omitempty"`
 	AdminOnly bool   `json:"adminOnly,omitempty"`
 	Enabled   bool   `json:"enabled"`
@@ -79,7 +80,8 @@ func (a *API) listRelays(_ Session, w http.ResponseWriter, r *http.Request) {
 	for i, relay := range list {
 		views[i] = relayView{
 			Name: relay.Name, URL: relay.URL, Region: relay.Region,
-			Label: relay.Label, Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
+			Label: relay.Label, Probe: relay.Probe,
+			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Enabled: relay.Enabled,
 		}
 		if !relay.Added.IsZero() {
@@ -177,6 +179,7 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	// Pointers throughout, so that clearing a field and leaving it alone are
 	// different requests. An empty string is a thing somebody meant.
 	var body struct {
+		Probe     *string `json:"probe"`
 		Name      *string `json:"name"`
 		URL       string  `json:"url"`
 		Region    *string `json:"region"`
@@ -226,6 +229,9 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	// are different requests. An empty string is a thing somebody meant.
 	if body.Label != nil {
 		found.Label = strings.TrimSpace(*body.Label)
+	}
+	if body.Probe != nil {
+		found.Probe = strings.TrimSpace(*body.Probe)
 	}
 	if body.Fallback != nil {
 		found.Fallback = *body.Fallback

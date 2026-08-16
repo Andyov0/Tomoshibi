@@ -123,6 +123,26 @@ func (r *relays) forget() {
 	r.mu.Unlock()
 }
 
+// all is every relay, in service or not.
+//
+// Separate from live because they answer different questions: this is what a
+// person should see, and live is what a call may be sent to. Conflating them is
+// how a relay out of service comes to hold a meeting.
+func (r *relays) all() []store.Relay {
+	if r == nil || r.source == nil {
+		return nil
+	}
+
+	list, err := r.source.Relays()
+	if err != nil {
+		// The cache, which holds only the enabled ones, is better than nothing
+		// and better than an error on a page.
+		return r.live()
+	}
+
+	return list
+}
+
 // any reports whether there is anything to choose from.
 func (r *relays) any() bool { return len(r.live()) > 0 }
 
@@ -153,8 +173,15 @@ func (r *relays) byName(list []store.Relay, name string) (store.Relay, bool) {
 // somebody the moment they join. What is not here is anything about the shape
 // of the deployment — no counts, no health, no load — because this endpoint
 // answers to anybody who asks.
+// offered is the list a client is given, including the ones out of service.
+//
+// Those are sent so they can be shown greyed rather than hidden. A relay taken
+// down for maintenance that simply vanishes from the list looks like a relay
+// that was deleted — somebody who used it yesterday and cannot find it today
+// has no way to tell those apart, and asks. Sent with the flag, it says what it
+// is: still here, not taking calls.
 func (r *relays) offered(admin bool) []store.Relay {
-	list := r.live()
+	list := r.all()
 
 	if !admin {
 		open := make([]store.Relay, 0, len(list))

@@ -114,14 +114,18 @@ export function ServerPicker({
 	}, [open, measured, measuring, measure]);
 
 	/**
-	 * Which way the sheet opens.
+	 * Which way the sheet opens: towards whichever side has more room.
 	 *
-	 * Downward unless it would not fit, and on a deployment with a dozen relays
-	 * it will not: the menu runs off the bottom of the window and somebody has
-	 * to scroll the whole page to read the options for a control they can see.
-	 * Opening upward puts the list between the control and the top of the
-	 * window, which is where there is room on a join screen — everything below
-	 * the button is the button.
+	 * The first version only went upward when the list would not fit below, and
+	 * on a desktop it therefore never did — the join card sits in the middle of
+	 * a tall window, so there is always technically enough room underneath and
+	 * the menu opened downwards over the button somebody had just pressed.
+	 *
+	 * More room wins now, which on a join screen is nearly always upward:
+	 * everything below the control is the control and the button under it.
+	 * Simple enough to predict, which is most of what makes a menu feel settled
+	 * — one that opens up sometimes and down other times for reasons nobody can
+	 * see is worse than one that always picks the wrong side.
 	 *
 	 * Measured when it opens rather than assumed from where the control sits,
 	 * because the answer depends on the window as it is now.
@@ -132,17 +136,8 @@ export function ServerPicker({
 		const box = frame.current?.getBoundingClientRect();
 		if (!box) return;
 
-		// Roughly what the sheet will be: a row for each relay, one for
-		// automatic, and the strip along the top. Approximate on purpose — the
-		// menu has not been laid out yet, and being a little wrong here costs a
-		// menu that opens the same way it would have.
-		const wants = Math.min(360, 44 + (relays.length + 1) * 56);
-
-		const below = window.innerHeight - box.bottom;
-		const above = box.top;
-
-		setUpward(below < wants && above > below);
-	}, [open, relays.length]);
+		setUpward(box.top > window.innerHeight - box.bottom);
+	}, [open]);
 
 	// Closed by anything that is not this. A menu that stays open behind the
 	// rest of the page is one somebody has to find their way out of.
@@ -287,8 +282,18 @@ export function ServerPicker({
 							<Option
 								key={row.relay.name}
 								label={marked(row.relay)}
-								describes={row.relay.fallback ? "[Fallback]" : undefined}
+								describes={
+									row.relay.maintenance
+										? t("Not taking calls")
+										: row.relay.fallback
+											? "[Fallback]"
+											: undefined
+								}
 								chosen={value === row.relay.name}
+								// Shown and not selectable. A relay taken down for an
+								// hour that vanished from the list would look deleted
+								// to whoever used it yesterday.
+								disabled={row.relay.maintenance}
 								depth={row.depth}
 								latency={
 									<Latency
@@ -440,6 +445,7 @@ function Option({
 	chosen,
 	latency,
 	icon,
+	disabled = false,
 	depth = 0,
 	delay = 0,
 	onPick,
@@ -449,6 +455,7 @@ function Option({
 	chosen: boolean;
 	latency?: React.ReactNode;
 	icon?: React.ReactNode;
+	disabled?: boolean;
 	depth?: number;
 	delay?: number;
 	onPick: () => void;
@@ -458,16 +465,18 @@ function Option({
 			<button
 				type="button"
 				onClick={onPick}
+				disabled={disabled}
 				style={{ animationDelay: `${delay}ms`, paddingLeft: `${0.5 + depth * 0.75}rem` }}
 				className={cn(
 					"group relative flex w-full animate-arrive items-center gap-2.5 py-3 pr-3 text-left",
 					"transition-colors duration-150",
+					disabled && "cursor-not-allowed opacity-45 hover:bg-transparent",
 					// A line between rows, not around them. Without it the options
 					// run together into a paragraph and the gaps between them are
 					// invisible on a dark background.
 					"after:pointer-events-none after:absolute after:inset-x-3 after:bottom-0",
 					"after:h-px after:bg-fg/8 last:after:hidden",
-					chosen ? "bg-fg/8" : "hover:bg-fg/5",
+					chosen ? "bg-fg/8" : !disabled && "hover:bg-fg/5",
 				)}
 			>
 				{/* A bar down the edge rather than a tick alone. The tick says which

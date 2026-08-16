@@ -233,6 +233,20 @@ func serve(args []string) error {
 	// port open on a machine nobody was ever told to dial.
 	if conf.Meet.Role != config.RoleControl {
 		var err error
+		// A UDP echo a client can time. Started beside the media server because
+		// it describes the same path: what it measures is the round trip a call
+		// will actually have, rather than the three that opening a TLS socket
+		// costs.
+		probe, err := rtc.Listen(conf.Meet.ProbePort)
+		if err != nil {
+			return fmt.Errorf("listen for stun on udp %d: %w", conf.Meet.ProbePort, err)
+		}
+
+		if probe != nil {
+			defer probe.Close()
+			probe.Announce()
+		}
+
 		if media, err = rtc.Start(conf.LiveKit); err != nil {
 			return err
 		}

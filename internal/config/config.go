@@ -182,6 +182,19 @@ type Meet struct {
 	// off and stay readable.
 	Silent bool `yaml:"silent"`
 
+	// ProbePort answers STUN binding requests, so a browser can time one round
+	// trip over the transport a call uses.
+	//
+	// The picker's other measurement opens the signalling socket, which is TCP:
+	// a handshake, a TLS handshake and an HTTP upgrade, so about three round
+	// trips. It ranks relays correctly and reads as three times too slow, and a
+	// number nobody believes is a number nobody uses.
+	//
+	// Zero is off. Deliberately not 3478: the standard STUN port is scanned
+	// continuously and answering on it is an invitation, so every deployment
+	// should pick something unremarkable.
+	ProbePort int `yaml:"probe_port"`
+
 	// TLSCert and TLSKey serve this listener over TLS directly, without a proxy
 	// in front.
 	//

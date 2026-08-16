@@ -38,6 +38,14 @@ type Relay struct {
 	// against a client's, never interpreted.
 	Region string `json:"region,omitempty"`
 
+	// Probe is where this relay answers STUN binding requests, as host:port.
+	//
+	// Sent to clients so the picker can time one round trip over UDP rather
+	// than three over TLS. Empty where the relay does not answer, and a client
+	// that is given nothing falls back to timing the signalling socket — which
+	// is what it did before this existed and is still the honest ranking.
+	Probe string `json:"probe,omitempty"`
+
 	// Label is what a person is shown instead of the name.
 	//
 	// The name is a key: immutable, because a client that measured it will send

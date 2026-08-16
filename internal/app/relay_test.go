@@ -278,20 +278,42 @@ func TestNoRelaysMeansNothingToChoose(t *testing.T) {
 // without the list being emptied: the calls already on it keep running, and an
 // operator who disabled one and saw new callers still arriving would reasonably
 // conclude the switch did nothing.
-func TestDisabledRelaysAreNotOffered(t *testing.T) {
+/*
+A relay out of service is shown and not used, which are two different things.
+
+It has to be shown, because one that vanishes from the list looks deleted:
+somebody who used it yesterday and cannot find it today has no way to tell a
+machine taken down for an hour from a machine taken away, and asks. It is sent
+with a flag saying what it is, and a picker draws it greyed.
+
+It must never be used, and that includes being asked for by name — a client
+measured it before it went down and will send that name at the next join.
+*/
+
+func TestARelayOutOfServiceIsShownButNeverUsed(t *testing.T) {
 	off := jp
 	off.Enabled = false
 
 	r := &relays{source: &listed{relays: []store.Relay{sh, hk, off}}, policy: config.PickProbe}
 
 	if got := r.pick("standup", "tokyo", nil, false, false); got.URL == jp.URL {
-		t.Error("a client that measured a disabled relay was sent there anyway")
+		t.Error("a client that measured a relay taken out of service was sent there anyway")
 	}
 
+	shown := false
 	for _, relay := range r.offered(false) {
 		if relay.Name == "tokyo" {
-			t.Error("a disabled relay was offered to a client to measure")
+			shown = true
+
+			if relay.Enabled {
+				t.Error("a relay out of service was offered as though it were in it")
+			}
 		}
+	}
+
+	if !shown {
+		t.Error("a relay out of service was hidden rather than shown as out of service; " +
+			"one that vanishes is indistinguishable from one that was deleted")
 	}
 }
 

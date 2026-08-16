@@ -207,6 +207,7 @@ const ja: Dictionary = {
 	"Can change things": "変更できる",
 	"The last administrator who can change things cannot be removed": "変更できる最後の管理者は削除できません",
 	"Settings": "設定",
+	"Not taking calls": "メンテナンス中",
 };
 
 export default ja;

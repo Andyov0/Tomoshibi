@@ -207,6 +207,7 @@ const zhHans: Dictionary = {
 	"Can change things": "可以做修改",
 	"The last administrator who can change things cannot be removed": "最后一个可做修改的管理员不能被移除",
 	"Settings": "设置",
+	"Not taking calls": "维护中,暂不接受通话",
 };
 
 export default zhHans;

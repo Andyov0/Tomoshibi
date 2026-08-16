@@ -32,6 +32,10 @@ export interface Relay {
 	fallback?: boolean;
 	/** Only administrators are offered it, and only they may ask for it. */
 	adminOnly?: boolean;
+	/** Where it answers STUN binding requests, as host:port. */
+	probe?: string;
+	/** Here, but not taking calls. Shown greyed rather than hidden. */
+	maintenance?: boolean;
 }
 
 interface RelayList {
@@ -103,7 +107,82 @@ export async function relays(): Promise<RelayList> {
  * No token is sent, so the relay refuses and closes. That refusal is a complete
  * round trip, which is all this needs.
  */
-function probe(relay: Relay): Promise<number | undefined> {
+/**
+ * Time one round trip over UDP, the way the call will go.
+ *
+ * The other measurement below opens the signalling socket, which is TCP: a
+ * handshake, a TLS handshake and an HTTP upgrade, so about three round trips
+ * before anything comes back. It ranks relays correctly — every one pays the
+ * same — and it reads as three times too slow, which is a number nobody
+ * believes and therefore nobody uses.
+ *
+ * A browser cannot open a UDP socket, but it can be given a STUN server and
+ * asked to find its own address, and the time to that answer is one round trip
+ * on exactly the path the media will take. The relay answers binding requests
+ * for this and nothing else.
+ *
+ * Nothing is connected and nothing is sent. The peer connection exists to make
+ * the browser send one STUN request, and it is closed the moment the answer
+ * comes back.
+ */
+function overUDP(relay: Relay): Promise<number | undefined> {
+	if (!relay.probe) return Promise.resolve(undefined);
+
+	return new Promise((resolve) => {
+		let peer: RTCPeerConnection;
+		try {
+			peer = new RTCPeerConnection({
+				iceServers: [{ urls: `stun:${relay.probe}` }],
+				// Only the one server's answer is wanted. Left to itself the
+				// browser would also gather host candidates, which cost nothing
+				// but arrive first and would be timed instead.
+				iceTransportPolicy: "all",
+			});
+		} catch {
+			resolve(undefined);
+			return;
+		}
+
+		const started = performance.now();
+
+		let settled = false;
+		const finish = (took: number | undefined) => {
+			if (settled) return;
+			settled = true;
+
+			clearTimeout(timer);
+			try {
+				peer.close();
+			} catch {
+				// Already closing, which is one of the ways this ends.
+			}
+
+			resolve(took);
+		};
+
+		const timer = setTimeout(() => finish(undefined), PROBE_TIMEOUT_MS);
+
+		peer.onicecandidate = (event) => {
+			// The reflexive one, which is the relay's answer. Host candidates
+			// are local and arrive immediately; relay candidates need TURN,
+			// which this is deliberately not.
+			if (event.candidate?.type === "srflx") finish(performance.now() - started);
+
+			// End of gathering with nothing reflexive means no answer came.
+			if (event.candidate === null) finish(undefined);
+		};
+
+		// A channel so there is something to gather for.
+		try {
+			peer.createDataChannel("probe");
+			void peer.createOffer().then((offer) => peer.setLocalDescription(offer));
+		} catch {
+			finish(undefined);
+		}
+	});
+}
+
+function overSignalling(relay: Relay): Promise<number | undefined> {
 	return new Promise((resolve) => {
 		const started = performance.now();
 
@@ -198,7 +277,14 @@ export async function fastest(list: Relay[]): Promise<string | undefined> {
  */
 export async function timings(list: Relay[]): Promise<Map<string, number | undefined>> {
 	const measured = await Promise.all(
-		list.map(async (relay) => [relay.name, await probe(relay)] as const),
+		// Skipped for a relay out of service: it is shown so somebody can see it
+		// is still there, and measuring a machine nobody may be sent to is a
+		// connection spent on a number that cannot be acted on.
+		list.map(async (relay) =>
+			relay.maintenance
+				? ([relay.name, undefined] as const)
+				: ([relay.name, await probe(relay)] as const),
+		),
 	);
 
 	return new Map(measured);
@@ -227,4 +313,23 @@ export async function preferred(): Promise<string> {
 /** Forget the last measurement. Exported for tests. */
 export function forget(): void {
 	cached = undefined;
+}
+
+/**
+ * Time a relay, over UDP where it will let us and over the socket otherwise.
+ *
+ * The UDP answer is one round trip and the TCP one is about three, so they are
+ * not the same number and must not be mixed in one ranking — a relay that
+ * answers STUN would beat a nearer one that does not, on nothing but the
+ * measurement it happened to allow. Which is why this is chosen per list rather
+ * than per relay: [timings] and [fastest] both ask for one kind and use it for
+ * everybody, falling back only where no relay offers the better one.
+ */
+async function probe(relay: Relay): Promise<number | undefined> {
+	if (relay.probe) {
+		const took = await overUDP(relay);
+		if (took !== undefined) return took;
+	}
+
+	return overSignalling(relay);
 }

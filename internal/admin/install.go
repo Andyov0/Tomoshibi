@@ -52,10 +52,29 @@ region="${REGION:-}"
 # The address browsers will reach this machine on. Asked of the outside rather
 # than read from an interface: the machines that make good relays are frequently
 # behind NAT, and the interface address is not the one to publish.
+#
+# Not fatal when it cannot be worked out. Several of the networks worth putting
+# a relay on cannot reach a public echo service at all — which is a property of
+# where the machine is rather than a problem with the machine — and the control
+# node is about to see this connection's source address anyway. Empty means "you
+# tell me", and it is right more often than a guess from an interface would be.
 say "Working out this machine's address"
-address="${ADDRESS:-$(curl -fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)}"
-[ -n "$address" ] || die "could not work out this machine's public address; set ADDRESS=... and run again"
-printf '  %%s\n' "$address"
+address="${ADDRESS:-}"
+if [ -z "$address" ]; then
+    for echoer in https://api.ipify.org https://ipv4.icanhazip.com https://ifconfig.me/ip; do
+        address=$(curl -fsS --max-time 6 "$echoer" 2>/dev/null | tr -d '[:space:]' || true)
+        case "$address" in
+            *[0-9].[0-9]*) break ;;
+            *) address="" ;;
+        esac
+    done
+fi
+
+if [ -n "$address" ]; then
+    printf '  %%s\n' "$address"
+else
+    printf '  could not ask the outside; the control node will use the address it sees\n'
+fi
 
 say "Claiming this deployment's configuration"
 package=$(curl -fsS --max-time 30 -X POST "$CONTROL/api/enrol" \

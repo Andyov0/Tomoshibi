@@ -1,6 +1,9 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { remember } from "@/live/remember";
 import { PreJoin } from "./PreJoin";
+
+vi.mock("@/live/remember", () => ({ remember: vi.fn(async () => {}) }));
 
 /*
  * The way out of this screen when the server says no.
@@ -20,6 +23,7 @@ const camera = { stop: vi.fn(), attach: vi.fn(), detach: vi.fn() };
 
 beforeEach(() => {
 	localStorage.clear();
+	vi.mocked(remember).mockClear();
 
 	// The preview asks for a camera on mount. Nothing here is about the picture,
 	// and a real request would hang in a test environment that has no devices.
@@ -54,6 +58,12 @@ function open(onJoin: (choices: unknown) => Promise<void>) {
 
 async function joinAs(name: string) {
 	fireEvent.change(screen.getByLabelText("Your name"), { target: { value: name } });
+	fireEvent.click(screen.getByRole("button", { name: "Join" }));
+}
+
+async function joinAsWith(name: string, passphrase: string) {
+	fireEvent.change(screen.getByLabelText("Your name"), { target: { value: name } });
+	fireEvent.change(screen.getByLabelText("Passphrase"), { target: { value: passphrase } });
 	fireEvent.click(screen.getByRole("button", { name: "Join" }));
 }
 
@@ -151,5 +161,61 @@ describe("PreJoin", () => {
 
 		await waitFor(() => expect(succeed).toHaveBeenCalled());
 		expect(localStorage.getItem("meet-live.passphrase")).toBeNull();
+	});
+});
+
+/*
+ * Offering a passphrase to the password manager is a prompt, not a write.
+ *
+ * Chromium asks whether to save it — every time it is offered, and whether or
+ * not it already holds exactly that pair. The field is filled from storage on
+ * load, so joining a second room means answering the same question about the
+ * same secret again, and the third time somebody stops reading the question at
+ * all. That is the failure: not a broken save, a trained dismissal.
+ *
+ * It cannot be caught by looking at the screen, because the prompt is the
+ * browser's and never appears in the document. So what is asserted is the call.
+ */
+describe("the password manager", () => {
+	it("is offered a passphrase that was just entered", async () => {
+		open(async () => {});
+		await joinAsWith("Alex", "correct horse");
+
+		await waitFor(() => expect(remember).toHaveBeenCalledWith("Alex", "correct horse"));
+	});
+
+	it("is not offered the same one twice", async () => {
+		open(async () => {});
+
+		await joinAsWith("Alex", "correct horse");
+		await waitFor(() => expect(remember).toHaveBeenCalledTimes(1));
+
+		fireEvent.click(screen.getByRole("button", { name: "Join" }));
+		await waitFor(() => expect(remember).toHaveBeenCalledTimes(1));
+	});
+
+	// The case that made this worth fixing: a returning visitor. The field is
+	// filled from storage before anybody touches it, and the pair it holds was
+	// offered on the visit that stored it.
+	it("is not offered one restored from a previous visit", async () => {
+		localStorage.setItem("meet-live.name", "Alex");
+		localStorage.setItem("meet-live.passphrase", "correct horse");
+
+		open(async () => {});
+		fireEvent.click(screen.getByRole("button", { name: "Join" }));
+
+		await waitFor(() => expect(screen.getByRole("button", { name: "Join" })).toBeDefined());
+		expect(remember).not.toHaveBeenCalled();
+	});
+
+	it("is offered again once it changes", async () => {
+		open(async () => {});
+
+		await joinAsWith("Alex", "correct horse");
+		await waitFor(() => expect(remember).toHaveBeenCalledTimes(1));
+
+		await joinAsWith("Alex", "battery staple");
+		await waitFor(() => expect(remember).toHaveBeenCalledTimes(2));
+		expect(remember).toHaveBeenLastCalledWith("Alex", "battery staple");
 	});
 });

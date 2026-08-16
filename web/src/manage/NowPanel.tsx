@@ -83,12 +83,20 @@ export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => v
 				</Card>
 			</div>
 
-			<Card title="This server">
-				<dl className="grid gap-x-4 gap-y-3 px-3 py-3 sm:grid-cols-2 sm:px-4 sm:py-4">
-					<Figure label="Node" value={now?.node.id ?? "—"} mono />
-					<Figure label="Address given to clients" value={now?.node.ip ?? "—"} mono />
-				</dl>
-			</Card>
+			{/*
+			  * Which machine this is, in whichever sense applies.
+			  *
+			  * A deployment holding its own media is one machine and says so. A
+			  * control node holds none: the figures above it are a sum across its
+			  * relays, and the useful thing at the foot of the page is which
+			  * relays they were summed from and which of them did not answer.
+			  *
+			  * Written as a branch rather than as one card with blanks in it,
+			  * because the earlier version was the latter and read `node.id` on a
+			  * control node, where there is no node. That took the whole page to a
+			  * blank screen the moment somebody opened it.
+			  */}
+			{now?.fleet ? <Fleet now={now} /> : <ThisServer now={now} />}
 
 			<p className="px-1 text-fg-muted text-[11.5px] leading-relaxed">
 				Rates are a mean over the window named above and totals are since this process started.
@@ -96,6 +104,82 @@ export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => v
 				what a month cost. The history is held in memory and starts again on restart.
 			</p>
 		</div>
+	);
+}
+
+/** The machines a control node's figures were summed from. */
+function Fleet({ now }: { now: Now }) {
+	const nodes = now.nodes ?? [];
+	const quiet = nodes.filter((one) => !one.reachable).length;
+
+	return (
+		<Card
+			title="Relays"
+			note={
+				quiet > 0
+					? `${now.answered ?? 0} of ${now.asked ?? nodes.length} answering`
+					: `${nodes.length} answering`
+			}
+		>
+			{nodes.length === 0 && (
+				<p className="px-3 py-3 text-fg-muted text-sm sm:px-4">
+					No relays are configured, so this node has nowhere to send a call.
+				</p>
+			)}
+
+			<ul>
+				{nodes.map((one) => (
+					<li
+						key={one.url}
+						className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-border border-b px-3 py-3 last:border-0 sm:px-4"
+					>
+						<span className="flex items-center gap-2">
+							{/*
+							  * Amber rather than red for a relay that did not answer.
+							  * Red is for what cannot be undone, and a relay coming
+							  * back is the ordinary case — it is worth looking at,
+							  * which is what amber means everywhere else here.
+							  */}
+							<span
+								className={cn(
+									"size-1.5 rounded-full",
+									one.reachable ? "bg-fg-muted" : "bg-tally",
+								)}
+							/>
+							<span className="text-fg text-sm">{one.name}</span>
+						</span>
+
+						{one.reachable ? (
+							<>
+								<span className="readout text-fg-muted text-[12px]">{one.ip || "—"}</span>
+								<span className="ml-auto flex gap-4 text-fg-muted text-xs tabular-nums">
+									<span>{one.rooms} rooms</span>
+									<span>{one.clients} people</span>
+									<span>{rate(one.outPerSec ?? 0)}</span>
+									<span>{Math.round((one.load ?? 0) * 100)}% cpu</span>
+								</span>
+							</>
+						) : (
+							<span className="ml-auto max-w-full truncate text-tally text-xs">
+								{one.detail || "did not answer"}
+							</span>
+						)}
+					</li>
+				))}
+			</ul>
+		</Card>
+	);
+}
+
+/** The one machine, where this deployment is the one holding the calls. */
+function ThisServer({ now }: { now?: Now }) {
+	return (
+		<Card title="This server">
+			<dl className="grid gap-x-4 gap-y-3 px-3 py-3 sm:grid-cols-2 sm:px-4 sm:py-4">
+				<Figure label="Node" value={now?.node?.id ?? "\u2014"} mono />
+				<Figure label="Address given to clients" value={now?.node?.ip ?? "\u2014"} mono />
+			</dl>
+		</Card>
 	);
 }
 

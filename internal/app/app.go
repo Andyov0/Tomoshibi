@@ -41,6 +41,11 @@ type App struct {
 	relays *relays
 	// enrolment is set where a relay may bring itself up from a script.
 	enrolment *admin.Enrolment
+	// reach remembers which relays answered, so a client is not offered one
+	// nobody can get to. Nil until a cluster is wired in, and nil is the
+	// answer "everything is worth offering", which is right for a deployment
+	// with no relays to be wrong about.
+	reach *reach
 
 	stop    chan struct{}
 	closing sync.Once

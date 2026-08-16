@@ -13,8 +13,53 @@ export interface Who {
 	can: string[];
 }
 
+/**
+ * One relay, as a control node reads it.
+ *
+ * Reachable is separate from the counters and has to stay that way: a relay
+ * holding no calls and a relay that did not answer are both zeros, and the
+ * difference between quiet and down is most of why anybody opens this page.
+ */
+export interface NodeReading {
+	name: string;
+	url: string;
+	reachable: boolean;
+	detail?: string;
+	node: string;
+	ip: string;
+	rooms: number;
+	clients: number;
+	tracksIn: number;
+	tracksOut: number;
+	outPerSec: number;
+	cpus: number;
+	load: number;
+	startedAt?: string;
+}
+
+/**
+ * The live reading, in either of the two shapes the server sends.
+ *
+ * A deployment holding its own media describes one process: it has a node
+ * identity and an address it gives to clients. A control node holds none and
+ * describes its relays instead — a list of them and a sum across the ones that
+ * answered. The shapes differ because the things being described differ, and
+ * pretending otherwise is what took this page down: `node` is absent on a
+ * control node, and reading `node.id` through an optional chain that only
+ * guarded the reading above it threw on a field that was never going to be
+ * there.
+ *
+ * Both halves are optional here so that neither can be read without asking
+ * which shape arrived.
+ */
 export interface Now {
-	node: { id: string; ip: string };
+	/** Present on a deployment that holds its own media. */
+	node?: { id: string; ip: string };
+	/** Present on a control node, along with nodes. */
+	fleet?: boolean;
+	nodes?: NodeReading[];
+	asked?: number;
+	answered?: number;
 	since: string;
 	rooms: number;
 	clients: number;

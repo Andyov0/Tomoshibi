@@ -168,6 +168,25 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	const [track, setTrack] = useState<LocalVideoTrack>();
 	const [joining, setJoining] = useState(false);
 
+	/*
+	 * What the password manager was last offered, so it is not offered again.
+	 *
+	 * Storing a credential is a prompt: Chromium asks whether to save it, every
+	 * time, and it asks whether or not it already holds exactly that pair. The
+	 * passphrase field is filled from storage on load, so somebody who joins a
+	 * room, leaves, and joins another is answering the same question about the
+	 * same secret on every join. Enough of those and the answer stops being read.
+	 *
+	 * Seeded with what the page opened holding, which is the whole trick: a
+	 * passphrase restored from the last visit has been offered before, and one
+	 * that differs from it is the only thing worth offering now. A person who
+	 * changes their passphrase is asked once, at the moment they changed it.
+	 *
+	 * A ref rather than state because nothing on screen depends on it, and it
+	 * must survive the re-render that a join causes.
+	 */
+	const offered = useRef(`${localStorage.getItem(NAME_KEY) ?? ""}\u0000${localStorage.getItem(PASSPHRASE_KEY) ?? ""}`);
+
 	// Held in a ref as well, so the cleanup below stops whatever is current
 	// rather than whatever was current when the effect last ran.
 	const current = useRef<LocalVideoTrack>();
@@ -236,8 +255,14 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 		else localStorage.removeItem(PASSPHRASE_KEY);
 
 		// And offered to the password manager, which keeps it better than this
-		// can and carries it to the same person's other devices.
-		void remember(display, passphrase);
+		// can and carries it to the same person's other devices. Once, for any
+		// given pair: the offer is a prompt, and one that arrives on every join
+		// to ask about a secret the browser already holds is one nobody reads.
+		const pair = `${display}\u0000${passphrase}`;
+		if (passphrase && pair !== offered.current) {
+			offered.current = pair;
+			void remember(display, passphrase);
+		}
 
 		setJoining(true);
 

@@ -89,4 +89,59 @@ function installStorage(): void {
 
 installStorage();
 
+/**
+ * Give the tests a matchMedia.
+ *
+ * jsdom does not implement it, and the plotting library reads it at import to
+ * work out the device pixel ratio — at import, not at render, so merely
+ * importing a panel that draws a chart throws before a single test runs. The
+ * whole file is then reported as having no tests, which reads like a collection
+ * error in the test rather than a missing browser API.
+ *
+ * Answers no to everything, which is what a plot needs from it: the fallback
+ * path is the ordinary one-pixel-per-pixel case, and nothing here is asserting
+ * anything about a high density display.
+ */
+if (typeof globalThis.matchMedia !== "function") {
+	Object.defineProperty(globalThis, "matchMedia", {
+		configurable: true,
+		writable: true,
+		value: (query: string): MediaQueryList =>
+			({
+				media: query,
+				matches: false,
+				onchange: null,
+				addEventListener() {},
+				removeEventListener() {},
+				addListener() {},
+				removeListener() {},
+				dispatchEvent: () => false,
+			}) as unknown as MediaQueryList,
+	});
+}
+
+/**
+ * Give the tests a ResizeObserver.
+ *
+ * Also absent from jsdom, and also read by anything that draws itself to fit a
+ * box — the plot, and the menus that position themselves against a trigger.
+ * Absent, the component throws on mount, which fails the test with a reference
+ * error naming a browser API and says nothing about the component.
+ *
+ * Observes nothing and reports nothing. Every test that renders one of these
+ * asserts on what was drawn, not on what happened when the box changed size,
+ * and a stub that fired would be inventing measurements nobody asked for.
+ */
+if (typeof globalThis.ResizeObserver !== "function") {
+	Object.defineProperty(globalThis, "ResizeObserver", {
+		configurable: true,
+		writable: true,
+		value: class {
+			observe() {}
+			unobserve() {}
+			disconnect() {}
+		},
+	});
+}
+
 afterEach(cleanup);

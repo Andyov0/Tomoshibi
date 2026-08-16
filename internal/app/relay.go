@@ -35,6 +35,11 @@ type relays struct {
 	source Source
 	policy string
 
+	// reach is what the control node found when it last opened a connection to
+	// each relay. Nil on a deployment that never wired a cluster in, which
+	// means every relay counts as worth offering.
+	reach *reach
+
 	// turn carries the round-robin position. Atomic because joins arrive
 	// concurrently and the only thing this counter must not do is hand two
 	// callers the same answer by losing an increment.
@@ -149,7 +154,7 @@ func (r *relays) byName(list []store.Relay, name string) (store.Relay, bool) {
 // of the deployment — no counts, no health, no load — because this endpoint
 // answers to anybody who asks.
 func (r *relays) offered() []store.Relay {
-	return r.live()
+	return r.reach.keep(r.live())
 }
 
 // preferred splits a list into the relays to use and the ones held in reserve.
@@ -181,10 +186,27 @@ func preferred(list []store.Relay) (ordinary, reserve []store.Relay) {
 func (r *relays) pick(room string, chosen string, req *http.Request, trustProxy bool) store.Relay {
 	all := r.live()
 
-	// The reserve is used only when nothing else is available. A deployment
-	// whose only relay is a fallback still holds calls — the setting means
-	// "prefer anything else", not "never".
-	list, reserve := preferred(all)
+	// Two preferences, applied in order, and the order is the argument.
+	//
+	// Reachability first: a relay the control node cannot open a connection to
+	// is not a worse choice, it is not a choice. Then the reserve, which is
+	// used only when nothing else is available — the setting means "prefer
+	// anything else", not "never".
+	//
+	// Each step falls back to the one before rather than to nothing. A
+	// deployment where every relay has stopped answering still has to hold
+	// calls somewhere, and the control node's reading is a suspicion formed
+	// from one vantage point: refusing to name a relay on the strength of it
+	// would turn one machine's bad minute into an outage for everybody.
+	ordinary, reserve := preferred(all)
+
+	list := r.reach.only(ordinary)
+	if len(list) == 0 {
+		list = r.reach.only(reserve)
+	}
+	if len(list) == 0 {
+		list = ordinary
+	}
 	if len(list) == 0 {
 		list = reserve
 	}
@@ -315,6 +337,17 @@ func (a *App) RelayURLs() []string {
 func (a *App) UseCluster(cluster *rtc.Cluster) {
 	a.admin.UseCluster(cluster)
 	a.admin.OnRelaysChanged(a.relays.forget)
+
+	// And the same connection the management pages are drawn from decides which
+	// relays clients are offered. The browser cannot tell a relay that refused
+	// from one that was never there — both are an error event with nothing on
+	// it — and the one that was never there answers sooner, so it wins a
+	// measurement it should lose. This is the half of that question the control
+	// node can answer.
+	a.reach = newReach(cluster.Check)
+	a.relays.reach = a.reach
+
+	go a.watching()
 }
 
 // UseEnrolment lets relays bring themselves up from a script.

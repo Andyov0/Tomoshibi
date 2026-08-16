@@ -180,6 +180,29 @@ export async function fastest(list: Relay[]): Promise<string | undefined> {
 }
 
 /**
+ * Time every relay and say how long each took, or nothing where it did not
+ * answer.
+ *
+ * The same measurement [fastest] makes, kept rather than reduced to a winner.
+ * Somebody choosing a relay by hand is entitled to the numbers the automatic
+ * choice is made from — without them the picker is a list of place names, and
+ * the person reading it is being asked to guess at exactly the thing this
+ * already knows.
+ *
+ * Uncached on purpose. This runs because somebody opened the picker, which is
+ * usually because the automatic answer has just disappointed them; handing back
+ * a reading from five minutes ago would be answering a question they did not
+ * ask.
+ */
+export async function timings(list: Relay[]): Promise<Map<string, number | undefined>> {
+	const measured = await Promise.all(
+		list.map(async (relay) => [relay.name, await probe(relay)] as const),
+	);
+
+	return new Map(measured);
+}
+
+/**
  * Work out which relay to ask for, doing nothing when the deployment does not
  * want a measurement.
  *

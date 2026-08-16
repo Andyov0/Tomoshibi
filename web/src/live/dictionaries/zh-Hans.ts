@@ -183,6 +183,8 @@ const zhHans: Dictionary = {
 	"Change it": "修改",
 	"At least eight characters.": "至少八个字符。",
 	"Done. Your signature is now": "已修改。你的签名现在是",
+	"Whichever answers fastest": "自动选择响应最快的一台",
+	"no answer": "无响应",
 };
 
 export default zhHans;

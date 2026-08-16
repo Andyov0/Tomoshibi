@@ -183,6 +183,8 @@ const ja: Dictionary = {
 	"Change it": "変更する",
 	"At least eight characters.": "8 文字以上。",
 	"Done. Your signature is now": "変更しました。あなたの署名は",
+	"Whichever answers fastest": "応答が最も速いものを自動で選びます",
+	"no answer": "応答なし",
 };
 
 export default ja;

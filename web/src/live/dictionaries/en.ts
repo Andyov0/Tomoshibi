@@ -216,6 +216,8 @@ const en = {
 	"Change it": "Change it",
 	"At least eight characters.": "At least eight characters.",
 	"Done. Your signature is now": "Done. Your signature is now",
+	"Whichever answers fastest": "Whichever answers fastest",
+	"no answer": "no answer",
 } as const;
 
 export default en;

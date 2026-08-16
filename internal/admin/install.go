@@ -162,10 +162,42 @@ region="${REGION:-}"
 # node is about to see this connection's source address anyway. Empty means "you
 # tell me", and it is right more often than a guess from an interface would be.
 say "Working out this machine's address"
+
+# Asked over DNS first, and never through a proxy.
+#
+# A machine whose outbound 443 is blocked — which every mainland host this has
+# been run on so far has been — needs a proxy to reach the control node at all.
+# An address echoer asked through that proxy answers with the proxy's address,
+# and the relay is then enrolled under somebody else's IP with a DNS name
+# pointed at a machine that is not it. It looks like a working install right up
+# until the first call. Letting the control node use the address it sees does
+# not help either: what it sees is also the proxy.
+#
+# DNS is the way out. Port 53 is open on every one of these hosts even where 80
+# and 443 are not, the query is UDP and so cannot be carried by an HTTP proxy at
+# all, and the answer is this machine's own address by construction.
 address="${ADDRESS:-}"
+
+if [ -z "$address" ]; then
+    for resolver in resolver1.opendns.com resolver2.opendns.com; do
+        if command -v dig >/dev/null 2>&1; then
+            address=$(dig +short +time=3 +tries=1 myip.opendns.com "@$resolver" 2>/dev/null | tr -d '[:space:]')
+        elif command -v nslookup >/dev/null 2>&1; then
+            address=$(nslookup myip.opendns.com "$resolver" 2>/dev/null | awk '/^Address: /{print $2}' | tail -1)
+        fi
+
+        case "$address" in
+            *[0-9].[0-9]*) break ;;
+            *) address="" ;;
+        esac
+    done
+fi
+
+# And only then over HTTP, with the proxy refused for the reason above.
 if [ -z "$address" ]; then
     for echoer in https://api.ipify.org https://ipv4.icanhazip.com https://ifconfig.me/ip; do
-        address=$(curl -fsS --max-time 6 "$echoer" 2>/dev/null | tr -d '[:space:]' || true)
+        address=$(env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+            curl -fsS --noproxy '*' --max-time 6 "$echoer" 2>/dev/null | tr -d '[:space:]' || true)
         case "$address" in
             *[0-9].[0-9]*) break ;;
             *) address="" ;;

@@ -183,6 +183,8 @@ const zhHant: Dictionary = {
 	"Change it": "修改",
 	"At least eight characters.": "至少八個字元。",
 	"Done. Your signature is now": "已修改。你的簽名現在是",
+	"Whichever answers fastest": "自動選擇回應最快的一台",
+	"no answer": "無回應",
 };
 
 export default zhHant;

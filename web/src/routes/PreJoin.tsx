@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 import { deployment } from "@/live/api";
 import { devicesAvailable, insecureReason } from "@/live/context";
-import { say } from "@/live/i18n";
+import { ServerPicker } from "@/components/room/ServerPicker";
 import { parseName } from "@/live/name";
 import { type Relay as OfferedRelay, relays } from "@/live/relays";
 import { remember } from "@/live/remember";
@@ -409,25 +409,7 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 					    should have to. Absent entirely where there is nothing to
 					    choose between. */}
 					{offerChoice && (
-						<label className="flex flex-col gap-1.5">
-							<span className="text-fg-muted text-xs">{t("Server")}</span>
-							<select
-								value={relay}
-								onChange={(event) => setRelay(event.target.value)}
-								className="h-11 rounded-lg border border-border bg-surface-2 px-3 text-fg text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
-							>
-								<option value="">{t("Automatic")}</option>
-								{servers.map((one) => (
-									<option key={one.name} value={one.name}>
-										{say(one.label || one.name)}
-										{/* A fallback relay is a working relay a long way
-										    away. Somebody may want it and should know
-										    what they are asking for. */}
-										{one.fallback ? "  [Fallback]" : ""}
-									</option>
-								))}
-							</select>
-						</label>
+						<ServerPicker relays={servers} value={relay} onChange={setRelay} />
 					)}
 
 					<Button type="submit" variant="primary" size="lg" className="w-full" disabled={!display || joining}>

@@ -22,7 +22,7 @@ import { useState } from "react";
  * is one nobody can find when they need it, and its absence gets read as
  * "nothing is being measured" rather than "everything is well".
  */
-export function Signal({ reading }: { reading: Reading }) {
+export function Signal({ reading, relay }: { reading: Reading; relay?: string }) {
 	const t = useT();
 	const [open, setOpen] = useState(() => remembered());
 
@@ -60,7 +60,7 @@ export function Signal({ reading }: { reading: Reading }) {
 				</span>
 			</button>
 
-			{open && <Detail reading={reading} />}
+			{open && <Detail reading={reading} relay={relay} />}
 		</div>
 	);
 }
@@ -101,11 +101,26 @@ function Bars({ grade }: { grade: Grade }) {
 }
 
 /** Everything the browser knows, for when the bars are not enough. */
-function Detail({ reading }: { reading: Reading }) {
+function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
 	const t = useT();
 
 	return (
-		<dl className="mt-1.5 flex flex-col gap-1 rounded-lg bg-surface-hi/90 px-3 py-2 text-[11px] shadow backdrop-blur">
+		<dl className="mt-1.5 flex min-w-44 flex-col gap-1 rounded-lg bg-surface-hi/90 px-3 py-2 text-[11px] shadow backdrop-blur">
+			{/*
+			  * Where this call was sent, and where its media is actually going.
+			  *
+			  * They are usually the same machine and occasionally not: a meeting
+			  * lives on one server, so somebody who picked a different one has
+			  * their signalling forwarded to it and their voice sent straight
+			  * there. That is not a fault and it is not visible anywhere else —
+			  * the picker says one thing and the packets do another, and only
+			  * this says both.
+			  */}
+			{relay && <Figure label={t("Server")} value={relay} />}
+			{reading.mediaAddress && (
+				<Figure label={t("Media to")} value={reading.mediaAddress} />
+			)}
+
 			<Figure
 				label={t("Round trip")}
 				value={reading.rttMs === undefined ? "—" : `${reading.rttMs} ms`}
@@ -119,6 +134,18 @@ function Detail({ reading }: { reading: Reading }) {
 				label={t("Jitter")}
 				value={reading.jitterMs === undefined ? "—" : `${reading.jitterMs} ms`}
 			/>
+			{/* Only while something is being shared, so the row is not a
+			    permanent dash — and read from the encoder rather than from the
+			    settings, because the settings are a request. Somebody who chose
+			    4K at sixty and is getting nineteen has nowhere else to find out. */}
+			{reading.share && (
+				<Figure
+					label={t("Sharing")}
+					value={`${reading.share.height}p · ${reading.share.fps} fps`}
+					warn={reading.share.fps < 10}
+				/>
+			)}
+
 			<Figure label={t("Sending")} value={rate(reading.upKbps)} />
 			<Figure label={t("Receiving")} value={rate(reading.downKbps)} />
 

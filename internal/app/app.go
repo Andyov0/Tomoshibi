@@ -296,6 +296,13 @@ type joinResponse struct {
 	Identity string `json:"identity"`
 	// Room is the name that was actually authorised, after normalisation.
 	Room string `json:"room"`
+	// Relay is what to call the machine this call was sent to.
+	//
+	// Sent so a person in a call can be told where it is being held in the
+	// words the picker used, rather than being shown an address and left to
+	// work it out. Empty on a deployment that holds its own media, where the
+	// question does not arise.
+	Relay string `json:"relay,omitempty"`
 }
 
 // What a client needs to know about the server it reached, before anybody has
@@ -455,11 +462,14 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	chosen := a.relays.pick(name, body.Relay, r, a.conf.Meet.TrustProxy, isAdmin)
+
 	respond(w, joinResponse{
 		URL:      a.signallingURLFor(name, body.Relay, r, isAdmin),
 		Token:    grant.Token,
 		Identity: grant.Identity,
 		Room:     name,
+		Relay:    chosen.Shown(),
 	})
 }
 

@@ -71,6 +71,8 @@ export interface Join {
 	token: string;
 	identity: string;
 	room: string;
+	/** What to call the machine this call was sent to. */
+	relay?: string;
 }
 
 /**

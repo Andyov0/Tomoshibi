@@ -225,6 +225,8 @@ const ja: Dictionary = {
 	"1080p": "1080p",
 	"1440p": "1440p",
 	"4K": "4K",
+	"Sharing": "共有中",
+	"Media to": "メディア送信先",
 };
 
 export default ja;

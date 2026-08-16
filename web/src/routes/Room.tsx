@@ -39,10 +39,12 @@ import { useCallback, useEffect, useState } from "react";
 
 export interface RoomProps {
 	room: LiveRoom;
+	/** What the machine holding this call is called, as the picker named it. */
+	relay?: string;
 	onLeave: () => void;
 }
 
-export function Room({ room, onLeave }: RoomProps) {
+export function Room({ room, relay, onLeave }: RoomProps) {
 	// One at a time, because both float over the same corner and the second
 	// would simply be drawn on top of the first.
 	const [panel, setPanel] = useState<"messages" | "sound">();
@@ -78,6 +80,7 @@ export function Room({ room, onLeave }: RoomProps) {
 		<div className="relative h-full">
 			<Stage
 				room={room}
+				relay={relay}
 				chat={chat}
 				chatting={chatting}
 				listening={listening}
@@ -108,10 +111,12 @@ function Stage({
 	chatting,
 	listening,
 	screen,
+	relay,
 	onClosePanel,
 	onOpenSound,
 }: {
 	room: LiveRoom;
+	relay?: string;
 	chat: ReturnType<typeof useChat>;
 	chatting: boolean;
 	listening: boolean;
@@ -265,7 +270,7 @@ function Stage({
 			    it never eats a click meant for a picture underneath. */}
 			{state === ConnectionState.Connected && (
 				<div className="pointer-events-none absolute top-3 left-3 z-10">
-					<Signal reading={connection} />
+					<Signal reading={connection} relay={relay} />
 				</div>
 			)}
 

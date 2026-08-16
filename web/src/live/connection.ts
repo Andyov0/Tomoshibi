@@ -26,7 +26,7 @@
  * numbers below are what somebody can act on.
  */
 
-import { ConnectionQuality, type Room, RoomEvent } from "livekit-client";
+import { ConnectionQuality, type Room, RoomEvent, Track } from "livekit-client";
 import { useEffect, useRef, useState } from "react";
 
 /** How good the connection is, in the three states a light can be. */
@@ -43,6 +43,29 @@ export interface Reading {
 	downKbps?: number;
 	/** How unevenly packets are arriving, in milliseconds. */
 	jitterMs?: number;
+	/**
+	 * What the screen share is actually managing, where one is running.
+	 *
+	 * Asked for because the settings are a request and not a promise: somebody
+	 * chose 4K at sixty and the encoder may be sending 4K at nineteen, and
+	 * nothing else on the screen would say so. The number that matters is what
+	 * is leaving this machine, not what was asked for.
+	 *
+	 * Absent when nothing is being shared, so the row is not a permanent dash.
+	 */
+	share?: { width: number; height: number; fps: number };
+	/**
+	 * Where the media is actually going, as the address it is going to.
+	 *
+	 * Read from the candidate pair in use rather than from anything this page
+	 * was told, because those two can differ and the difference is the thing
+	 * worth seeing. A meeting lives on one machine: somebody who picked a
+	 * different one has their signalling forwarded to it and their media sent
+	 * straight there, so the server they chose and the server carrying their
+	 * voice are not the same server — and nothing else on the screen would say
+	 * so.
+	 */
+	mediaAddress?: string;
 	/** Whether anything has been measured yet. */
 	measured: boolean;
 }
@@ -155,6 +178,8 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 				grade: grade(published.current, stats.rttMs, lossPercent),
 				rttMs: stats.rttMs,
 				jitterMs: stats.jitterMs,
+				share: stats.share,
+				mediaAddress: stats.mediaAddress,
 				lossPercent,
 				upKbps,
 				downKbps,
@@ -208,6 +233,8 @@ export function grade(
 interface Gathered {
 	rttMs?: number;
 	jitterMs?: number;
+	mediaAddress?: string;
+	share?: { width: number; height: number; fps: number };
 	totals: {
 		bytesSent: number;
 		bytesReceived: number;
@@ -232,7 +259,27 @@ async function gather(room: Room): Promise<Gathered> {
 
 	for (const publication of room.localParticipant.trackPublications.values()) {
 		const report = await publication.track?.getRTCStatsReport?.();
-		if (report) reports.push(report);
+		if (!report) continue;
+
+		reports.push(report);
+
+		// The share is read from its own publication rather than from the pooled
+		// numbers below, because those are summed across every track and a frame
+		// rate is not a thing that can be added up. A camera at thirty beside a
+		// share at fifteen would otherwise read as forty-five.
+		if (publication.source === Track.Source.ScreenShare) {
+			report.forEach((entry: Record<string, unknown> & { type?: string }) => {
+				if (entry.type !== "outbound-rtp") return;
+
+				const fps = numeric(entry.framesPerSecond);
+				const width = numeric(entry.frameWidth);
+				const height = numeric(entry.frameHeight);
+
+				if (fps === undefined || width === undefined || height === undefined) return;
+
+				out.share = { width, height, fps: Math.round(fps) };
+			});
+		}
 	}
 
 	for (const participant of room.remoteParticipants.values()) {
@@ -247,6 +294,12 @@ async function gather(room: Room): Promise<Gathered> {
 	// byte, and the bitrate would read as twice what is being sent.
 	const seen = new Set<string>();
 
+	// Collected as they are met and resolved afterwards, because the pair that
+	// names a candidate and the candidate itself arrive in whichever order the
+	// report happens to hold them.
+	const remotes = new Map<string, { address: string; port: number | undefined }>();
+	let nominated: string | undefined;
+
 	for (const report of reports) {
 		report.forEach((entry: Record<string, unknown> & { type?: string; id?: string }) => {
 			const id = String(entry.id ?? "");
@@ -254,6 +307,20 @@ async function gather(room: Room): Promise<Gathered> {
 			if (id) seen.add(id);
 
 			switch (entry.type) {
+				case "remote-candidate": {
+					// Kept by id so the pair below can name the one in use. Every
+					// candidate ever considered appears here, and most of them
+					// lost.
+					if (typeof entry.id === "string" && typeof entry.address === "string") {
+						remotes.set(entry.id, {
+							address: entry.address,
+							port: numeric(entry.port),
+						});
+					}
+
+					return;
+				}
+
 				case "candidate-pair": {
 					// The one in use. A connection collects several and reports
 					// them all, and the ones that lost the race have stale or
@@ -262,6 +329,11 @@ async function gather(room: Room): Promise<Gathered> {
 
 					const rtt = numeric(entry.currentRoundTripTime);
 					if (rtt !== undefined) out.rttMs = Math.round(rtt * 1000);
+
+					if (typeof entry.remoteCandidateId === "string") {
+						nominated = entry.remoteCandidateId;
+					}
+
 					return;
 				}
 
@@ -296,6 +368,13 @@ async function gather(room: Room): Promise<Gathered> {
 				}
 			}
 		});
+	}
+
+	if (nominated) {
+		const remote = remotes.get(nominated);
+		if (remote) {
+			out.mediaAddress = remote.port ? `${remote.address}:${remote.port}` : remote.address;
+		}
 	}
 
 	return out;

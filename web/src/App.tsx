@@ -35,6 +35,9 @@ function initialRoom(): string {
 export function App() {
 	const [room, setRoom] = useState(initialRoom);
 	const [live, setLive] = useState<LiveRoom>();
+	// What the machine holding the call is called, so it can be said in the words
+	// the picker used rather than as an address.
+	const [holding, setHolding] = useState<string>();
 
 	// Held in a ref as well so the unmount cleanup can reach it without making
 	// the effect depend on it, which would disconnect on every render.
@@ -75,6 +78,9 @@ export function App() {
 
 			try {
 				const grant = await requestJoin(room, name, passphrase, relay);
+				// Kept so the call can say where it is being held, in the words
+				// the picker used rather than as an address.
+				setHolding(grant.relay);
 				await connect(made, grant);
 
 				// After connecting rather than before, so somebody appears in the
@@ -101,7 +107,7 @@ export function App() {
 	}, []);
 
 	if (live) {
-		return <Room room={live} onLeave={onLeave} />;
+		return <Room room={live} relay={holding} onLeave={onLeave} />;
 	}
 
 	return <PreJoin room={room} onRoomChange={setRoom} onJoin={onJoin} />;

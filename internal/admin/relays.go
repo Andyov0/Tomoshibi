@@ -149,7 +149,7 @@ func viewOf(relay store.Relay) relayView {
 		Name: relay.Name, URL: relay.URL, Region: relay.Region,
 		Label: relay.Label, Probe: relay.Probe,
 		Turn: relay.Turn, Forwards: relay.Forwards, Apart: relay.Apart,
-		Bridge:   relay.Bridge,
+		Bridge: relay.Bridge, Lat: relay.Lat, Lon: relay.Lon,
 		Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 		Enabled: relay.Enabled,
 	}

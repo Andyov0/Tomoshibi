@@ -1,3 +1,5 @@
+import { useLingering } from "@/hooks/useLingering";
+import { useReorder } from "@/hooks/useReorder";
 import { cn } from "@/lib/utils";
 import { say, t } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
@@ -6,6 +8,7 @@ import {
 	ChevronDown,
 	ChevronUp,
 	Copy,
+	GripVertical,
 	Loader2,
 	Plus,
 	RotateCw,
@@ -13,7 +16,7 @@ import {
 	Trash2,
 	X,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { type PointerEvent as Pointing, useCallback, useEffect, useMemo, useState } from "react";
 import { type Relay, api } from "./api";
 import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
@@ -51,6 +54,39 @@ export function RelaysPanel({
 	const [command, setCommand] = useState<string>();
 	const [busy, setBusy] = useState<string>();
 
+	/**
+	 * The order somebody has just dragged the list into, held until the server
+	 * has been told and has said it back.
+	 *
+	 * Without it a drop reads as two jumps. The row lands, the transforms come
+	 * off, and the list underneath is still the one the server last sent — so
+	 * the row snaps back to where it was picked up and moves again a moment
+	 * later when the save returns, to describe a move that already happened on
+	 * screen.
+	 */
+	const [arranged, setArranged] = useState<string[]>();
+
+	/**
+	 * What a single relay answered when its own row was asked.
+	 *
+	 * Dropped as soon as the whole list is read again, because reading the list
+	 * measures every relay: keeping this would be showing the older of two
+	 * answers to the same question, on the row somebody is most likely watching.
+	 */
+	const [readings, setReadings] = useState<Record<string, Relay>>({});
+
+	// The list arriving is the event here, not something the effect reads.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the poll is the trigger, not the input
+	useEffect(() => {
+		setReadings((held) => (Object.keys(held).length === 0 ? held : {}));
+	}, [value]);
+
+	const relays = useMemo(() => {
+		const list = arrange(value?.relays ?? [], arranged);
+
+		return list.map((relay) => readings[relay.name] ?? relay);
+	}, [value, arranged, readings]);
+
 	const act = useCallback(
 		async (name: string, run: () => Promise<unknown>) => {
 			if (busy) return;
@@ -69,9 +105,65 @@ export function RelaysPanel({
 		[busy, refresh],
 	);
 
-	if (error) return <Failed>{error}</Failed>;
+	/**
+	 * Save an order once, when the row is let go of.
+	 *
+	 * Not through [act]: that marks the row busy and disables everything on it,
+	 * which for a move somebody can already see the result of would be a row
+	 * that greys out for no reason they could name. What it does share is the
+	 * refresh, because the order is the server's to hold and this page's copy
+	 * of it is a guess until it comes back.
+	 */
+	const settle = useCallback(
+		async (order: string[]) => {
+			setArranged(order);
 
-	const relays = value?.relays ?? [];
+			try {
+				await api.reorderRelays(order);
+				await refresh();
+			} catch (err) {
+				actionFailed(err instanceof Error ? err.message : String(err));
+			} finally {
+				// Only if it is still this drag's order. A second drag begun
+				// before the first came back owns the list now, and clearing it
+				// here would show the older order until the second save returned.
+				setArranged((held) => (held === order ? undefined : held));
+			}
+		},
+		[refresh],
+	);
+
+	const reorder = useReorder({ order: relays.map((relay) => relay.name), onSettle: settle });
+
+	/**
+	 * Measure one relay, because one row asked.
+	 *
+	 * This used to re-read the whole list, which measured all of them: pressing
+	 * the button on the machine somebody had just restarted dialled every other
+	 * machine as well, and the spinner on the row stopped when the slowest relay
+	 * in the fleet answered rather than when this one did. On a fleet with
+	 * anything genuinely down, that is the full timeout, every press, on a row
+	 * that has nothing to do with the relay that is down.
+	 */
+	const recheck = useCallback(
+		async (name: string) => {
+			if (busy) return;
+
+			setBusy(name);
+
+			try {
+				const reading = await api.checkRelay(name);
+				setReadings((held) => ({ ...held, [name]: reading }));
+			} catch (err) {
+				actionFailed(err instanceof Error ? err.message : String(err));
+			} finally {
+				setBusy(undefined);
+			}
+		},
+		[busy],
+	);
+
+	if (error) return <Failed>{error}</Failed>;
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -145,42 +237,92 @@ export function RelaysPanel({
 				) : null}
 			</Card>
 
-			{relays.map((relay, index) => (
-				<RelayRow
-					key={relay.name}
-					// Which arrows to draw. The list is what the server sent, in
-					// the order it sent it, so an end is an end.
-					first={index === 0}
-					last={index === relays.length - 1}
-					onMove={(by) =>
-						act(relay.name, () => {
-							const order = relays.map((one) => one.name);
-							const to = index + by;
-							const moved = order[index];
-							if (moved === undefined || to < 0 || to >= order.length) return Promise.resolve();
+			{/* Its own container, because the rows are measured through it and the
+			    card above is not one of them. The spacing is the same as the
+			    column it sits in, so nothing about the page moved to gain a
+			    handle on the list. */}
+			<div ref={reorder.list} className="flex flex-col gap-4">
+				{relays.map((relay, index) => {
+					const lifted = reorder.carrying === index;
+					const offset = reorder.shift(index);
 
-							order.splice(index, 1);
-							order.splice(to, 0, moved);
+					return (
+						<div
+							key={relay.name}
+							style={offset ? { transform: `translateY(${offset}px)` } : undefined}
+							className={cn(
+								"relative duration-200 ease-settle",
+								// The rows standing aside slide; the row under the pointer
+								// follows it exactly, and so transitions nothing. At the drop
+								// neither does: the list reorders and the offsets come off in
+								// the same frame, and a row easing out of an offset it no
+								// longer has would be animating away from where it landed.
+								lifted || reorder.carrying === undefined
+									? "transition-[box-shadow]"
+									: "transition-[transform,box-shadow]",
+								// Written out rather than assembled from a size and a
+								// colour: the palette here is nearly black, and the
+								// default shadow is a tenth of an opacity that lands
+								// on it as nothing at all.
+								lifted && "z-10 shadow-[0_10px_30px_rgba(0,0,0,0.45)]",
+							)}
+						>
+							<RelayRow
+								// Which arrows to draw. The list is what the server sent, in
+								// the order it sent it, so an end is an end.
+								first={index === 0}
+								last={index === relays.length - 1}
+								onMove={(by) =>
+									act(relay.name, () => {
+										const order = relays.map((one) => one.name);
+										const to = index + by;
+										const moved = order[index];
+										if (moved === undefined || to < 0 || to >= order.length)
+											return Promise.resolve();
 
-							return api.reorderRelays(order);
-						})
-					}
-					relay={relay}
-					canModerate={canModerate}
-					busy={busy === relay.name}
-					onToggle={() =>
-						act(relay.name, () => api.editRelay(relay.name, { enabled: !relay.enabled }))
-					}
-					onDrop={() => act(relay.name, () => api.dropRelay(relay.name))}
-					onEdit={(change) => act(relay.name, () => api.editRelay(relay.name, change))}
-					// The list is re-read, and reading it is what checks every
-					// relay: the reachability on this page is measured when it is
-					// drawn rather than remembered.
-					onRecheck={() => act(relay.name, refresh)}
-				/>
-			))}
+										order.splice(index, 1);
+										order.splice(to, 0, moved);
+
+										return api.reorderRelays(order);
+									})
+								}
+								onTake={reorder.take(index)}
+								lifted={lifted}
+								relay={relay}
+								canModerate={canModerate}
+								busy={busy === relay.name}
+								onToggle={() =>
+									act(relay.name, () => api.editRelay(relay.name, { enabled: !relay.enabled }))
+								}
+								onDrop={() => act(relay.name, () => api.dropRelay(relay.name))}
+								onEdit={(change) => act(relay.name, () => api.editRelay(relay.name, change))}
+								onRecheck={() => recheck(relay.name)}
+							/>
+						</div>
+					);
+				})}
+			</div>
 		</div>
 	);
+}
+
+/**
+ * The relays in the order somebody dragged them into, where that order still
+ * describes this list.
+ *
+ * A relay added or removed while a save was in the air leaves an order naming
+ * machines that have gone or missing one that has arrived, and laying the list
+ * out from it would hide the new relay entirely — a row that is not drawn is a
+ * machine nobody can turn off. The server's own order is the safe answer to
+ * fall back to, and it is at most one poll away.
+ */
+function arrange(relays: Relay[], order?: string[]): Relay[] {
+	if (!order) return relays;
+
+	const by = new Map(relays.map((relay) => [relay.name, relay]));
+	const chosen = order.map((name) => by.get(name)).filter((relay) => relay !== undefined);
+
+	return chosen.length === relays.length ? chosen : relays;
 }
 
 function RelayRow({
@@ -191,6 +333,8 @@ function RelayRow({
 	onDrop,
 	onEdit,
 	onMove,
+	onTake,
+	lifted,
 	onRecheck,
 	first,
 	last,
@@ -199,6 +343,10 @@ function RelayRow({
 	canModerate: boolean;
 	busy: boolean;
 	onMove: (by: number) => void;
+	/** Picks the row up. */
+	onTake: (event: Pointing<HTMLElement>) => void;
+	/** Whether this is the row being carried. */
+	lifted: boolean;
 	onRecheck: () => void;
 	first: boolean;
 	last: boolean;
@@ -220,9 +368,54 @@ function RelayRow({
 	// the page mostly forms and hid the one line anybody came for.
 	const [showing, setShowing] = useState(false);
 
+	// Held on screen while they leave. Rendered as `showing && ...` the form was
+	// simply gone on the frame after the press, and a row that has just grown by
+	// six fields collapsing between two frames reads as the page having redrawn
+	// rather than as a panel being shut.
+	const settings = useLingering(showing);
+	const removal = useLingering(confirming);
+
 	return (
 		<Card title={say(relay.label || relay.name)} note={relay.label ? relay.name : relay.region}>
 			<div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+				{/* What the row is dragged by.
+				    A handle rather than the whole row: the row is mostly buttons
+				    and an address somebody selects to copy, and a press that might
+				    be the start of a drag cannot also be a press on the thing
+				    underneath it — one of the two has to lose, and on this row both
+				    are things people do daily.
+
+				    Arrow keys as well as a pointer. The buttons beside it are the
+				    older way and stay, but a handle that only answers to a mouse is
+				    a feature the keyboard lost the moment dragging arrived. */}
+				{canModerate && (
+					<button
+						type="button"
+						onPointerDown={onTake}
+						onKeyDown={(event) => {
+							if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+
+							// Or the panel scrolls under a row somebody is moving.
+							event.preventDefault();
+							onMove(event.key === "ArrowUp" ? -1 : 1);
+						}}
+						disabled={busy}
+						aria-label={t("Drag to reorder")}
+						title={t("Drag to reorder")}
+						className={cn(
+							// A finger on this must move the row and not the page, and
+							// nothing but touch-action can say so: preventing the
+							// default on a pointer event is too late, because by then
+							// the browser has already decided the gesture is a scroll.
+							"-ml-1.5 shrink-0 touch-none rounded-md p-1 text-fg-muted transition-colors",
+							"hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+							lifted ? "cursor-grabbing text-fg" : "cursor-grab",
+						)}
+					>
+						<GripVertical className="size-4" />
+					</button>
+				)}
+
 				{/* First, because it is about the line it sits beside: the address
 				    and what it answered in. The buttons on the right change the
 				    relay; this one only asks it again. */}
@@ -384,12 +577,19 @@ function RelayRow({
 				)}
 			</div>
 
-			{canModerate && showing && (
-				<Settings relay={relay} busy={busy} onSave={(change) => onEdit(change)} />
+			{canModerate && settings.mounted && (
+				<div className={settings.leaving ? "animate-depart" : "animate-arrive"}>
+					<Settings relay={relay} busy={busy} onSave={(change) => onEdit(change)} />
+				</div>
 			)}
 
-			{confirming && (
-				<p className="px-4 pb-3 text-fg-muted text-xs">
+			{removal.mounted && (
+				<p
+					className={cn(
+						"px-4 pb-3 text-fg-muted text-xs",
+						removal.leaving ? "animate-depart" : "animate-arrive",
+					)}
+				>
 					{t(
 						"Calls already on this relay keep running; this only stops new ones being sent there.",
 					)}

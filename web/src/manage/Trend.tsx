@@ -35,6 +35,14 @@ export function Trend({
 		const element = host.current;
 		if (!element) return;
 
+		// Nothing to draw on, which is not a fault: the chart is a decoration on a
+		// page whose numbers are all written out beside it, and a document with no
+		// canvas — a test environment, a browser with it turned off — should get
+		// the page without the picture rather than an exception thrown out of a
+		// render. It was throwing four of them per run and turning the whole
+		// suite red, which is the state in which nobody reads a failure.
+		if (!element.ownerDocument.createElement("canvas").getContext?.("2d")) return;
+
 		const made = new uPlot(options(element.clientWidth), series(latest.current), element);
 		plot.current = made;
 

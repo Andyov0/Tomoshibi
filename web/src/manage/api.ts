@@ -348,6 +348,21 @@ export const api = {
 
 	relays: () => call<{ relays: Relay[] }>("/relays"),
 
+	/**
+	 * Ask one relay whether it is there.
+	 *
+	 * Reading the list measures every relay, which is what drawing the page
+	 * needs and is not what a button on one row means. It used to be both: the
+	 * row's button re-read the list, so asking after the machine somebody had
+	 * just restarted dialled the whole fleet and took as long as the slowest
+	 * one — which, where a relay is genuinely down, is its full timeout, on
+	 * every press, about a machine that is not the one in question.
+	 *
+	 * The reply is a row in the shape the list sends, so what comes back can go
+	 * where the old reading was rather than being reconciled with it.
+	 */
+	checkRelay: (name: string) => call<Relay>(`/relays/${encodeURIComponent(name)}/check`),
+
 	addRelay: (relay: { name: string; url: string; region?: string; enabled?: boolean }) =>
 		call<{ added: string }>("/relays", { method: "POST", body: JSON.stringify(relay) }),
 

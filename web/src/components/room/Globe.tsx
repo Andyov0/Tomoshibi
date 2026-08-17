@@ -192,6 +192,11 @@ export function Globe({
 	// reaching for a marker, is doing something the globe must not fight.
 	const idle = useRef(0);
 
+	// Whether it has already been pointed at the quickest relay. Once is the
+	// point: doing it twice is the globe correcting itself out from under
+	// whoever is looking at it.
+	const aimed = useRef(false);
+
 	/*
 	 * Turning on its own.
 	 *
@@ -243,9 +248,23 @@ export function Globe({
 		[relays],
 	);
 
-	// Where to look, before anybody has said otherwise.
-	const nearest = useMemo(() => {
-		if (turned || !measured) return undefined;
+	/*
+	 * Where to look, before anybody has said otherwise.
+	 *
+	 * Once, when the measurements land, and never again — which is the whole of
+	 * the fix rather than a refinement of it. This ran on every render and aimed
+	 * the globe at the quickest relay whenever it had drifted a degree away from
+	 * it, so the moment the globe started turning by itself the two were fighting:
+	 * the rotation moved it a fraction, this pulled it back, sixty times a second.
+	 * What that looks like is a twitch, and nothing about it looks like an
+	 * argument between two pieces of code that each work.
+	 *
+	 * A ref rather than state because nothing on screen depends on whether it has
+	 * happened, and setting state here would be a render that exists to record
+	 * that a render happened.
+	 */
+	useEffect(() => {
+		if (aimed.current || turned || !measured) return;
 
 		let best: Relay | undefined;
 		let quickest = Number.POSITIVE_INFINITY;
@@ -258,21 +277,16 @@ export function Globe({
 			}
 		}
 
-		return best;
+		if (best?.lon === undefined || best.lat === undefined) return;
+
+		aimed.current = true;
+		setSpin({ lon: best.lon, lat: Math.max(-60, Math.min(60, best.lat)) });
 	}, [placed, measured, turned]);
-
-	// Settled into place rather than jumped to, and only once.
-	if (nearest?.lon !== undefined && nearest.lat !== undefined && !turned) {
-		const wanted = { lon: nearest.lon, lat: Math.max(-60, Math.min(60, nearest.lat)) };
-
-		if (Math.abs(wanted.lon - spin.lon) > 1 || Math.abs(wanted.lat - spin.lat) > 1) {
-			queueMicrotask(() => setSpin(wanted));
-		}
-	}
 
 	const grab = (event: ReactPointerEvent<SVGSVGElement>) => {
 		event.currentTarget.setPointerCapture(event.pointerId);
 		drag.current = { x: event.clientX, y: event.clientY, from: spin };
+		aimed.current = true;
 		setTurned(true);
 	};
 

@@ -119,9 +119,18 @@ function Fleet() {
 	);
 }
 
+/*
+ * Scrolls down and not sideways.
+ *
+ * It was hidden in both directions, which was right when this held two cards and
+ * stopped being right the moment a globe was added: on a short window everything
+ * below the fold was unreachable, the menu included, which is what "the list will
+ * not scroll" turned out to mean. The horizontal half stays — the only thing that
+ * ever overflows sideways is the glow behind the page.
+ */
 function Frame({ children, corner }: { children: ReactNode; corner?: ReactNode }) {
 	return (
-		<main className="relative grid min-h-full grid-rows-[auto_1fr] overflow-hidden">
+		<main className="relative grid min-h-full grid-rows-[auto_1fr] overflow-x-hidden overflow-y-auto">
 			{/*
 			 * One glow, high and behind everything, in the signal colour at a
 			 * fraction of its strength. It is doing the work a photograph would do
@@ -157,7 +166,10 @@ function Frame({ children, corner }: { children: ReactNode; corner?: ReactNode }
 				{/* Lifted off dead centre. Optical centre sits above geometric
 				    centre, and a card placed at exactly half the height reads as
 				    having sunk. */}
-				<div className="w-full max-w-sm pt-[6vh] sm:pt-[10vh]">{children}</div>
+				{/* Lifted off dead centre, and less so than before: optical centre
+				    sits above geometric centre, but a page tall enough to scroll
+				    should not begin with a screenful of nothing. */}
+				<div className="w-full max-w-sm pt-4 sm:pt-8">{children}</div>
 			</div>
 		</main>
 	);

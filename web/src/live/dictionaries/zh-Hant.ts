@@ -161,6 +161,7 @@ const zhHant: Dictionary = {
 	"Hong Kong": "香港",
 	"Move up": "上移",
 	"Move down": "下移",
+	"Drag to reorder": "拖曳調整順序",
 	"How this deployment refers to it": "本部署內部用的識別碼",
 	"Left empty, the name is used": "留空則顯示上面的名字",
 	"What a browser dials": "瀏覽器實際連線的位址",
@@ -269,7 +270,6 @@ const zhHant: Dictionary = {
 	"You were invited to this room. Choose a name and go in.": "你是被邀請進這個房間的。取個名字就能進。",
 	"Running this room": "這個房間的管理",
 	"Invite somebody": "邀請別人",
-	"Lets one person in, once, within a day. No passphrase needed.": "一天之內,只能讓一個人進一次。不需要口令。",
 	"Mute": "閉麥",
 	"Make host": "設為房主",
 	"Remove from room": "移出房間",
@@ -303,6 +303,8 @@ const zhHant: Dictionary = {
 	"End for everybody": "解散會議",
 	"Everybody is disconnected and links stop working.": "所有人會被斷開,連結同時失效。",
 	"Back": "返回",
+	"Anybody with this link can join, until you end the meeting. No passphrase needed.": "拿到這個連結的人都能進,直到你解散會議為止。不需要口令。",
+	"Stop this link working": "讓這個連結失效",
 };
 
 export default zhHant;

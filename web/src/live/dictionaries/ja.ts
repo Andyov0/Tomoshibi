@@ -161,6 +161,7 @@ const ja: Dictionary = {
 	"Hong Kong": "香港",
 	"Move up": "上へ",
 	"Move down": "下へ",
+	"Drag to reorder": "ドラッグして並べ替え",
 	"How this deployment refers to it": "この配備の内部での識別名",
 	"Left empty, the name is used": "空欄なら上の名前が使われます",
 	"What a browser dials": "ブラウザーが実際に接続する先",
@@ -269,7 +270,6 @@ const ja: Dictionary = {
 	"You were invited to this room. Choose a name and go in.": "この部屋に招待されています。名前を決めれば入れます。",
 	"Running this room": "この部屋の管理",
 	"Invite somebody": "誰かを招待する",
-	"Lets one person in, once, within a day. No passphrase needed.": "1日以内、1人だけが1回入れます。合言葉は不要です。",
 	"Mute": "ミュート",
 	"Make host": "ホストにする",
 	"Remove from room": "部屋から退出させる",
@@ -303,6 +303,8 @@ const ja: Dictionary = {
 	"End for everybody": "全員の会議を終了",
 	"Everybody is disconnected and links stop working.": "全員が切断され、リンクも無効になります。",
 	"Back": "戻る",
+	"Anybody with this link can join, until you end the meeting. No passphrase needed.": "このリンクを持つ人は、会議を解散するまで参加できます。合言葉は不要です。",
+	"Stop this link working": "このリンクを無効にする",
 };
 
 export default ja;

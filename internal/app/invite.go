@@ -2,6 +2,7 @@ package app
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -53,6 +54,7 @@ func (a *App) mountInvites(mux *http.ServeMux) {
 	}
 
 	mux.HandleFunc("POST /api/rooms/{room}/invites", a.makeInvite)
+	mux.HandleFunc("DELETE /api/rooms/{room}/invites", a.revokeInvites)
 	mux.HandleFunc("GET /api/invites/{token}", a.readInvite)
 	mux.HandleFunc("GET /api/rooms/{room}/live", a.roomLive)
 }
@@ -95,6 +97,35 @@ func (a *App) makeInvite(w http.ResponseWriter, r *http.Request) {
 		"room":    name,
 		"expires": now.Add(inviteFor).Format(time.RFC3339),
 	})
+}
+
+// revokeInvites throws away every link to a room, without ending the meeting.
+//
+// The other way a link dies is the room being closed, which is a bigger thing
+// than anybody wants to do about a link they pasted into the wrong window. This
+// is that: the meeting carries on, and the link somebody sent stops working.
+//
+// All of them rather than one, because that is what revoking means to whoever
+// presses it. A host who minted two links and killed only the newer one would
+// have revoked nothing, and would have no way of knowing.
+func (a *App) revokeInvites(w http.ResponseWriter, r *http.Request) {
+	name := strings.ToLower(r.PathValue("room"))
+
+	who, ok := a.mayHost(r, name)
+	if !ok {
+		fail(w, http.StatusForbidden, reasonNotYours)
+		return
+	}
+
+	gone, err := a.store.DropInvites(name)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, reasonServerError)
+		return
+	}
+
+	slog.Info("invites revoked", "room", name, "by", who.Mark.Trip, "gone", gone)
+
+	respond(w, map[string]any{"revoked": gone})
 }
 
 // readInvite says what an invite is for, without spending it.

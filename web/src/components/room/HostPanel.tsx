@@ -1,10 +1,29 @@
 import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
-import { dissolve, handOver, invite, silence, turnOut, useOthers, type Standing } from "@/live/host";
+import {
+	dissolve,
+	handOver,
+	invite,
+	revoke,
+	silence,
+	turnOut,
+	useOthers,
+	type Standing,
+} from "@/live/host";
 import { actionFailed } from "@/live/notices";
 import { cn } from "@/lib/utils";
 import type { Room } from "livekit-client";
-import { Check, Crown, DoorClosed, Link2, Loader2, MicOff, UserMinus, X } from "lucide-react";
+import {
+	Check,
+	Crown,
+	DoorClosed,
+	Link2,
+	Link2Off,
+	Loader2,
+	MicOff,
+	UserMinus,
+	X,
+} from "lucide-react";
 import { useState } from "react";
 
 /**
@@ -124,15 +143,47 @@ export function HostPanel({
 				</button>
 
 				{link && (
-					<p className="readout break-all rounded-md bg-surface-2 px-2 py-1.5 text-[10.5px] text-fg-muted">
-						{link}
-					</p>
-				)}
+					<>
+						<p className="readout break-all rounded-md bg-surface-2 px-2 py-1.5 text-[10.5px] text-fg-muted">
+							{link}
+						</p>
 
-				{link && (
-					<p className="text-[10.5px] text-fg-muted/80 leading-snug">
-						{t("Lets one person in, once, within a day. No passphrase needed.")}
-					</p>
+						<p className="text-[10.5px] text-fg-muted/80 leading-snug">
+							{t("Anybody with this link can join, until you end the meeting. No passphrase needed.")}
+						</p>
+
+						{/*
+						 * Because a link goes out and cannot be taken back.
+						 *
+						 * It gets pasted into the wrong window, or into the right one
+						 * with the wrong person in it, and until this existed the only
+						 * way to make it stop working was to end the meeting — which
+						 * is a far larger thing to do about a mistake with a URL.
+						 */}
+						<button
+							type="button"
+							disabled={busy === "revoke"}
+							onClick={() =>
+								act("revoke", async () => {
+									await revoke(room);
+									setLink(undefined);
+									setCopied(false);
+								})
+							}
+							className={cn(
+								"flex items-center gap-1.5 self-start rounded-md px-1.5 py-1 text-[11px]",
+								"text-fg-muted transition-colors hover:bg-danger/10 hover:text-fg",
+								"disabled:opacity-40",
+							)}
+						>
+							{busy === "revoke" ? (
+								<Loader2 className="size-3 animate-spin" />
+							) : (
+								<Link2Off className="size-3" />
+							)}
+							{t("Stop this link working")}
+						</button>
+					</>
 				)}
 			</div>
 

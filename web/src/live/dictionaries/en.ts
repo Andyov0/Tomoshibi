@@ -194,6 +194,7 @@ const en = {
 	"Hong Kong": "Hong Kong",
 	"Move up": "Move up",
 	"Move down": "Move down",
+	"Drag to reorder": "Drag to reorder",
 	"How this deployment refers to it": "How this deployment refers to it",
 	"Left empty, the name is used": "Left empty, the name is used",
 	"What a browser dials": "What a browser dials",
@@ -302,7 +303,6 @@ const en = {
 	"You were invited to this room. Choose a name and go in.": "You were invited to this room. Choose a name and go in.",
 	"Running this room": "Running this room",
 	"Invite somebody": "Invite somebody",
-	"Lets one person in, once, within a day. No passphrase needed.": "Lets one person in, once, within a day. No passphrase needed.",
 	"Mute": "Mute",
 	"Make host": "Make host",
 	"Remove from room": "Remove from room",
@@ -336,6 +336,8 @@ const en = {
 	"End for everybody": "End for everybody",
 	"Everybody is disconnected and links stop working.": "Everybody is disconnected and links stop working.",
 	"Back": "Back",
+	"Anybody with this link can join, until you end the meeting. No passphrase needed.": "Anybody with this link can join, until you end the meeting. No passphrase needed.",
+	"Stop this link working": "Stop this link working",
 } as const;
 
 export default en;

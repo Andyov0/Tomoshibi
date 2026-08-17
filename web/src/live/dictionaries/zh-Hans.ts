@@ -161,6 +161,7 @@ const zhHans: Dictionary = {
 	"Hong Kong": "香港",
 	"Move up": "上移",
 	"Move down": "下移",
+	"Drag to reorder": "拖动调整顺序",
 	"How this deployment refers to it": "本部署内部用的标识",
 	"Left empty, the name is used": "留空则显示上面的名字",
 	"What a browser dials": "浏览器实际连接的地址",
@@ -269,7 +270,6 @@ const zhHans: Dictionary = {
 	"You were invited to this room. Choose a name and go in.": "你是被邀请进这个房间的。取个名字就能进。",
 	"Running this room": "这个房间的管理",
 	"Invite somebody": "邀请别人",
-	"Lets one person in, once, within a day. No passphrase needed.": "一天之内,只能让一个人进一次。不需要口令。",
 	"Mute": "闭麦",
 	"Make host": "设为房主",
 	"Remove from room": "移出房间",
@@ -303,6 +303,8 @@ const zhHans: Dictionary = {
 	"End for everybody": "解散会议",
 	"Everybody is disconnected and links stop working.": "所有人会被断开,链接同时失效。",
 	"Back": "返回",
+	"Anybody with this link can join, until you end the meeting. No passphrase needed.": "拿到这个链接的人都能进,直到你解散会议为止。不需要口令。",
+	"Stop this link working": "让这个链接失效",
 };
 
 export default zhHans;

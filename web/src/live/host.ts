@@ -155,6 +155,18 @@ export async function invite(room: Room): Promise<string> {
 	return url.toString();
 }
 
+/**
+ * Stop every link to this room working, without ending the meeting.
+ *
+ * The other way a link dies is the room being closed, which is a far bigger
+ * thing than anybody wants to do about a link pasted into the wrong window.
+ */
+export async function revoke(room: Room): Promise<void> {
+	const response = await ask(room, "/invites", { method: "DELETE" });
+
+	if (!response.ok) throw new Error("revoke_failed");
+}
+
 /** Everybody else in the call, for a list that acts on them. */
 export function useOthers(room: Room): Participant[] {
 	const [others, setOthers] = useState<Participant[]>([]);

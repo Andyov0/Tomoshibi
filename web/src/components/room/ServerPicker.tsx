@@ -3,6 +3,7 @@ import { useT } from "@/hooks/useT";
 import { say } from "@/live/i18n";
 import { type Relay, timings } from "@/live/relays";
 import { Check, ChevronDown, Loader2, RotateCw, Wand2 } from "lucide-react";
+import { Globe } from "@/components/room/Globe";
 import { useLingering } from "@/hooks/useLingering";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -133,22 +134,6 @@ export function ServerList({
 		measure();
 	}, []);
 
-	// Fastest first, and the ones nothing came back from at the end. A relay that
-	// timed out is still shown: it is a machine somebody used yesterday, and one
-	// that vanished from the list would look deleted.
-	const ordered = measured
-		? [...relays].sort((left, right) => {
-				const a = measured.get(left.name);
-				const b = measured.get(right.name);
-
-				if (a === undefined && b === undefined) return 0;
-				if (a === undefined) return 1;
-				if (b === undefined) return -1;
-
-				return a - b;
-			})
-		: relays;
-
 	return (
 		<div className="flex flex-col gap-2">
 			<div className="flex items-center justify-between gap-2 px-1">
@@ -178,66 +163,19 @@ export function ServerList({
 			</div>
 
 			{/*
-			 * Its own row above the rest, and the full width of it. Automatic is
-			 * not one of the places below — it is the absence of a choice — and a
-			 * chip the same size as the others would read as a machine called
-			 * Automatic.
+			 * The globe and the menu are the same choice offered two ways, and
+			 * neither is the fallback for the other.
+			 *
+			 * A list answers "which of these is quickest" and says nothing about
+			 * where anything is; a globe answers "where are these" and is a poor
+			 * way to compare eleven numbers. Somebody arranging a call with people
+			 * in three countries wants the first question answered by looking and
+			 * the second by reading, and which one they reach for is theirs to
+			 * decide rather than ours.
 			 */}
-			<button
-				type="button"
-				onClick={() => onChange("")}
-				className={cn(
-					"flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors",
-					value === ""
-						? "border-tally/50 bg-tally/10"
-						: "border-border bg-surface hover:bg-surface-hi",
-				)}
-			>
-				<Wand2 className={cn("size-3.5 shrink-0", value === "" ? "text-tally" : "text-fg-muted")} />
-				<span className="text-[13px] text-fg">{t("Automatic")}</span>
-				<span className="ml-auto text-[11px] text-fg-muted">{t("Whichever answers fastest")}</span>
-			</button>
+			<Globe relays={relays} value={value} measured={measured} onChange={onChange} />
 
-			<div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-				{ordered.map((relay, index) => (
-					<button
-						key={relay.name}
-						type="button"
-						disabled={relay.maintenance}
-						onClick={() => onChange(relay.name)}
-						title={marked(relay)}
-						className={cn(
-							"flex min-w-0 flex-col gap-1 rounded-xl border px-2.5 py-2 text-left transition-colors",
-							// Staggered so the grid settles as a grid rather than
-							// appearing all at once. Small enough to read as movement
-							// and not as waiting.
-							"animate-rise",
-							value === relay.name
-								? "border-tally/50 bg-tally/10"
-								: "border-border bg-surface hover:bg-surface-hi",
-							// Shown and not selectable. A relay taken down for an hour
-							// that vanished would look deleted to whoever used it
-							// yesterday.
-							relay.maintenance && "opacity-40",
-						)}
-						style={{ animationDelay: `${Math.min(index, 8) * 25}ms` }}
-					>
-						<span className="truncate text-[12.5px] text-fg">{say(relay.label || relay.name)}</span>
-
-						<span className="flex items-center gap-1.5">
-							<Latency ms={measured?.get(relay.name)} known={measured !== undefined} />
-
-							{relay.maintenance ? (
-								<span className="truncate text-[10px] text-fg-muted">{t("Not taking calls")}</span>
-							) : relay.adminOnly ? (
-								<span className="text-[10px] text-fg-muted">[Admin]</span>
-							) : relay.fallback ? (
-								<span className="text-[10px] text-fg-muted">[Fallback]</span>
-							) : null}
-						</span>
-					</button>
-				))}
-			</div>
+			<ServerPicker relays={relays} value={value} onChange={onChange} plain />
 		</div>
 	);
 }
@@ -246,10 +184,19 @@ export function ServerPicker({
 	relays,
 	value,
 	onChange,
+	plain = false,
 }: {
 	relays: Relay[];
 	value: string;
 	onChange: (name: string) => void;
+	/**
+	 * Without its own heading, for where something above it already carries one.
+	 *
+	 * The lobby has the word "Server" and the control for measuring again on one
+	 * line above the globe, and a second heading between the two would be the
+	 * same word twice with a picture in between.
+	 */
+	plain?: boolean;
 }) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
@@ -360,7 +307,7 @@ export function ServerPicker({
 
 	return (
 		<div ref={frame} className="relative flex flex-col gap-1.5">
-			<span className="text-fg-muted text-xs">{t("Server")}</span>
+			{!plain && <span className="text-fg-muted text-xs">{t("Server")}</span>}
 
 			{/*
 			  * Drawn as a control rather than as a field. The first version was a

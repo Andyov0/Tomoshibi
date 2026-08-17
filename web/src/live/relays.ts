@@ -36,6 +36,16 @@ export interface Relay {
 	probe?: string;
 	/** Here, but not taking calls. Shown greyed rather than hidden. */
 	maintenance?: boolean;
+	/**
+	 * Where the machine is, in degrees, for the globe on the join screen.
+	 *
+	 * Absent where nobody has said. A relay without a place is left off the globe
+	 * rather than guessed at from its region — a box dropped in the middle of a
+	 * country it is not in looks exactly as authoritative as the ones that are
+	 * right.
+	 */
+	lat?: number;
+	lon?: number;
 }
 
 export interface RelayList {

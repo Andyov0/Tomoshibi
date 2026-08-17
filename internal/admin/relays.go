@@ -48,6 +48,8 @@ type relayView struct {
 	Forwards  bool     `json:"forwards,omitempty"`
 	Apart     []string `json:"apart,omitempty"`
 	Bridge    bool     `json:"bridge,omitempty"`
+	Lat       float64  `json:"lat,omitempty"`
+	Lon       float64  `json:"lon,omitempty"`
 	Fallback  bool     `json:"fallback,omitempty"`
 	AdminOnly bool     `json:"adminOnly,omitempty"`
 	Enabled   bool     `json:"enabled"`
@@ -264,6 +266,8 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 		Forwards  *bool     `json:"forwards"`
 		Apart     *[]string `json:"apart"`
 		Bridge    *bool     `json:"bridge"`
+		Lat       *float64  `json:"lat"`
+		Lon       *float64  `json:"lon"`
 		Fallback  *bool     `json:"fallback"`
 		AdminOnly *bool     `json:"adminOnly"`
 		Enabled   *bool     `json:"enabled"`
@@ -324,6 +328,12 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	}
 	if body.Bridge != nil {
 		found.Bridge = *body.Bridge
+	}
+	if body.Lat != nil {
+		found.Lat = *body.Lat
+	}
+	if body.Lon != nil {
+		found.Lon = *body.Lon
 	}
 	if body.Fallback != nil {
 		found.Fallback = *body.Fallback

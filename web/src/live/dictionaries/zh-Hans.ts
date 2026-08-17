@@ -305,6 +305,7 @@ const zhHans: Dictionary = {
 	"Back": "返回",
 	"Anybody with this link can join, until you end the meeting. No passphrase needed.": "拿到这个链接的人都能进,直到你解散会议为止。不需要口令。",
 	"Stop this link working": "让这个链接失效",
+	"Where the servers are": "服务器分布",
 };
 
 export default zhHans;

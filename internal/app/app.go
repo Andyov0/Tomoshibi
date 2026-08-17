@@ -776,6 +776,11 @@ type relayEntry struct {
 	// a person deciding where to hold a meeting.
 	Label string `json:"label,omitempty"`
 
+	// Lat and Lon put it on the globe. Absent where nobody has said where the
+	// machine is, and a relay without them is left off rather than guessed at.
+	Lat float64 `json:"lat,omitempty"`
+	Lon float64 `json:"lon,omitempty"`
+
 	// Probe is where this relay answers STUN binding requests, as host:port. A
 	// client with one times a single round trip over UDP; a client without one
 	// times the signalling socket, which is three over TLS.
@@ -831,6 +836,7 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 		entry := relayEntry{
 			Name: relay.Name, Region: relay.Region,
 			Label: relay.Shown(), Probe: relay.Probe,
+			Lat: relay.Lat, Lon: relay.Lon,
 			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Maintenance: !relay.Enabled,
 		}

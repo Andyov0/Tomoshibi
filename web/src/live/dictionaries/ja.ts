@@ -305,6 +305,7 @@ const ja: Dictionary = {
 	"Back": "戻る",
 	"Anybody with this link can join, until you end the meeting. No passphrase needed.": "このリンクを持つ人は、会議を解散するまで参加できます。合言葉は不要です。",
 	"Stop this link working": "このリンクを無効にする",
+	"Where the servers are": "サーバーの所在",
 };
 
 export default ja;

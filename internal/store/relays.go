@@ -108,6 +108,17 @@ type Relay struct {
 	// the room is no more use than the entry was.
 	Bridge bool `json:"bridge,omitempty"`
 
+	// Lat and Lon are where the machine is, in degrees.
+	//
+	// For the globe on the join screen, and for nothing else — nothing routes on
+	// them and nothing measures with them. A relay without them is simply not
+	// drawn, which is the honest thing to do with a machine nobody has said the
+	// location of: guessing from a region name would put a box in the middle of
+	// a country it is not in and look exactly as authoritative as the ones that
+	// are right.
+	Lat float64 `json:"lat,omitempty"`
+	Lon float64 `json:"lon,omitempty"`
+
 	// Label is what a person is shown instead of the name.
 	//
 	// The name is a key: immutable, because a client that measured it will send

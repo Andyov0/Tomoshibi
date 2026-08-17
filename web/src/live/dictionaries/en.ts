@@ -338,6 +338,7 @@ const en = {
 	"Back": "Back",
 	"Anybody with this link can join, until you end the meeting. No passphrase needed.": "Anybody with this link can join, until you end the meeting. No passphrase needed.",
 	"Stop this link working": "Stop this link working",
+	"Where the servers are": "Where the servers are",
 } as const;
 
 export default en;

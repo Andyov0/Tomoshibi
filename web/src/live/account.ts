@@ -79,3 +79,31 @@ export async function invited(token: string): Promise<{ room?: string; error?: s
 		return { error: "no_such_invite" };
 	}
 }
+
+/**
+ * Whether a meeting is happening under this name.
+ *
+ * Asked before somebody is taken any further, in both directions: starting a
+ * meeting under a name already in use would put them in somebody else's call,
+ * and joining one that is not there takes them to a camera preview for a room
+ * that does not exist — which reads as the name being wrong only if they
+ * remember typing it, and as the site being broken otherwise.
+ *
+ * Answered only to somebody signed in. A room here is a name and nothing else,
+ * so this would otherwise be a way to find meetings by guessing at them.
+ */
+export async function meeting(room: string): Promise<boolean | undefined> {
+	try {
+		const response = await fetch(`/api/rooms/${encodeURIComponent(room)}/live`, {
+			credentials: "same-origin",
+		});
+
+		if (!response.ok) return undefined;
+
+		return ((await response.json()) as { live: boolean }).live;
+	} catch {
+		// Unknown rather than either. A check that cannot be made must not become
+		// a refusal: the join itself is the authority and says so properly.
+		return undefined;
+	}
+}

@@ -294,6 +294,9 @@ const zhHant: Dictionary = {
 	"None": "無",
 	"You have left the room.": "已退出房間。",
 	"Stands in for pairs that cannot reach each other": "為互不可達的組合做中轉橋",
+	"A meeting is already happening under that name.": "這個房間名已經有會議在進行了。",
+	"No meeting is happening under that name.": "這個房間名下沒有正在進行的會議。",
+	"Joining as {name}": "以 {name} 的身分加入",
 };
 
 export default zhHant;

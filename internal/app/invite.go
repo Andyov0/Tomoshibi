@@ -54,6 +54,7 @@ func (a *App) mountInvites(mux *http.ServeMux) {
 
 	mux.HandleFunc("POST /api/rooms/{room}/invites", a.makeInvite)
 	mux.HandleFunc("GET /api/invites/{token}", a.readInvite)
+	mux.HandleFunc("GET /api/rooms/{room}/live", a.roomLive)
 }
 
 // makeInvite mints one, for somebody already in the room.
@@ -152,6 +153,33 @@ func (a *App) meeting(r *http.Request, name string) bool {
 	}
 
 	return false
+}
+
+// roomLive says whether a meeting is happening under this name.
+//
+// For the screen where somebody types a name they were given. Without it they
+// are taken to a camera preview for a room that is not there, choose a device,
+// press join, and are refused — which reads as the name being wrong only if they
+// happen to remember typing it, and as the site being broken otherwise.
+//
+// Behind a session, because it is an answer about a name somebody else chose. A
+// room here is a name and nothing else, so an endpoint that says whether a name
+// is in use is an endpoint that finds meetings by guessing at them. Whoever is
+// asking has already proved they belong here; a stranger gets nothing.
+func (a *App) roomLive(w http.ResponseWriter, r *http.Request) {
+	if !a.limit.Allow(r) {
+		fail(w, http.StatusTooManyRequests, reasonRateLimited)
+		return
+	}
+
+	// Administrators sign in at the same door as everybody else now, so one
+	// check covers both.
+	if _, ok := a.signedIn(r); !ok {
+		fail(w, http.StatusUnauthorized, reasonNotYours)
+		return
+	}
+
+	respond(w, map[string]any{"live": a.meeting(r, strings.ToLower(r.PathValue("room")))})
 }
 
 // invited reports whether this request carries a live invite to this room.

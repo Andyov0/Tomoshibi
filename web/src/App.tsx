@@ -60,6 +60,7 @@ type Front =
 	| { at: "open" }
 	| { at: "sign in" }
 	| { at: "lobby"; me: Me }
+	| { at: "ready"; me: Me; relay: string }
 	| { at: "invited"; room: string }
 	| { at: "done" };
 
@@ -198,7 +199,15 @@ export function App() {
 		// offering a door that does not open. So the call ends and the page says
 		// so, and there is nothing else on it, because there is nothing else they
 		// can usefully do here.
-		setFront((was) => (was.at === "invited" ? { at: "done" } : was));
+		setFront((was) => {
+			if (was.at === "invited") return { at: "done" };
+
+			// And back to the lobby rather than to the device screen, which is a
+			// page for a room they have just left.
+			if (was.at === "ready") return { at: "lobby", me: was.me };
+
+			return was;
+		});
 	}, []);
 
 	// Why the call ended, when it did not end because somebody pressed leave.
@@ -252,9 +261,9 @@ export function App() {
 		return (
 			<Lobby
 				me={front.me}
-				onOpen={(wanted) => {
+				onOpen={(wanted, relay) => {
 					setRoom(wanted);
-					setFront({ at: "open" });
+					setFront({ at: "ready", me: front.me, relay });
 				}}
 				onSignedOut={() => setFront({ at: "sign in" })}
 			/>
@@ -270,6 +279,7 @@ export function App() {
 			// to need one. Showing the field would be showing them a question
 			// they cannot answer, next to a name they did choose.
 			guest={front.at === "invited"}
+			as={front.at === "ready" ? { name: front.me.name, relay: front.relay } : undefined}
 		/>
 	);
 }

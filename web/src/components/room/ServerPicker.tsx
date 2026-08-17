@@ -3,7 +3,7 @@ import { useT } from "@/hooks/useT";
 import { say } from "@/live/i18n";
 import { type Relay, timings } from "@/live/relays";
 import { Check, ChevronDown, Loader2, RotateCw, Wand2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * Choosing where the call will be held, with what each one costs.
@@ -35,6 +35,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
  */
 const COOLDOWN_MS = 5000;
 
+/** How close the sheet may come to the edge of the window, and to its control. */
+const MARGIN = 12;
+const GAP = 8;
+
 /** How long the spinner turns for, however quickly the answer arrives. */
 const SPIN_AT_LEAST_MS = 550;
 
@@ -52,8 +56,15 @@ export function ServerPicker({
 	const [measured, setMeasured] = useState<Map<string, number | undefined>>();
 	const [measuring, setMeasuring] = useState(false);
 	const [ready, setReady] = useState(true);
-	const [upward, setUpward] = useState(false);
+	// Where the sheet actually goes, in window coordinates.
+	//
+	// Positioned rather than anchored. Anchored to the control it opens from, a
+	// list long enough runs off the top of the window and the rows at the far end
+	// cannot be reached at all — which is what eleven relays did. Nothing about
+	// being anchored was worth that: what somebody wants is to see the list.
+	const [place, setPlace] = useState<{ left: number; width: number; top: number; tall: number }>();
 	const frame = useRef<HTMLDivElement>(null);
+	const sheet = useRef<HTMLUListElement>(null);
 	const alive = useRef(true);
 
 	useEffect(() => {
@@ -130,13 +141,41 @@ export function ServerPicker({
 	 * Measured when it opens rather than assumed from where the control sits,
 	 * because the answer depends on the window as it is now.
 	 */
-	useEffect(() => {
+	useLayoutEffect(() => {
 		if (!open) return;
 
-		const box = frame.current?.getBoundingClientRect();
-		if (!box) return;
+		const settle = () => {
+			const box = frame.current?.getBoundingClientRect();
+			if (!box) return;
 
-		setUpward(box.top > window.innerHeight - box.bottom);
+			// The most it may ever be, so a fleet of forty does not become a
+			// full-screen wall of text.
+			const room = window.innerHeight - MARGIN * 2;
+			const tall = Math.min(sheet.current?.scrollHeight ?? room, room, window.innerHeight * 0.7);
+
+			// Above the control, which on a join screen is nearly always where the
+			// space is: everything below it is the control and the button under
+			// it. Then clamped into the window — and clamping is allowed to cover
+			// the control and whatever is beneath it, because a list somebody
+			// cannot see all of is worse than a button they cannot see while
+			// choosing from it.
+			const wanted = box.top - GAP - tall;
+			const top = Math.min(Math.max(wanted, MARGIN), window.innerHeight - MARGIN - tall);
+
+			setPlace({ left: box.left, width: box.width, top, tall });
+		};
+
+		settle();
+
+		// Recomputed on both, because either moves the control out from under a
+		// sheet that is no longer beside anything.
+		window.addEventListener("resize", settle);
+		window.addEventListener("scroll", settle, true);
+
+		return () => {
+			window.removeEventListener("resize", settle);
+			window.removeEventListener("scroll", settle, true);
+		};
 	}, [open]);
 
 	// Closed by anything that is not this. A menu that stays open behind the
@@ -214,13 +253,22 @@ export function ServerPicker({
 
 			{open && (
 				<ul
+					ref={sheet}
 					role="listbox"
+					style={
+						place && {
+							left: place.left,
+							width: place.width,
+							top: place.top,
+							maxHeight: place.tall,
+						}
+					}
 					className={cn(
-						"absolute right-0 left-0 z-20 overflow-y-auto overscroll-contain rounded-xl",
-						// Room to breathe against the edge it is opening towards, so
-						// a long list scrolls inside the sheet rather than off the
-						// window.
-						upward ? "bottom-full mb-2 max-h-[60vh]" : "top-full mt-2 max-h-[60vh]",
+						"fixed z-30 overflow-y-auto overscroll-contain rounded-xl",
+						// Hidden until it has been placed. One frame at the wrong
+						// coordinates is a flash of a menu somewhere it never was,
+						// which is more distracting than the wait it replaces.
+						!place && "invisible",
 						// A ring as well as a border, and a real shadow. It has to
 						// read as a sheet above the page rather than as more page:
 						// on a dark interface a one-pixel border alone disappears.
@@ -229,8 +277,7 @@ export function ServerPicker({
 						// appearing: a menu that fades in from nowhere reads as a
 						// page redraw, and one that grows the wrong way reads as a
 						// mistake.
-						"animate-arrive",
-						upward ? "origin-bottom" : "origin-top",
+						"animate-arrive origin-top",
 					)}
 				>
 					<li className="flex items-center justify-between gap-2 border-fg/10 border-b bg-black/15 px-3 py-2">

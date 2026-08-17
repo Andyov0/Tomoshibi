@@ -17,7 +17,10 @@ import {
 	Shield,
 	UserRound,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { ServerPicker } from "@/components/room/ServerPicker";
+import { meeting } from "@/live/account";
+import { type Relay, relays } from "@/live/relays";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
 /*
 The two screens in front of a call, on a deployment that does not let strangers
@@ -280,15 +283,64 @@ export function Lobby({
 	onSignedOut,
 }: {
 	me: Me;
-	onOpen: (room: string) => void;
+	onOpen: (room: string, relay: string) => void;
 	onSignedOut: () => void;
 }) {
 	const t = useT();
 	const [typed, setTyped] = useState("");
 	const [naming, setNaming] = useState("");
+	const [busy, setBusy] = useState<"start" | "join">();
+
+	// Which machine to hold it on, chosen here rather than on the screen after.
+	// This is where somebody is deciding what kind of meeting they are about to
+	// have, and where it is held is part of that.
+	const [servers, setServers] = useState<Relay[]>([]);
+	const [server, setServer] = useState("");
+
+	useEffect(() => {
+		void relays().then((offered) => {
+			setServers(offered.relays);
+		});
+	}, []);
 
 	const wanted = normaliseRoomName(typed);
 	const opening = normaliseRoomName(naming);
+
+	/**
+	 * Take somebody to a name, once it is clear the name is the right kind.
+	 *
+	 * A meeting that already exists cannot be started and one that does not
+	 * cannot be joined, and both mistakes used to be discovered on the next
+	 * screen or the one after — a camera preview for a room that is not there,
+	 * or a call somebody else is already in. Asked here, where the name was
+	 * typed and can still be changed.
+	 *
+	 * An unknown answer goes through. The check is a courtesy and the join is
+	 * the authority; a check that could not be made must not become a refusal.
+	 */
+	const go = async (kind: "start" | "join", room: string) => {
+		if (busy) return;
+
+		setBusy(kind);
+
+		try {
+			const live = await meeting(room);
+
+			if (kind === "start" && live === true) {
+				actionFailed(t("A meeting is already happening under that name."));
+				return;
+			}
+
+			if (kind === "join" && live === false) {
+				actionFailed(t("No meeting is happening under that name."));
+				return;
+			}
+
+			onOpen(room, server);
+		} finally {
+			setBusy(undefined);
+		}
+	};
 
 	return (
 		<Frame corner={<Corner me={me} onSignedOut={onSignedOut} />}>
@@ -316,7 +368,7 @@ export function Lobby({
 				<form
 					onSubmit={(event) => {
 						event.preventDefault();
-						onOpen(validRoomName(opening) ? opening : generateRoomName());
+						void go("start", validRoomName(opening) ? opening : generateRoomName());
 					}}
 					className={cn(
 						"animate-rise [animation-delay:60ms]",
@@ -353,12 +405,14 @@ export function Lobby({
 						<Button
 							type="submit"
 							variant="primary"
-							// Never disabled. Blank is an answer here, and a button
-							// that greys out until a field is filled says the field
-							// is required when it is the opposite.
+							disabled={busy !== undefined}
+							// Never disabled on the field being empty. Blank is an
+							// answer here, and a button that greys out until a field
+							// is filled says the field is required when it is the
+							// opposite.
 							className="group gap-1.5"
 						>
-							{t("Start")}
+							{busy === "start" ? <Loader2 className="size-4 animate-spin" /> : t("Start")}
 							<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
 						</Button>
 					</div>
@@ -367,7 +421,7 @@ export function Lobby({
 				<form
 					onSubmit={(event) => {
 						event.preventDefault();
-						if (validRoomName(wanted)) onOpen(wanted);
+						if (validRoomName(wanted)) void go("join", wanted);
 					}}
 					className={cn(
 						"animate-rise [animation-delay:120ms]",
@@ -401,11 +455,27 @@ export function Lobby({
 							)}
 						/>
 
-						<Button type="submit" variant="secondary" disabled={!validRoomName(wanted)}>
-							{t("Join")}
+						<Button
+							type="submit"
+							variant="secondary"
+							disabled={!validRoomName(wanted) || busy !== undefined}
+						>
+							{busy === "join" ? <Loader2 className="size-4 animate-spin" /> : t("Join")}
 						</Button>
 					</div>
 				</form>
+				{/*
+				 * Where the call will be held, under both choices rather than
+				 * inside either: it is the same decision whichever of them somebody
+				 * is making, and putting a copy in each card would be asking the
+				 * same question twice on one screen.
+				 */}
+				{servers.length > 1 && (
+					<div className="animate-rise [animation-delay:180ms] flex flex-col gap-1.5">
+						<span className="px-1 text-[11px] text-fg-muted">{t("Server")}</span>
+						<ServerPicker relays={servers} value={server} onChange={setServer} />
+					</div>
+				)}
 			</div>
 		</Frame>
 	);

@@ -294,6 +294,9 @@ const zhHans: Dictionary = {
 	"None": "无",
 	"You have left the room.": "已退出房间。",
 	"Stands in for pairs that cannot reach each other": "为互不可达的组合做中转桥",
+	"A meeting is already happening under that name.": "这个房间名已经有会议在进行了。",
+	"No meeting is happening under that name.": "这个房间名下没有正在进行的会议。",
+	"Joining as {name}": "以 {name} 的身份加入",
 };
 
 export default zhHans;

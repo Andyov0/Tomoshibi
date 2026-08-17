@@ -294,6 +294,9 @@ const ja: Dictionary = {
 	"None": "なし",
 	"You have left the room.": "部屋を退出しました。",
 	"Stands in for pairs that cannot reach each other": "到達できない組み合わせの中継役になる",
+	"A meeting is already happening under that name.": "その名前ではすでに会議が行われています。",
+	"No meeting is happening under that name.": "その名前で行われている会議はありません。",
+	"Joining as {name}": "{name} として参加します",
 };
 
 export default ja;

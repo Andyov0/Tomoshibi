@@ -327,6 +327,9 @@ const en = {
 	"None": "None",
 	"You have left the room.": "You have left the room.",
 	"Stands in for pairs that cannot reach each other": "Stands in for pairs that cannot reach each other",
+	"A meeting is already happening under that name.": "A meeting is already happening under that name.",
+	"No meeting is happening under that name.": "No meeting is happening under that name.",
+	"Joining as {name}": "Joining as {name}",
 } as const;
 
 export default en;

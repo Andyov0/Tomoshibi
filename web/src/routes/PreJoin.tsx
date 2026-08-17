@@ -94,16 +94,28 @@ export interface PreJoinProps {
 	 * invitation.
 	 */
 	guest?: boolean;
+	/**
+	 * Somebody already signed in, and the machine they chose in the lobby.
+	 *
+	 * When this is set the screen keeps only the half of itself that is about
+	 * devices. Who they are was settled at the sign-in, where the room is held
+	 * was settled in the lobby, and asking either again is asking somebody to
+	 * answer a question they have already answered — which is what the name and
+	 * passphrase fields were doing to every signed-in person, on every join.
+	 */
+	as?: { name: string; relay: string };
 }
 
-export function PreJoin({ room, onRoomChange, onJoin, guest = false }: PreJoinProps) {
+export function PreJoin({ room, onRoomChange, onJoin, guest = false, as }: PreJoinProps) {
 	// Checked before anything reaches for a device, so the page explains why it
 	// cannot rather than failing on a property that is simply not there.
 	if (!devicesAvailable()) {
 		return <Unavailable reason={insecureReason()} />;
 	}
 
-	return <Form room={room} onRoomChange={onRoomChange} onJoin={onJoin} guest={guest} />;
+	return (
+		<Form room={room} onRoomChange={onRoomChange} onJoin={onJoin} guest={guest} as={as} />
+	);
 }
 
 /**
@@ -209,7 +221,7 @@ function Source() {
 	);
 }
 
-function Form({ room, onRoomChange, onJoin, guest = false }: PreJoinProps) {
+function Form({ room, onRoomChange, onJoin, guest = false, as }: PreJoinProps) {
 	const t = useT();
 	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
 	const [secret, setSecret] = useState(() => localStorage.getItem(PASSPHRASE_KEY) ?? "");
@@ -318,8 +330,15 @@ function Form({ room, onRoomChange, onJoin, guest = false }: PreJoinProps) {
 	 * longer mentioned. The field wins where both are filled, since it is the
 	 * one somebody can see.
 	 */
-	const { name: display, passphrase: written } = parseName(name);
-	const passphrase = secret || written;
+	const { name: typedName, passphrase: written } = parseName(name);
+
+	// Whoever is signed in, where somebody is. Their name is already theirs and
+	// their signature comes from the session, so nothing is typed and nothing is
+	// sent — a passphrase in the request would be a second answer to a question
+	// already settled, and the one that wins would be whichever the server read
+	// first.
+	const display = as ? as.name : typedName;
+	const passphrase = as ? "" : secret || written;
 
 	const submit = async () => {
 		if (!display || joining) return;
@@ -345,7 +364,7 @@ function Form({ room, onRoomChange, onJoin, guest = false }: PreJoinProps) {
 		setJoining(true);
 
 		try {
-			await onJoin({ name: display, passphrase, relay, ...devices });
+			await onJoin({ name: display, passphrase, relay: as ? as.relay : relay, ...devices });
 		} catch {
 			// Reported by whoever tried, which holds the room object that has to
 			// be torn down and the words for what went wrong. Caught here all the
@@ -420,34 +439,61 @@ function Form({ room, onRoomChange, onJoin, guest = false }: PreJoinProps) {
 						void submit();
 					}}
 				>
-					<RoomTitle room={room} onChange={onRoomChange} />
+					{/*
+					 * Everything above the button belongs to somebody who has not
+					 * answered these questions yet.
+					 *
+					 * Somebody signed in has answered all of them: their name at the
+					 * sign-in, the room and the machine in the lobby. What was left
+					 * on this screen was a room code to confirm, a name to type, a
+					 * passphrase to type, and a server to pick — four answers to
+					 * questions already settled, between them and a meeting they had
+					 * already said they wanted to be in.
+					 *
+					 * So for them this page is the one thing nobody can answer in
+					 * advance: whether the camera is pointing at the right thing and
+					 * whether the microphone is the right one.
+					 */}
+					{!as && <RoomTitle room={room} onChange={onRoomChange} />}
 
-					<div className="flex flex-col gap-2">
-						<Identity
-							name={name}
-							passphrase={secret}
-							onName={setName}
-							onPassphrase={setSecret}
-							nameOnly={guest}
-						/>
+					{/*
+					 * Nothing to fill in for somebody signed in.
+					 *
+					 * Their name is already theirs and their signature comes from
+					 * the session, so both fields were asking for answers that had
+					 * already been given — and one of them was asking for a
+					 * passphrase on a screen they reach after having typed it. What
+					 * is left is the half of this page that is about devices, which
+					 * is the half nobody can answer in advance.
+					 */}
+					{!as && (
+						<div className="flex flex-col gap-2">
+							<Identity
+								name={name}
+								passphrase={secret}
+								onName={setName}
+								onPassphrase={setSecret}
+								nameOnly={guest}
+							/>
 
-						{/* One line, which changes rather than doubling: what a
-						    passphrase is for until there is one, and what it did
-						    once there is. */}
-						<p className="text-fg-muted text-xs leading-snug">
-							{guest
-								? t("You were invited to this room. Choose a name and go in.")
-								: passphrase
-									? t("Only you can join as {name}", { name: display || "?" })
-									: t("Add a passphrase so nobody else can use your name.")}
-						</p>
-					</div>
+							{/* One line, which changes rather than doubling: what a
+							    passphrase is for until there is one, and what it did
+							    once there is. */}
+							<p className="text-fg-muted text-xs leading-snug">
+								{guest
+									? t("You were invited to this room. Choose a name and go in.")
+									: passphrase
+										? t("Only you can join as {name}", { name: display || "?" })
+										: t("Add a passphrase so nobody else can use your name.")}
+							</p>
+						</div>
+					)}
 
 					{/* Below the identity and above the button, because it is the
 					    last thing anybody would change and the first thing nobody
 					    should have to. Absent entirely where there is nothing to
 					    choose between. */}
-					{offerChoice && (
+					{offerChoice && !as && (
 						<ServerPicker relays={servers} value={relay} onChange={setRelay} />
 					)}
 

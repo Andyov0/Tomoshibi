@@ -95,16 +95,26 @@ function useMeasuring(relays: Relay[]) {
 }
 
 /**
- * The list, open, as one of the things on a screen rather than behind a control.
+ * Every server at once, as a grid, fastest first.
  *
- * For the lobby, where somebody is deciding what kind of meeting to have and
- * where it is held is one of those decisions. A dropdown there is a decision
- * hidden behind a press, and — with eleven relays — a sheet that covers the
- * page it belongs to. Open, it is simply part of the page.
+ * For the lobby, where choosing where the call is held is one of three decisions
+ * on the screen rather than a detail behind a control.
  *
- * Measured on mount, because unlike the dropdown this one is visibly asking to
- * be read: numbers that appear only after somebody has already chosen are worse
- * than no numbers.
+ * Three shapes were tried and the first two were wrong in the same way. A
+ * dropdown puts a decision behind a press and, at eleven relays, opens a sheet
+ * that covers the page it belongs to. The same list left open is a wall of rows
+ * that has to scroll, which makes the two things above it — start a meeting,
+ * join one — look like the smaller decisions.
+ *
+ * What somebody actually wants here is one question answered: which of these is
+ * quickest from where I am. So they are sorted by that rather than grouped by
+ * geography, and drawn as chips small enough that all of them fit without
+ * scrolling. The flags carry the geography; a heading for every region cost four
+ * more rows to say what the flag already said, and imposed an order nobody was
+ * asking for.
+ *
+ * The order settles once, when the measurements land. Reordering continuously
+ * would move a chip out from under a finger already reaching for it.
  */
 export function ServerList({
 	relays,
@@ -115,6 +125,7 @@ export function ServerList({
 	value: string;
 	onChange: (name: string) => void;
 }) {
+	const t = useT();
 	const { measured, measuring, ready, measure } = useMeasuring(relays);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: once, on arrival
@@ -122,27 +133,112 @@ export function ServerList({
 		measure();
 	}, []);
 
+	// Fastest first, and the ones nothing came back from at the end. A relay that
+	// timed out is still shown: it is a machine somebody used yesterday, and one
+	// that vanished from the list would look deleted.
+	const ordered = measured
+		? [...relays].sort((left, right) => {
+				const a = measured.get(left.name);
+				const b = measured.get(right.name);
+
+				if (a === undefined && b === undefined) return 0;
+				if (a === undefined) return 1;
+				if (b === undefined) return -1;
+
+				return a - b;
+			})
+		: relays;
+
 	return (
-		<ul
-			className={cn(
-				// The same material as the cards above it rather than the raised
-				// sheet a dropdown uses. It is part of this page and not something
-				// laid over it, and a panel that shouted would make the two
-				// decisions above it look like the smaller ones.
-				"max-h-72 overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface",
-			)}
-		>
-			<Rows
-				relays={relays}
-				value={value}
-				measured={measured}
-				measuring={measuring}
-				ready={ready}
-				onMeasure={measure}
-				onChange={onChange}
-				onPicked={() => {}}
-			/>
-		</ul>
+		<div className="flex flex-col gap-2">
+			<div className="flex items-center justify-between gap-2 px-1">
+				<span className="text-[11px] text-fg-muted">{t("Server")}</span>
+
+				<button
+					type="button"
+					disabled={!ready || measuring}
+					onClick={measure}
+					className={cn(
+						"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted",
+						"transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+						"disabled:hover:bg-transparent disabled:hover:text-fg-muted",
+					)}
+				>
+					<RotateCw
+						className={cn(
+							"size-3 transition-transform duration-300",
+							measuring && "animate-spin",
+							// Nudged round on the way back to still, so the icon
+							// settles rather than snapping to where it started.
+							!measuring && !ready && "rotate-180",
+						)}
+					/>
+					{t("Measure again")}
+				</button>
+			</div>
+
+			{/*
+			 * Its own row above the rest, and the full width of it. Automatic is
+			 * not one of the places below — it is the absence of a choice — and a
+			 * chip the same size as the others would read as a machine called
+			 * Automatic.
+			 */}
+			<button
+				type="button"
+				onClick={() => onChange("")}
+				className={cn(
+					"flex items-center gap-2 rounded-xl border px-3 py-2 text-left transition-colors",
+					value === ""
+						? "border-tally/50 bg-tally/10"
+						: "border-border bg-surface hover:bg-surface-hi",
+				)}
+			>
+				<Wand2 className={cn("size-3.5 shrink-0", value === "" ? "text-tally" : "text-fg-muted")} />
+				<span className="text-[13px] text-fg">{t("Automatic")}</span>
+				<span className="ml-auto text-[11px] text-fg-muted">{t("Whichever answers fastest")}</span>
+			</button>
+
+			<div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+				{ordered.map((relay, index) => (
+					<button
+						key={relay.name}
+						type="button"
+						disabled={relay.maintenance}
+						onClick={() => onChange(relay.name)}
+						title={marked(relay)}
+						className={cn(
+							"flex min-w-0 flex-col gap-1 rounded-xl border px-2.5 py-2 text-left transition-colors",
+							// Staggered so the grid settles as a grid rather than
+							// appearing all at once. Small enough to read as movement
+							// and not as waiting.
+							"animate-rise",
+							value === relay.name
+								? "border-tally/50 bg-tally/10"
+								: "border-border bg-surface hover:bg-surface-hi",
+							// Shown and not selectable. A relay taken down for an hour
+							// that vanished would look deleted to whoever used it
+							// yesterday.
+							relay.maintenance && "opacity-40",
+						)}
+						style={{ animationDelay: `${Math.min(index, 8) * 25}ms` }}
+					>
+						<span className="truncate text-[12.5px] text-fg">{say(relay.label || relay.name)}</span>
+
+						<span className="flex items-center gap-1.5">
+							<Latency ms={measured?.get(relay.name)} known={measured !== undefined} />
+
+							{relay.maintenance ? (
+								<span className="truncate text-[10px] text-fg-muted">{t("Not taking calls")}</span>
+							) : relay.adminOnly ? (
+								<span className="text-[10px] text-fg-muted">[Admin]</span>
+							) : relay.fallback ? (
+								<span className="text-[10px] text-fg-muted">[Fallback]</span>
+							) : null}
+						</span>
+					</button>
+				))}
+			</div>
+		</div>
 	);
 }
 

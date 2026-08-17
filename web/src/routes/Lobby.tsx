@@ -538,9 +538,10 @@ export function Lobby({
 				 * is making, and putting a copy in each card would be asking the
 				 * same question twice on one screen.
 				 */}
+				{/* The list carries its own heading, because it also carries the
+				    control for measuring again and the two belong on one line. */}
 				{servers.length > 1 && (
-					<div className="animate-rise [animation-delay:180ms] flex flex-col gap-1.5">
-						<span className="px-1 text-[11px] text-fg-muted">{t("Server")}</span>
+					<div className="animate-rise [animation-delay:180ms]">
 						<ServerList relays={servers} value={server} onChange={setServer} />
 					</div>
 				)}

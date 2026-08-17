@@ -83,7 +83,16 @@ func (l *Limiter) Allow(r *http.Request) bool {
 // let anybody mint unlimited budgets by varying a string; the peer address is
 // used instead, which they cannot choose.
 func (l *Limiter) client(r *http.Request) string {
-	if l.trustProxy {
+	return Caller(r, l.trustProxy)
+}
+
+// Caller is the address a request came from, as this deployment resolves it.
+//
+// The same rule the rate limiter charges by, exported because the join has to
+// write it down and the two must never disagree: an operator reading an address
+// beside somebody's name is reading the one the limits were applied to.
+func Caller(r *http.Request, trustProxy bool) string {
+	if trustProxy {
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 			// Proxies append, so the original client is the first entry and the
 			// rest are hops it passed through on the way here.

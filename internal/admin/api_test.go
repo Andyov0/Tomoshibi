@@ -352,6 +352,15 @@ func (unwritten) Opening() room.Opening { return room.ByAnyone }
 
 func (unwritten) SetOpening(room.Opening) error { return errors.New("no store") }
 
+// A deployment with nothing written down knows neither where a room is nor who
+// arrived at it, and says so by holding nothing rather than by refusing: both
+// are decorations on a page, and a management surface that returned an error
+// because it could not decorate one would be unusable on the machine that most
+// needs it.
+func (unwritten) HeldOn(string) string { return "" }
+
+func (unwritten) Arrivals(string) map[string]store.Arrival { return nil }
+
 // A record of names that keeps the one setting these tests are about.
 type remembers struct {
 	unwritten

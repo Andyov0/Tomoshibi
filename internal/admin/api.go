@@ -51,6 +51,17 @@ type Names interface {
 	Rooms() ([]store.Named, error)
 	Opening() room.Opening
 	SetOpening(opening room.Opening) error
+
+	// HeldOn says which relay a room is on, and Arrivals what was seen of the
+	// people in it when they were let in.
+	//
+	// Both are here because the media server cannot answer either. It reports a
+	// room from whichever node was asked, and it sees each participant over a
+	// signalling socket from a relay — so the machine it names is the machine
+	// that answered, and the address it holds is the relay's. This server chose
+	// the machine and saw the address, once, at the join.
+	HeldOn(room string) string
+	Arrivals(room string) map[string]store.Arrival
 }
 
 // Roster is where the administrators are kept.
@@ -559,7 +570,17 @@ func (a *API) rooms(_ Session, w http.ResponseWriter, r *http.Request) {
 		seen = nil
 	}
 
-	respond(w, map[string]any{"live": liveRooms(live), "known": knownRooms(seen)})
+	// Where each live room actually is.
+	//
+	// The media server will not say. It reports the room from whichever node
+	// answered, and every node answers for the whole cluster, so the field that
+	// looks like it should hold this holds the machine that was asked. This
+	// server chose the machine at the join and wrote it down, which is the only
+	// record of it anywhere.
+	respond(w, map[string]any{
+		"live":  liveRooms(live, a.wherever()),
+		"known": knownRooms(seen),
+	})
 }
 
 // knownRooms flattens what the store holds.
@@ -581,16 +602,64 @@ func knownRooms(seen []store.Named) []map[string]any {
 	return out
 }
 
-func liveRooms(rooms []*livekit.Room) []map[string]any {
+// wherever answers, for a room, the name a person would recognise the machine
+// holding it by.
+//
+// The store keys relays by a short name typed at a prompt on the machine being
+// brought up; what an operator reads on a page is the label. Resolved here
+// rather than in the store because the store holds the room record and knows
+// nothing about labels, and resolved once per listing rather than per room so a
+// page with forty calls does not read the relay list forty times.
+func (a *API) wherever() func(string) string {
+	if a.store == nil {
+		return nil
+	}
+
+	shown := map[string]string{}
+
+	if a.relays != nil {
+		if list, err := a.relays.Relays(); err == nil {
+			for _, relay := range list {
+				shown[relay.Name] = relay.Shown()
+			}
+		}
+	}
+
+	return func(name string) string {
+		held := a.store.HeldOn(name)
+		if held == "" {
+			return ""
+		}
+
+		// The key where the relay has since been removed, which is worth saying:
+		// a call held on a machine that is no longer in the list is exactly the
+		// situation somebody needs to be told about.
+		if label, ok := shown[held]; ok {
+			return label
+		}
+
+		return held
+	}
+}
+
+func liveRooms(rooms []*livekit.Room, held func(string) string) []map[string]any {
 	out := make([]map[string]any, 0, len(rooms))
 	for _, one := range rooms {
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"name":         one.GetName(),
 			"sid":          one.GetSid(),
 			"participants": one.GetNumParticipants(),
 			"publishers":   one.GetNumPublishers(),
 			"createdAt":    time.Unix(one.GetCreationTime(), 0).UTC(),
-		})
+		}
+
+		if held != nil {
+			if where := held(one.GetName()); where != "" {
+				row["relay"] = where
+			}
+		}
+
+		out = append(out, row)
 	}
 
 	return out
@@ -611,20 +680,40 @@ func (a *API) participants(_ Session, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// What was seen of each of them at the door, which the media server cannot
+	// know: by the time it sees somebody they arrived over a signalling socket
+	// from a relay, so the address it holds is the relay's.
+	arrived := map[string]store.Arrival{}
+	if a.store != nil {
+		arrived = a.store.Arrivals(name)
+	}
+
 	out := make([]map[string]any, 0, len(people))
 	for _, one := range people {
 		signature, _ := room.SignatureOf(one.GetIdentity())
 
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"identity":  one.GetIdentity(),
 			"name":      one.GetName(),
 			"sid":       one.GetSid(),
 			"state":     one.GetState().String(),
 			"joinedAt":  time.Unix(one.GetJoinedAt(), 0).UTC(),
 			"publisher": one.GetIsPublisher(),
-			"trip":      map[string]any{"mark": signature.Trip, "proven": signature.Proven},
-			"tracks":    tracksOf(one),
-		})
+			"trip": map[string]any{
+				"mark": signature.Trip, "proven": signature.Proven,
+				"account": signature.Account,
+			},
+			"tracks": tracksOf(one),
+		}
+
+		if arrival, ok := arrived[one.GetIdentity()]; ok {
+			row["address"] = arrival.Address
+			row["relay"] = arrival.Relay
+			row["holding"] = arrival.Holding
+			row["forwarded"] = arrival.Forwarded
+		}
+
+		out = append(out, row)
 	}
 
 	respond(w, out)

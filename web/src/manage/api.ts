@@ -88,6 +88,15 @@ export interface LiveRoom {
 	participants: number;
 	publishers: number;
 	createdAt: string;
+	/**
+	 * Which relay the meeting is on.
+	 *
+	 * From this deployment's own record and not from the media server, which
+	 * reports a room from whichever node was asked — every node answers for the
+	 * whole cluster, so the field that looks like it should hold this holds the
+	 * machine that answered.
+	 */
+	relay?: string;
 }
 
 export interface KnownRoom {
@@ -122,8 +131,21 @@ export interface Participant {
 	state: string;
 	joinedAt: string;
 	publisher: boolean;
-	trip: { mark: string; proven: boolean };
+	trip: { mark: string; proven: boolean; account?: boolean };
 	tracks: Track[];
+	/**
+	 * Where they came from, as this deployment resolved it at the join.
+	 *
+	 * The media server cannot say: it sees each participant over a signalling
+	 * socket from a relay, so the address it holds is the relay's.
+	 */
+	address?: string;
+	/** The relay they came in through, which is not always the one holding the room. */
+	relay?: string;
+	/** The relay holding the room, sent only where it is a different machine. */
+	holding?: string;
+	/** Their media is being forwarded through `relay` to `holding`. */
+	forwarded?: boolean;
 }
 
 /** One administrator, as the management pages see them. */

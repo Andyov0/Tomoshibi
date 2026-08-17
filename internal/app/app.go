@@ -119,12 +119,41 @@ func (a *App) forgetting() {
 
 	for {
 		a.forget()
+		a.sweep()
 
 		select {
 		case <-a.stop:
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// sweep clears the two records that are kept only while they are true.
+//
+// Neither gates anything — an expired session is already refused by whoever
+// reads it, and an arrival past its window is already ignored — so this is
+// housekeeping rather than enforcement, and a failure is logged and left. What
+// it prevents is a file that grows by one entry per sign-in and one per join,
+// forever, holding rows about calls that ended months ago.
+//
+// It ran nowhere until now. Both sweepers were written next to the records they
+// clear and neither was ever called, which is the kind of omission that costs
+// nothing on the day it is made and is invisible for as long as the deployment
+// is young.
+func (a *App) sweep() {
+	now := time.Now().UTC()
+
+	if gone, err := a.store.SweepSessions(now); err != nil {
+		slog.Error("failed to sweep the sessions", "error", err)
+	} else if gone > 0 {
+		slog.Info("swept expired sessions", "gone", gone)
+	}
+
+	if gone, err := a.store.SweepArrivals(now); err != nil {
+		slog.Error("failed to sweep the arrivals", "error", err)
+	} else if gone > 0 {
+		slog.Info("swept old arrivals", "gone", gone)
 	}
 }
 
@@ -592,6 +621,26 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		if err := a.store.HoldRoom(name, holding.Name); err != nil {
 			slog.Error("failed to note where a room is held", "room", name, "error", err)
 		}
+	}
+
+	// Written down because nothing else will know it.
+	//
+	// The media server holds the room and sees a signalling socket from a relay;
+	// it cannot say where somebody actually came from or which machine they came
+	// in through. This server saw both, here, once. Neither is recoverable
+	// afterwards, and both are the first thing anybody asks when a call is going
+	// badly for one person and nobody else.
+	if err := a.store.Arrived(name, grant.Identity, store.Arrival{
+		Address:   limit.Caller(r, a.conf.Meet.TrustProxy),
+		Relay:     entry.Shown(),
+		Holding:   elsewhere(entry, holding),
+		Forwarded: forward != nil,
+		At:        time.Now().UTC(),
+	}); err != nil {
+		// Not a reason to refuse the join. The note is for whoever is watching,
+		// and turning somebody away from a meeting because a management page
+		// would be missing a line is the wrong trade by a wide margin.
+		slog.Error("failed to note an arrival", "room", name, "error", err)
 	}
 
 	// Noted, where the signature belongs to an account. Nothing is recorded

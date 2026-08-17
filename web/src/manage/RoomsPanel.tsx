@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ChevronLeft } from "lucide-react";
+import { ArrowRight, ChevronLeft, LogIn } from "lucide-react";
 import { useCallback, useState } from "react";
 import { type Participant, type Track, api } from "./api";
 import { actionFailed } from "@/live/notices";
@@ -80,15 +80,27 @@ export function RoomsPanel({
 										type="button"
 										onClick={() => setSelected(one.name)}
 										className={cn(
-											"flex w-full items-baseline gap-2 border-border border-b px-4 py-2.5 text-left last:border-0",
+											"flex w-full flex-col gap-0.5 border-border border-b px-4 py-2.5 text-left last:border-0",
 											"transition-colors hover:bg-surface-hi",
 											one.name === open && "bg-surface-hi",
 										)}
 									>
-										<span className="truncate text-[13px]">{one.name}</span>
-										<span className="ml-auto shrink-0 text-fg-muted text-xs tabular-nums">
-											{one.participants} · {since(one.createdAt)}
+										<span className="flex w-full items-baseline gap-2">
+											<span className="truncate text-[13px]">{one.name}</span>
+											<span className="ml-auto shrink-0 text-fg-muted text-xs tabular-nums">
+												{one.participants} · {since(one.createdAt)}
+											</span>
 										</span>
+
+										{/* Which machine the meeting is actually on.
+										    Not asked of the media server, which reports a
+										    room from whichever node answered — every node
+										    answers for the whole cluster, so that field
+										    holds the machine that was asked rather than
+										    the machine holding the call. */}
+										{one.relay && (
+											<span className="truncate text-[11px] text-fg-muted">{one.relay}</span>
+										)}
 									</button>
 								</li>
 							))}
@@ -254,6 +266,49 @@ function Person({
 					</Button>
 				)}
 			</div>
+
+			{/*
+			  * Where this person came from and how they got here.
+			  *
+			  * None of it is knowable from the media server. It sees each
+			  * participant over a signalling socket opened by a relay, so the
+			  * address it holds is the relay's and the machine it names is
+			  * whichever node was asked. This deployment saw the real address and
+			  * chose the machine, once, at the join, and wrote both down — which
+			  * is the only record of either.
+			  *
+			  * Absent for anybody who joined before this existed, and left absent
+			  * rather than filled with a dash: a blank says nothing was recorded,
+			  * and a dash reads as a value.
+			  */}
+			{(person.address || person.relay) && (
+				<div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fg-muted">
+					{person.address && <span className="readout">{person.address}</span>}
+
+					{person.relay && (
+						<span className="flex items-center gap-1">
+							<LogIn className="size-3" />
+							{person.relay}
+						</span>
+					)}
+
+					{/* Two machines and an arrow, only where there are two. A call
+					    entering one relay and being carried by another is the thing
+					    an operator most wants to see at a glance, and the thing
+					    they cannot see anywhere else. */}
+					{person.holding && (
+						<span className="flex items-center gap-1">
+							<ArrowRight className="size-3" />
+							{person.holding}
+							{person.forwarded && (
+								<span className="rounded bg-tally/15 px-1.5 py-px text-[10px] text-fg">
+									forwarded
+								</span>
+							)}
+						</span>
+					)}
+				</div>
+			)}
 
 			{person.tracks.length > 0 && (
 				<ul className="mt-2 flex flex-col gap-1.5">

@@ -294,6 +294,22 @@ const en = {
 	"User console": "User console",
 	"Nobody has this open yet.": "Nobody has this open yet.",
 	"Set a passphrase to start a new room. Anybody can join one that already exists.": "Set a passphrase to start a new room. Anybody can join one that already exists.",
+	"This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.": "This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.",
+	"Start a meeting": "Start a meeting",
+	"A new room with a name nobody has used.": "A new room with a name nobody has used.",
+	"Join a meeting": "Join a meeting",
+	"The name you were given.": "The name you were given.",
+	"You were invited to this room. Choose a name and go in.": "You were invited to this room. Choose a name and go in.",
+	"Running this room": "Running this room",
+	"Invite somebody": "Invite somebody",
+	"Lets one person in, once, within a day. No passphrase needed.": "Lets one person in, once, within a day. No passphrase needed.",
+	"Mute": "Mute",
+	"Make host": "Make host",
+	"Remove from room": "Remove from room",
+	"That could not be done. Try again.": "That could not be done. Try again.",
+	"Removing somebody ends their call. It does not stop them rejoining with the same name.": "Removing somebody ends their call. It does not stop them rejoining with the same name.",
+	"You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.": "You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.",
+	"Close": "Close",
 } as const;
 
 export default en;

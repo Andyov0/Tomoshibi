@@ -24,11 +24,22 @@ export function Identity({
 	passphrase,
 	onName,
 	onPassphrase,
+	nameOnly = false,
 }: {
 	name: string;
 	passphrase: string;
 	onName: (name: string) => void;
 	onPassphrase: (passphrase: string) => void;
+	/**
+	 * Somebody who arrived on an invitation, for whom the second field is a
+	 * question they cannot answer.
+	 *
+	 * They were sent a link precisely so that they would not need a passphrase,
+	 * and a field asking for one — beside a name they did choose — reads as
+	 * something they have forgotten to do. Removed rather than disabled: a
+	 * greyed-out box is still a box somebody wonders about.
+	 */
+	nameOnly?: boolean;
 }) {
 	const t = useT();
 	const [shown, setShown] = useState(false);
@@ -36,7 +47,8 @@ export function Identity({
 	return (
 		<div
 			className={cn(
-				"grid grid-cols-[1.25fr_1fr] overflow-hidden rounded-lg border border-border bg-surface",
+				"overflow-hidden rounded-lg border border-border bg-surface",
+				nameOnly ? "grid grid-cols-1" : "grid grid-cols-[1.25fr_1fr]",
 				"transition-[border-color,box-shadow]",
 				"focus-within:border-fg/40 focus-within:ring-2 focus-within:ring-fg/30",
 			)}
@@ -59,6 +71,7 @@ export function Identity({
 				)}
 			/>
 
+			{!nameOnly && (
 			<div className="relative flex min-w-0 items-center border-border border-l">
 				{/*
 				 * The one place on this screen the signal colour appears, and it
@@ -112,6 +125,7 @@ export function Identity({
 					</button>
 				)}
 			</div>
+			)}
 		</div>
 	);
 }

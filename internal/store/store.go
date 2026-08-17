@@ -62,6 +62,21 @@ var ErrNotOpen = errors.New("that room has not been opened")
 // no record is a name nobody may use. Which is why Seen is not only a figure on
 // a management page — it is how long the room has left. See Forget.
 type Room struct {
+	// Host is the mark of whoever the room answers to.
+	//
+	// Set to whoever first spoke the name, because somebody has to be able to
+	// quiet a room and there is nobody else it could reasonably be. Transferable,
+	// because the person who opened a recurring meeting is not always the person
+	// running it, and because they leave.
+	//
+	// The mark rather than the identity: an identity is minted fresh whenever a
+	// passphrase changes and carries a random tail, so a host who reloaded into a
+	// new one would stop being host without anybody doing anything. A mark is the
+	// same on every visit for somebody who can prove a name, and lasts a session
+	// for somebody who cannot — which is the whole of what can honestly be
+	// promised to an anonymous host.
+	Host string `json:"host,omitempty"`
+
 	// Created is when the name was first seen.
 	Created time.Time `json:"created"`
 	// Seen is when it was last joined.
@@ -516,4 +531,63 @@ func (s *Store) ReleaseRoom(name string) error {
 
 		return bucket.Put([]byte(name), encoded)
 	})
+}
+
+// SetHost records who a room answers to.
+//
+// Written against a room that already exists and quietly does nothing where one
+// does not: the caller is either the join that just opened it or a transfer from
+// somebody already in it, and neither should create a record by asking.
+func (s *Store) SetHost(name, mark string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		raw := bucket.Get([]byte(name))
+		if raw == nil {
+			return nil
+		}
+
+		var tally Room
+		if err := json.Unmarshal(raw, &tally); err != nil {
+			return nil
+		}
+
+		tally.Host = mark
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(name), encoded)
+	})
+}
+
+// HostOf says which mark a room answers to, or "" where it answers to nobody.
+func (s *Store) HostOf(name string) string {
+	var mark string
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		raw := bucket.Get([]byte(name))
+		if raw == nil {
+			return nil
+		}
+
+		var tally Room
+		if err := json.Unmarshal(raw, &tally); err == nil {
+			mark = tally.Host
+		}
+
+		return nil
+	})
+
+	return mark
 }

@@ -432,6 +432,12 @@ func (a *App) RelayURLs() []string {
 // until its cache expired.
 func (a *App) UseCluster(cluster *rtc.Cluster) {
 	a.admin.UseCluster(cluster)
+
+	// And the host's own actions, which reach the same relays through the same
+	// client. Set here rather than fetched from the management API when needed,
+	// so there is one assignment to read and no way for the two to be pointed at
+	// different things.
+	a.control = cluster
 	a.admin.OnRelaysChanged(a.relays.forget)
 
 	// And the same connection the management pages are drawn from decides which

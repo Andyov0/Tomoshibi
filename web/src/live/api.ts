@@ -140,6 +140,7 @@ export async function join(
 	name: string,
 	passphrase = "",
 	chosen = "",
+	invite = "",
 ): Promise<Join> {
 	const previous = sessionStorage.getItem(IDENTITY_KEY) ?? undefined;
 
@@ -155,7 +156,17 @@ export async function join(
 	// measurement is telling them the wrong thing.
 	const relay = chosen || (await preferred());
 
-	const response = await fetch(`/api/rooms/${encodeURIComponent(room)}/join`, {
+	// The invite goes in the query and the passphrase does not, which looks
+	// inconsistent and is not. A passphrase is a secret and a query parameter
+	// reaches the access log, the history and any Referer sent onward. An invite
+	// is a link somebody was sent — it is already in all three, by design, and
+	// the server reads it from the same place whether it arrives on the join or
+	// on the page.
+	const url = `/api/rooms/${encodeURIComponent(room)}/join${
+		invite ? `?invite=${encodeURIComponent(invite)}` : ""
+	}`;
+
+	const response = await fetch(url, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		// The passphrase goes in the body and nowhere else. A query parameter

@@ -84,16 +84,26 @@ export interface PreJoinProps {
 	room: string;
 	onRoomChange: (room: string) => void;
 	onJoin: (choices: Choices) => Promise<void>;
+	/**
+	 * Somebody who arrived on an invitation.
+	 *
+	 * They have a name to choose and nothing else to answer: the link is what
+	 * lets them in, the room was decided by whoever sent it, and a passphrase is
+	 * the thing an invitation exists to avoid needing. So the passphrase field
+	 * goes, and so does the ability to rename the room out from under the
+	 * invitation.
+	 */
+	guest?: boolean;
 }
 
-export function PreJoin({ room, onRoomChange, onJoin }: PreJoinProps) {
+export function PreJoin({ room, onRoomChange, onJoin, guest = false }: PreJoinProps) {
 	// Checked before anything reaches for a device, so the page explains why it
 	// cannot rather than failing on a property that is simply not there.
 	if (!devicesAvailable()) {
 		return <Unavailable reason={insecureReason()} />;
 	}
 
-	return <Form room={room} onRoomChange={onRoomChange} onJoin={onJoin} />;
+	return <Form room={room} onRoomChange={onRoomChange} onJoin={onJoin} guest={guest} />;
 }
 
 /**
@@ -199,7 +209,7 @@ function Source() {
 	);
 }
 
-function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
+function Form({ room, onRoomChange, onJoin, guest = false }: PreJoinProps) {
 	const t = useT();
 	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
 	const [secret, setSecret] = useState(() => localStorage.getItem(PASSPHRASE_KEY) ?? "");
@@ -418,15 +428,18 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 							passphrase={secret}
 							onName={setName}
 							onPassphrase={setSecret}
+							nameOnly={guest}
 						/>
 
 						{/* One line, which changes rather than doubling: what a
 						    passphrase is for until there is one, and what it did
 						    once there is. */}
 						<p className="text-fg-muted text-xs leading-snug">
-							{passphrase
-								? t("Only you can join as {name}", { name: display || "?" })
-								: t("Add a passphrase so nobody else can use your name.")}
+							{guest
+								? t("You were invited to this room. Choose a name and go in.")
+								: passphrase
+									? t("Only you can join as {name}", { name: display || "?" })
+									: t("Add a passphrase so nobody else can use your name.")}
 						</p>
 					</div>
 

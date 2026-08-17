@@ -233,7 +233,28 @@ export function create(): Room {
  * afterwards. Setting it here would need a permission this grant deliberately
  * withholds, and the server would refuse.
  */
+/**
+ * The token each connected room was authorised with.
+ *
+ * Kept here because the host's own requests need it — it is the only thing that
+ * proves, without a session, which room and which identity they are — and
+ * because the SDK's copy is a private field. Private is not a runtime guarantee
+ * and reading it would work, right up until a minified build renamed it and the
+ * host controls stopped authorising with no error anywhere that says why.
+ *
+ * A WeakMap rather than a field on the room, so nothing here keeps a disconnected
+ * room alive and so the token goes when the room does.
+ */
+const tokens = new WeakMap<Room, string>();
+
+/** The token a room was joined with, for the requests that have to prove it. */
+export function tokenFor(room: Room): string {
+	return tokens.get(room) ?? "";
+}
+
 export async function connect(room: Room, grant: Join): Promise<void> {
+	tokens.set(room, grant.token);
+
 	if (!grant.forward) {
 		await room.connect(grant.url, grant.token);
 		return;

@@ -53,7 +53,7 @@ const aControlNode: Now = {
 			url: "wss://gz.example:39217",
 			reachable: true,
 			node: "ND_gz",
-			ip: "101.0.113.5",
+			ip: "198.51.100.5",
 			rooms: 2,
 			clients: 5,
 			tracksIn: 4,

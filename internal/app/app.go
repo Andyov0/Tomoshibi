@@ -37,6 +37,11 @@ type App struct {
 	web     http.Handler
 	tripKey []byte
 	admin   *admin.API
+	// control is how a host's mute or removal reaches the media server holding
+	// the room. The same one the management pages act through, because there is
+	// one and two ways to reach it is how they come to disagree. Nil where this
+	// deployment holds no media at all.
+	control admin.Control
 	// relays is where a control node sends clients. Empty everywhere else.
 	relays *relays
 	// enrolment is set where a relay may bring itself up from a script.
@@ -66,6 +71,12 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 		admin:   admin.New(conf, media, st, tripKey),
 		relays:  newRelays(conf, st),
 		stop:    make(chan struct{}),
+	}
+
+	// A full deployment acts on its own media server. A control node has none
+	// yet and is given the cluster later, by UseCluster.
+	if media != nil {
+		a.control = media.Manage(conf.Key, conf.Secret)
 	}
 
 	// Guarded on the store as well as the setting: a relay keeps none, and a
@@ -293,6 +304,9 @@ func (a *App) Handler() http.Handler {
 	// a deployment with nobody to sign in would be a door fitted to a wall.
 	mux.HandleFunc("GET /admin", a.manage)
 	mux.HandleFunc("GET /admin/", a.manage)
+
+	a.mountHost(mux)
+	a.mountInvites(mux)
 
 	mux.HandleFunc("GET /account", a.ownAccount)
 	mux.HandleFunc("GET /account/", a.ownAccount)
@@ -630,6 +644,25 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// An invite, where one was sent. Redeemed after the identity exists, because
+	// it is spent on a person rather than on a page load: the same identity
+	// coming back through the same link is a reload, and turning it away would
+	// be the single-use limit working exactly as specified and failing at what
+	// it is for.
+	//
+	// It does not open a name nobody has used. An invitation is to a meeting
+	// that exists, and one that could open a room would be a way around the
+	// setting deciding who may.
+	if a.invited(r, name, grant.Identity) {
+		keepInvite(w, r, r.TLS != nil || forwardedProto(r, a.conf.Meet.TrustProxy) == "https")
+	}
+
+	// Whoever first spoke the name answers for the room. Nothing happens on any
+	// join but the first — a later arrival becoming host by walking in is the
+	// fault this guards against, and it would be invisible until somebody used
+	// it.
+	a.hostOnOpening(name, grant)
+
 	// Written down because nothing else will know it.
 	//
 	// The media server holds the room and sees a signalling socket from a relay;
@@ -952,7 +985,19 @@ const (
 	// a problem that is not there.
 	reasonBlocked = "blocked"
 	// The refusals an account holder can meet on their own page.
-	reasonNotYours        = "not_yours"
+	reasonNotYours = "not_yours"
+	// A person named in a request who is not somebody this can act on: not in
+	// the room, not a valid identity, or the caller themselves.
+	reasonNoSuchPerson = "no_such_person"
+	// The media server did not answer, so nothing was done. Distinct from a
+	// refusal: nothing about the request was wrong.
+	reasonMediaUnreachable = "media_unreachable"
+	// An invite that is not here, has run out, or has already let somebody in.
+	// Three codes rather than one, because they are three different sentences to
+	// the person holding the link and only one of them means "ask for another".
+	reasonNoSuchInvite    = "no_such_invite"
+	reasonInviteExpired   = "invite_expired"
+	reasonInviteSpent     = "invite_spent"
 	reasonPassphraseShort = "passphrase_too_short"
 	reasonPassphraseSame  = "passphrase_unchanged"
 	reasonPassphraseTaken = "passphrase_in_use"

@@ -1,0 +1,234 @@
+import { useLingering } from "@/hooks/useLingering";
+import { useT } from "@/hooks/useT";
+import { handOver, invite, silence, turnOut, useOthers, type Standing } from "@/live/host";
+import { actionFailed } from "@/live/notices";
+import { cn } from "@/lib/utils";
+import type { Room } from "livekit-client";
+import { Check, Crown, Link2, Loader2, MicOff, UserMinus, X } from "lucide-react";
+import { useState } from "react";
+
+/**
+ * The small console for whoever is running the meeting.
+ *
+ * Three things and a link, which is the whole of what a meeting needs and
+ * deliberately less than what the management pages can do. Those belong to
+ * whoever runs the deployment and reach every room on every relay; this belongs
+ * to whoever opened this one and reaches nobody outside it.
+ *
+ * Quietening somebody is done at the server rather than by asking them, because
+ * the case it exists for is a microphone left open in a noisy room by somebody
+ * who is not reading the chat. Handing the room over is here because the person
+ * who opened a recurring meeting is often not the person running it, and because
+ * they leave — a room whose host has gone is a room nobody can quiet.
+ *
+ * Removing somebody does not stop them coming back. Saying so on the button
+ * would be noise; not knowing it would be worse, so it is said once, under the
+ * list, where somebody about to use it will read it.
+ */
+export function HostPanel({
+	room,
+	standing,
+	onClose,
+}: {
+	room: Room;
+	standing: Standing;
+	onClose: () => void;
+}) {
+	const t = useT();
+	const others = useOthers(room);
+	const [busy, setBusy] = useState<string>();
+	const [link, setLink] = useState<string>();
+	const [copied, setCopied] = useState(false);
+
+	const act = async (who: string, run: () => Promise<unknown>) => {
+		if (busy) return;
+
+		setBusy(who);
+
+		try {
+			await run();
+		} catch {
+			actionFailed(t("That could not be done. Try again."));
+		} finally {
+			setBusy(undefined);
+		}
+	};
+
+	return (
+		<aside
+			className={cn(
+				"pointer-events-auto flex w-72 flex-col gap-2 rounded-xl border border-border p-3",
+				"bg-surface/95 shadow-2xl backdrop-blur",
+				"origin-top-right animate-arrive",
+			)}
+		>
+			<header className="flex items-center gap-2">
+				<Crown className="size-3.5 text-tally" />
+				<h2 className="font-medium text-[13px]">{t("Running this room")}</h2>
+
+				<button
+					type="button"
+					onClick={onClose}
+					aria-label={t("Close")}
+					className="ml-auto rounded-md p-1 text-fg-muted hover:bg-surface-2 hover:text-fg"
+				>
+					<X className="size-3.5" />
+				</button>
+			</header>
+
+			{/*
+			  * A link somebody can be sent, which is the thing a host reaches for
+			  * most and the one that needs no target. It lets one person in, once,
+			  * without a passphrase — so a guest is invited to a meeting rather
+			  * than given an account or a room name that works forever.
+			  */}
+			<div className="flex flex-col gap-1.5">
+				<button
+					type="button"
+					disabled={busy === "invite"}
+					onClick={() =>
+						act("invite", async () => {
+							const made = await invite(room);
+							setLink(made);
+							setCopied(false);
+
+							// Copied as well as shown. Whoever pressed this is about
+							// to paste it somewhere, and a link they have to select
+							// out of a box first is a link they select badly.
+							await navigator.clipboard.writeText(made).then(
+								() => setCopied(true),
+								() => setCopied(false),
+							);
+						})
+					}
+					className={cn(
+						"flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px]",
+						"transition-colors hover:bg-surface-2 disabled:opacity-40",
+					)}
+				>
+					{busy === "invite" ? (
+						<Loader2 className="size-3.5 animate-spin" />
+					) : copied ? (
+						<Check className="size-3.5 text-tally" />
+					) : (
+						<Link2 className="size-3.5" />
+					)}
+					{copied ? t("Link copied") : t("Invite somebody")}
+				</button>
+
+				{link && (
+					<p className="readout break-all rounded-md bg-surface-2 px-2 py-1.5 text-[10.5px] text-fg-muted">
+						{link}
+					</p>
+				)}
+
+				{link && (
+					<p className="text-[10.5px] text-fg-muted/80 leading-snug">
+						{t("Lets one person in, once, within a day. No passphrase needed.")}
+					</p>
+				)}
+			</div>
+
+			<div className="h-px bg-border" />
+
+			{others.length === 0 ? (
+				<p className="px-0.5 py-1 text-[11.5px] text-fg-muted">{t("Nobody else is here.")}</p>
+			) : (
+				<ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
+					{others.map((one) => (
+						<li
+							key={one.identity}
+							className="flex items-center gap-1 rounded-md px-1 py-1 hover:bg-surface-2"
+						>
+							<span className="min-w-0 flex-1 truncate text-[12.5px]">
+								{one.name || one.identity}
+							</span>
+
+							{busy === one.identity && (
+								<Loader2 className="size-3.5 animate-spin text-fg-muted" />
+							)}
+
+							<button
+								type="button"
+								disabled={busy !== undefined || !one.isMicrophoneEnabled}
+								onClick={() => act(one.identity, () => silence(room, one))}
+								aria-label={t("Mute")}
+								title={t("Mute")}
+								className="rounded p-1 text-fg-muted hover:bg-surface-hi hover:text-fg disabled:opacity-30"
+							>
+								<MicOff className="size-3.5" />
+							</button>
+
+							<button
+								type="button"
+								disabled={busy !== undefined}
+								onClick={() => act(one.identity, () => handOver(room, one))}
+								aria-label={t("Make host")}
+								title={t("Make host")}
+								className="rounded p-1 text-fg-muted hover:bg-surface-hi hover:text-tally disabled:opacity-30"
+							>
+								<Crown className="size-3.5" />
+							</button>
+
+							<button
+								type="button"
+								disabled={busy !== undefined}
+								onClick={() => act(one.identity, () => turnOut(room, one))}
+								aria-label={t("Remove from room")}
+								title={t("Remove from room")}
+								className="rounded p-1 text-fg-muted hover:bg-surface-hi hover:text-danger disabled:opacity-30"
+							>
+								<UserMinus className="size-3.5" />
+							</button>
+						</li>
+					))}
+				</ul>
+			)}
+
+			{/*
+			 * Said once, here, because it is the one thing about these controls
+			 * that is not obvious and the one that decides whether somebody
+			 * reaches for the right one. Removing ends a call; it does not lock a
+			 * door, because there is no door — a room is a name.
+			 */}
+			<p className="px-0.5 text-[10.5px] text-fg-muted/80 leading-snug">
+				{standing.admin
+					? t("You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.")
+					: t("Removing somebody ends their call. It does not stop them rejoining with the same name.")}
+			</p>
+		</aside>
+	);
+}
+
+/** The button that opens it, and the panel, with an exit that is not a vanishing. */
+export function Hosting({ room, standing }: { room: Room; standing: Standing }) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	const { mounted, leaving } = useLingering(open);
+
+	if (!standing.yours) return null;
+
+	return (
+		<div className="pointer-events-auto flex flex-col items-end gap-2">
+			<button
+				type="button"
+				onClick={() => setOpen((was) => !was)}
+				aria-label={t("Running this room")}
+				aria-pressed={open}
+				className={cn(
+					"flex items-center gap-1.5 rounded-full bg-surface-hi/90 px-2.5 py-1.5 shadow backdrop-blur",
+					"text-xs transition-colors hover:bg-surface-hi",
+					open && "text-tally",
+				)}
+			>
+				<Crown className="size-3.5" />
+			</button>
+
+			{mounted && (
+				<div className={leaving ? "animate-depart" : undefined}>
+					<HostPanel room={room} standing={standing} onClose={() => setOpen(false)} />
+				</div>
+			)}
+		</div>
+	);
+}

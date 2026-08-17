@@ -1,7 +1,9 @@
-import { join as requestJoin } from "@/live/api";
+import { type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
+import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { connect, create } from "@/live/room";
 import { joinFailed } from "@/live/notices";
+import { Lobby, SignIn } from "@/routes/Lobby";
 import { type Choices, PreJoin } from "@/routes/PreJoin";
 import { Room } from "@/routes/Room";
 import type { Room as LiveRoom } from "livekit-client";
@@ -32,8 +34,30 @@ function initialRoom(): string {
 	return made;
 }
 
+/**
+ * What the front of this deployment looks like before anybody is in a call.
+ *
+ * Four states and one question behind all of them: may whoever is looking start
+ * a meeting? Where anybody may — which is what most deployments are and what
+ * this one was — the answer is the old page, straight into a generated room,
+ * because the fastest path to a meeting is to already be in it.
+ *
+ * Where they may not, that page puts a refusal at the end of choosing a camera
+ * and typing a name. So the order inverts: say who you are, then say what you
+ * want. And somebody who was sent a link is neither of those people — they have
+ * no account and were not meant to need one — so an invite skips both and goes
+ * to the room it names.
+ */
+type Front =
+	| { at: "asking" }
+	| { at: "open" }
+	| { at: "sign in" }
+	| { at: "lobby"; me: Me }
+	| { at: "invited"; room: string };
+
 export function App() {
 	const [room, setRoom] = useState(initialRoom);
+	const [front, setFront] = useState<Front>({ at: "asking" });
 	const [live, setLive] = useState<LiveRoom>();
 	// What the machine holding the call is called, so it can be said in the words
 	// the picker used rather than as an address.
@@ -42,6 +66,43 @@ export function App() {
 	// And the machine it is actually on, where the two came apart. Undefined for
 	// most calls, which is what makes the panel say one name rather than two.
 	const [carrying, setCarrying] = useState<string>();
+
+	// Worked out once, from two questions asked together.
+	//
+	// Together rather than one after the other, because the second is only
+	// interesting if the first says the door is shut, and asking them in sequence
+	// would put a visible pause in front of the common case where it is not.
+	useEffect(() => {
+		let live = true;
+
+		const token = inviteToken();
+
+		void Promise.all([deployment(), whoAmI(), token ? invited(token) : undefined]).then(
+			([said, account, invitation]) => {
+				if (!live) return;
+
+				// An invite wins over everything. Somebody holding one was sent to
+				// a particular meeting, and asking them to sign in first is asking
+				// them for something they were never given.
+				if (invitation?.room) {
+					setRoom(invitation.room);
+					setFront({ at: "invited", room: invitation.room });
+					return;
+				}
+
+				if (said.openedBy === "anyone") {
+					setFront({ at: "open" });
+					return;
+				}
+
+				setFront(account ? { at: "lobby", me: account } : { at: "sign in" });
+			},
+		);
+
+		return () => {
+			live = false;
+		};
+	}, []);
 
 	// Held in a ref as well so the unmount cleanup can reach it without making
 	// the effect depend on it, which would disconnect on every render.
@@ -81,7 +142,7 @@ export function App() {
 			const made = create();
 
 			try {
-				const grant = await requestJoin(room, name, passphrase, relay);
+				const grant = await requestJoin(room, name, passphrase, relay, inviteToken());
 				// Kept so the call can say where it is being held, in the words
 				// the picker used rather than as an address.
 				setHolding(grant.relay);
@@ -115,5 +176,37 @@ export function App() {
 		return <Room room={live} relay={holding} carrying={carrying} onLeave={onLeave} />;
 	}
 
-	return <PreJoin room={room} onRoomChange={setRoom} onJoin={onJoin} />;
+	// Nothing rather than a spinner. The two requests behind this take one round
+	// trip on a warm connection, and a spinner shown for that long is a flash
+	// somebody notices without being able to read.
+	if (front.at === "asking") return <div className="min-h-full bg-bg" />;
+
+	if (front.at === "sign in") {
+		return <SignIn onSignedIn={(account) => setFront({ at: "lobby", me: account })} />;
+	}
+
+	if (front.at === "lobby") {
+		return (
+			<Lobby
+				me={front.me}
+				onOpen={(wanted) => {
+					setRoom(wanted);
+					setFront({ at: "open" });
+				}}
+				onSignedOut={() => setFront({ at: "sign in" })}
+			/>
+		);
+	}
+
+	return (
+		<PreJoin
+			room={room}
+			onRoomChange={setRoom}
+			onJoin={onJoin}
+			// Somebody who arrived on a link has no passphrase and was not meant
+			// to need one. Showing the field would be showing them a question
+			// they cannot answer, next to a name they did choose.
+			guest={front.at === "invited"}
+		/>
+	);
 }

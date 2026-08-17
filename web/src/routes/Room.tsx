@@ -4,6 +4,7 @@ import { ControlBar } from "@/components/room/ControlBar";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
 import { PictureMenu } from "@/components/room/PictureMenu";
 import { Plane } from "@/components/room/Plane";
+import { Hosting } from "@/components/room/HostPanel";
 import { Watchers } from "@/components/room/Watchers";
 import { RoomMenu } from "@/components/room/RoomMenu";
 import { Signal } from "@/components/room/Signal";
@@ -35,6 +36,7 @@ import {
 } from "@/live/plan";
 import { silenced, soundOf } from "@/live/hearing";
 import { type Surface, owner, surfaces } from "@/live/surface";
+import { useStanding } from "@/live/host";
 import { useWatchers, useWatching } from "@/live/watching";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useCallback, useEffect, useState } from "react";
@@ -218,6 +220,10 @@ function Stage({
 
 	useWatching(room, watched);
 
+	// Whether this browser runs the room, which decides whether the console in
+	// the corner exists at all.
+	const standing = useStanding(room);
+
 	// And, when we are the one sharing, everybody who says so.
 	const sharing = all.some((surface) => surface.kind === "screen" && surface.local);
 	const watchers = useWatchers(room, sharing);
@@ -329,6 +335,21 @@ function Stage({
 					/>
 				</div>
 			</RoomMenu>
+
+			{/*
+			  * The console for whoever runs this room, opposite the connection
+			  * reading rather than beside it: one says how the call is going and
+			  * the other does something about the people in it, and a row of two
+			  * unrelated controls is a row somebody has to read to use either.
+			  *
+			  * Draws nothing at all for anybody who does not run the room, which
+			  * is most people in most calls.
+			  */}
+			{state === ConnectionState.Connected && (
+				<div className="pointer-events-none absolute top-3 right-3 z-20 flex justify-end">
+					<Hosting room={room} standing={standing} />
+				</div>
+			)}
 
 			{/*
 			  * Who has our share open.

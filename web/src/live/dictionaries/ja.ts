@@ -261,6 +261,22 @@ const ja: Dictionary = {
 	"User console": "ユーザーコンソール",
 	"Nobody has this open yet.": "まだ誰も開いていません。",
 	"Set a passphrase to start a new room. Anybody can join one that already exists.": "新しい部屋を作るには合言葉が必要です。既にある部屋には誰でも入れます。",
+	"This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.": "この配備では誰でも会議を始められるわけではありません。リンクを受け取っているなら、そちらを開いてください。",
+	"Start a meeting": "会議を始める",
+	"A new room with a name nobody has used.": "誰も使っていない名前で新しい部屋を作ります。",
+	"Join a meeting": "会議に参加する",
+	"The name you were given.": "教えてもらった部屋名を入力します。",
+	"You were invited to this room. Choose a name and go in.": "この部屋に招待されています。名前を決めれば入れます。",
+	"Running this room": "この部屋の管理",
+	"Invite somebody": "誰かを招待する",
+	"Lets one person in, once, within a day. No passphrase needed.": "1日以内、1人だけが1回入れます。合言葉は不要です。",
+	"Mute": "ミュート",
+	"Make host": "ホストにする",
+	"Remove from room": "部屋から退出させる",
+	"That could not be done. Try again.": "実行できませんでした。もう一度お試しください。",
+	"Removing somebody ends their call. It does not stop them rejoining with the same name.": "退出させても通話が終わるだけで、同じ名前で入り直すことは防げません。",
+	"You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.": "これができるのはあなたがこのサーバーの管理者だからです。退出させても通話が終わるだけで、入り直しは防げません。",
+	"Close": "閉じる",
 };
 
 export default ja;

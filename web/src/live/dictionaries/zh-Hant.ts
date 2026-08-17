@@ -261,6 +261,22 @@ const zhHant: Dictionary = {
 	"User console": "使用者面板",
 	"Nobody has this open yet.": "還沒有人打開。",
 	"Set a passphrase to start a new room. Anybody can join one that already exists.": "要開新房間得先設口令。已經存在的房間任何人都能加入。",
+	"This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.": "本站不允許隨便誰都開會議。如果別人發了連結給你,直接打開那個連結。",
+	"Start a meeting": "開始會議",
+	"A new room with a name nobody has used.": "新建一個還沒人用過的房間。",
+	"Join a meeting": "加入會議",
+	"The name you were given.": "別人給你的房間名。",
+	"You were invited to this room. Choose a name and go in.": "你是被邀請進這個房間的。取個名字就能進。",
+	"Running this room": "這個房間的管理",
+	"Invite somebody": "邀請別人",
+	"Lets one person in, once, within a day. No passphrase needed.": "一天之內,只能讓一個人進一次。不需要口令。",
+	"Mute": "閉麥",
+	"Make host": "設為房主",
+	"Remove from room": "移出房間",
+	"That could not be done. Try again.": "沒能完成,再試一次。",
+	"Removing somebody ends their call. It does not stop them rejoining with the same name.": "移出只會結束他這次通話,並不能阻止他用同一個名字再進來。",
+	"You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.": "你能這麼做是因為你是本站管理員。移出只會結束他這次通話,並不能阻止他再進來。",
+	"Close": "關閉",
 };
 
 export default zhHant;

@@ -264,3 +264,68 @@ func TestSomebodySignedInMayOpenARoomWithoutTypingTheirPassphraseAgain(t *testin
 			"already answered somewhere else", recorder.Code, recorder.Body)
 	}
 }
+
+/*
+An administrator signing in at the front of the site.
+
+Administrators and accounts are kept in two lists because they answer two
+questions — who may run this deployment, and who has been given a name here — and
+for a while that meant the one group of people who certainly have credentials
+were the one group who could not sign in. They typed the name and passphrase they
+use for the management pages and were told the pair does not go together, which
+is true of the accounts list and useless to the person reading it.
+
+What must not follow from fixing it is authority leaking across. Being an
+administrator is decided by the administrator list every time it is asked; a
+session says who somebody is and never what they may do.
+*/
+
+func TestAnAdministratorCanSignInAtTheFrontOfTheSite(t *testing.T) {
+	mux, st := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
+	)
+
+	const passphrase = "the administrator's own passphrase"
+
+	if err := st.AddAdmin(store.Admin{
+		Trip: room.Trip(tripKey, passphrase), Name: "andy", Can: []string{"moderate"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	sign := func(name, secret string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest(http.MethodPost, "/api/account/session",
+			strings.NewReader(`{"name":"`+name+`","passphrase":"`+secret+`"}`))
+		request.Header.Set("Content-Type", "application/json")
+
+		return ask(mux, request)
+	}
+
+	recorder := sign("andy", passphrase)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("an administrator was refused their own name and passphrase with %d: %s",
+			recorder.Code, recorder.Body)
+	}
+
+	// The session has to work afterwards, which is a different question: the
+	// name in it is looked up again on every request, and looking it up in only
+	// one of the two lists would sign them straight back out.
+	cookie := recorder.Result().Cookies()
+	if len(cookie) == 0 {
+		t.Fatal("signing in left no session")
+	}
+
+	me := httptest.NewRequest(http.MethodGet, "/api/account/me", nil)
+	me.AddCookie(cookie[0])
+
+	if got := ask(mux, me).Code; got != http.StatusOK {
+		t.Errorf("a session made a moment ago was not recognised: %d; the name is read back "+
+			"from the accounts list alone, so an administrator is signed out by their "+
+			"next request", got)
+	}
+
+	// And the wrong passphrase is still the wrong passphrase.
+	if got := sign("andy", "not it").Code; got != http.StatusUnauthorized {
+		t.Errorf("a wrong passphrase signed in as an administrator with %d", got)
+	}
+}

@@ -88,14 +88,14 @@ func (a *App) accountSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
 
-	account, ok := a.store.Account(body.Name)
-
 	// The signature is derived whether or not the name exists, so that a name
 	// nobody has does not answer faster than one somebody does. Enumerating
 	// accounts should not be cheaper than guessing at them.
 	trip := room.Trip(a.tripKey, strings.TrimSpace(string(body.Passphrase)))
 
-	if !ok || account.Trip != trip || body.Passphrase.Empty() {
+	account, ok := a.whoever(body.Name, trip)
+
+	if !ok || body.Passphrase.Empty() {
 		fail(w, http.StatusUnauthorized, reasonNotYours)
 		return
 	}
@@ -126,7 +126,33 @@ func (a *App) accountSignIn(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int(accountIdle.Seconds()),
 	})
 
-	respond(w, accountOf(account))
+	respond(w, a.accountOf(account))
+}
+
+// whoever finds the person a name and a signature belong to, in either list.
+//
+// Two lists and one door. Administrators are kept apart from accounts because
+// they answer different questions — one is who may run this deployment, the
+// other is who has been given a name here — and for a while that meant the one
+// group who certainly have credentials were the one group who could not sign in
+// at the front of the site. They typed the name and passphrase they use for the
+// management pages and were told the pair does not go together, which is both
+// true and useless.
+//
+// An administrator is returned as an account because that is what the rest of
+// this file needs: a name, a signature, and a picture. Nothing is authorised by
+// the shape — being an administrator is decided by the administrator list, every
+// time it is asked, and never by a field carried over from here.
+func (a *App) whoever(name, trip string) (store.Account, bool) {
+	if account, ok := a.store.Account(name); ok && account.Trip == trip {
+		return account, true
+	}
+
+	if admin, ok := a.store.AdminNamed(name); ok && admin.Trip == trip {
+		return store.Account{Name: admin.Name, Trip: admin.Trip, Avatar: admin.Avatar}, true
+	}
+
+	return store.Account{}, false
 }
 
 func (a *App) accountSignOut(w http.ResponseWriter, r *http.Request) {
@@ -168,8 +194,8 @@ func (a *App) signedIn(r *http.Request) (store.Account, bool) {
 		return store.Account{}, false
 	}
 
-	account, held := a.store.Account(session.Name)
-	if !held || account.Trip != session.Trip {
+	account, held := a.whoever(session.Name, session.Trip)
+	if !held {
 		// The account was removed, renamed, or had its passphrase changed by
 		// somebody else. The session names something that is no longer there,
 		// which is a session that has ended.
@@ -194,7 +220,7 @@ func (a *App) accountMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respond(w, accountOf(account))
+	respond(w, a.accountOf(account))
 }
 
 func (a *App) accountPassphrase(w http.ResponseWriter, r *http.Request) {
@@ -234,7 +260,7 @@ func (a *App) accountPassphrase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.store.UpdateAccount(account.Name, account); err != nil {
+	if err := a.rewrite(was, account); err != nil {
 		fail(w, http.StatusConflict, reasonPassphraseTaken)
 		return
 	}
@@ -247,7 +273,7 @@ func (a *App) accountPassphrase(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	respond(w, accountOf(account))
+	respond(w, a.accountOf(account))
 }
 
 func (a *App) accountAvatar(w http.ResponseWriter, r *http.Request) {
@@ -280,16 +306,61 @@ func (a *App) accountAvatar(w http.ResponseWriter, r *http.Request) {
 		account.Avatar = body.Image
 	}
 
-	if err := a.store.UpdateAccount(account.Name, account); err != nil {
+	if err := a.rewrite(account.Trip, account); err != nil {
 		fail(w, http.StatusBadRequest, reasonAvatarLarge)
 		return
 	}
 
-	respond(w, accountOf(account))
+	respond(w, a.accountOf(account))
+}
+
+// rewrite saves a change back to whichever list the person is actually in.
+//
+// `was` is the signature they carried before, which is the key an administrator
+// is stored under and is therefore what has to be found again after a passphrase
+// change. An account is keyed by name and does not have this problem, which is
+// why one call cannot serve both without being told.
+func (a *App) rewrite(was string, account store.Account) error {
+	if _, ok := a.store.Account(account.Name); ok {
+		return a.store.UpdateAccount(account.Name, account)
+	}
+
+	admin, ok := a.store.AdminBySignature(was)
+	if !ok {
+		return store.ErrNoSuchAccount
+	}
+
+	admin.Avatar = account.Avatar
+
+	if admin.Trip == account.Trip {
+		return a.store.UpdateAdmin(admin)
+	}
+
+	// The signature is the key, so changing it is a move rather than an edit.
+	// Done by the store in one transaction: written as a remove and an add, a
+	// failure between the two would delete an administrator, and the one it
+	// would delete is whoever was changing their own passphrase.
+	if err := a.store.ReplaceAdminTrip(was, account.Trip); err != nil {
+		return err
+	}
+
+	admin.Trip = account.Trip
+
+	return a.store.UpdateAdmin(admin)
 }
 
 func (a *App) avatar(w http.ResponseWriter, r *http.Request) {
 	account, ok := a.store.AccountBySignature(r.PathValue("trip"))
+
+	// Administrators keep their pictures in their own list, and a picture is
+	// shown by signature — the caller has no idea which list its owner is in and
+	// should not have to.
+	if !ok {
+		if admin, held := a.store.AdminBySignature(r.PathValue("trip")); held {
+			account, ok = store.Account{Name: admin.Name, Trip: admin.Trip, Avatar: admin.Avatar}, true
+		}
+	}
+
 	if !ok || account.Avatar == "" {
 		http.NotFound(w, r)
 		return
@@ -331,10 +402,26 @@ func (a *App) avatar(w http.ResponseWriter, r *http.Request) {
 // none to tell. The picture comes back as a URL rather than as itself, so the
 // page that shows it and the page that shows everybody else's use one path.
 type accountView struct {
-	Name    string `json:"name"`
-	Trip    string `json:"trip"`
-	Avatar  string `json:"avatar,omitempty"`
+	Name   string `json:"name"`
+	Trip   string `json:"trip"`
+	Avatar string `json:"avatar,omitempty"`
+	// Admin is whether this person also runs the deployment.
+	//
+	// Told to them and to nobody else, and only so the page can offer the way to
+	// the management pages: somebody who administers this server should not have
+	// to remember an address. Nothing is authorised by it — the management pages
+	// ask the administrator list themselves, on every request, and would refuse a
+	// browser that had been told otherwise.
+	Admin   bool   `json:"admin,omitempty"`
 	Created string `json:"created,omitempty"`
+}
+
+func (a *App) accountOf(account store.Account) accountView {
+	view := accountOf(account)
+
+	_, view.Admin = a.store.AdminBySignature(account.Trip)
+
+	return view
 }
 
 func accountOf(account store.Account) accountView {

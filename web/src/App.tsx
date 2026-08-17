@@ -24,14 +24,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 function initialRoom(): string {
 	const raw = normaliseRoomName(window.location.hash.replace(/^#\/?/, ""));
 
-	if (validRoomName(raw)) {
-		return raw;
-	}
-
-	const made = generateRoomName();
-	window.history.replaceState(null, "", `#/${made}`);
-
-	return made;
+	return validRoomName(raw) ? raw : "";
 }
 
 /**
@@ -90,7 +83,14 @@ export function App() {
 					return;
 				}
 
+				// A deployment anybody may open a room on has no lobby, so the
+				// bare address means a new meeting and one is made. Made here
+				// rather than on load, which is what used to put a generated name
+				// in the address bar of a page that had not decided to be a room
+				// yet — somebody signing in read their own URL and found a room
+				// they had not asked for.
 				if (said.openedBy === "anyone") {
+					setRoom((held) => held || generateRoomName());
 					setFront({ at: "open" });
 					return;
 				}
@@ -120,6 +120,8 @@ export function App() {
 	// are looking at, and the back button moves between rooms rather than
 	// between edits to a name.
 	useEffect(() => {
+		if (!room) return;
+
 		if (window.location.hash !== `#/${room}`) {
 			window.history.replaceState(null, "", `#/${room}`);
 		}

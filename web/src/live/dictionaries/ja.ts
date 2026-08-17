@@ -277,6 +277,10 @@ const ja: Dictionary = {
 	"Removing somebody ends their call. It does not stop them rejoining with the same name.": "退出させても通話が終わるだけで、同じ名前で入り直すことは防げません。",
 	"You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.": "これができるのはあなたがこのサーバーの管理者だからです。退出させても通話が終わるだけで、入り直しは防げません。",
 	"Close": "閉じる",
+	"Admin console": "管理コンソール",
+	"Hello, {name}": "{name} さん、こんにちは",
+	"What would you like to do?": "何をしますか？",
+	"Back to meetings": "会議に戻る",
 };
 
 export default ja;

@@ -310,6 +310,10 @@ const en = {
 	"Removing somebody ends their call. It does not stop them rejoining with the same name.": "Removing somebody ends their call. It does not stop them rejoining with the same name.",
 	"You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.": "You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.",
 	"Close": "Close",
+	"Admin console": "Admin console",
+	"Hello, {name}": "Hello, {name}",
+	"What would you like to do?": "What would you like to do?",
+	"Back to meetings": "Back to meetings",
 } as const;
 
 export default en;

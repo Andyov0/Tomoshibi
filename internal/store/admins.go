@@ -45,6 +45,15 @@ type Admin struct {
 	// reading of an entry somebody wrote in a hurry.
 	Can []string `json:"can"`
 
+	// Avatar is the picture they chose, as a data URI, or empty.
+	//
+	// Here for the same reason it is on an account: an administrator is a person
+	// in a call before they are an entry in a list, and the alternative was that
+	// the one group of people who certainly have credentials on this deployment
+	// were the one group who could not put a face beside their name. Bounded by
+	// the same limit, in the same place.
+	Avatar string `json:"avatar,omitempty"`
+
 	// Added is when somebody put them here, for a page that wants to say so.
 	Added time.Time `json:"added"`
 }
@@ -383,4 +392,52 @@ func (s *Store) AdoptAdmins(configured []config.Admin) (adopted bool, err error)
 	}
 
 	return adopted, nil
+}
+
+// AdminNamed finds an administrator by the name they are listed under.
+//
+// By name rather than by signature, because this answers the front page's
+// sign-in, where somebody types a name and a passphrase. The signature is
+// derived from what they typed and compared afterwards; looking up by it instead
+// would mean a wrong passphrase found nobody and a right one found somebody,
+// which is the same answer arrived at more confusingly.
+//
+// The comparison is case-insensitive on the name and exact on nothing else. Two
+// administrators listed under names differing only in case would be a list
+// somebody cannot read, and this is not the place to discover that.
+func (s *Store) AdminNamed(name string) (Admin, bool) {
+	wanted := strings.ToLower(strings.TrimSpace(name))
+
+	if wanted == "" {
+		return Admin{}, false
+	}
+
+	list, err := s.Admins()
+	if err != nil {
+		return Admin{}, false
+	}
+
+	for _, one := range list {
+		if strings.ToLower(one.Name) == wanted {
+			return one, true
+		}
+	}
+
+	return Admin{}, false
+}
+
+// AdminBySignature finds one by the mark they carry.
+func (s *Store) AdminBySignature(trip string) (Admin, bool) {
+	list, err := s.Admins()
+	if err != nil {
+		return Admin{}, false
+	}
+
+	for _, one := range list {
+		if one.Trip == trip {
+			return one, true
+		}
+	}
+
+	return Admin{}, false
 }

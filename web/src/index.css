@@ -185,6 +185,35 @@
 	}
 
 	/*
+	 * How something on an otherwise empty screen arrives.
+	 *
+	 * Further and slower than a tile, because there is nothing else moving to
+	 * measure it against: the same eight pixels that read as a lift inside a busy
+	 * grid read as nothing at all on a page holding one card.
+	 *
+	 * The delay is set per element rather than baked in, so a screen with three
+	 * things on it can bring them in one after another. That ordering is the
+	 * whole point — it tells somebody where to look first without anything having
+	 * to be brighter or bigger than the rest.
+	 */
+	@keyframes rise {
+		from {
+			opacity: 0;
+			transform: translateY(14px);
+		}
+	}
+
+	.animate-rise {
+		animation: rise 420ms var(--ease-settle) both;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.animate-rise {
+			animation-duration: 1ms;
+		}
+	}
+
+	/*
 	 * How a panel leaves.
 	 *
 	 * Faster than it arrived and travelling less far, which is not a stylistic

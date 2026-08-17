@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { t } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
-import { Camera, Loader2, LogOut, Trash2, UserRound } from "lucide-react";
+import { ArrowLeft, Camera, Loader2, LogOut, Shield, Trash2, UserRound } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -25,6 +25,8 @@ interface Me {
 	trip: string;
 	avatar?: string;
 	created?: string;
+	/** Whether they also run the deployment, so the way there can be offered. */
+	admin?: boolean;
 }
 
 export function Account() {
@@ -50,12 +52,55 @@ export function Account() {
 	if (!me) return <SignIn onIn={identify} />;
 
 	return (
-		<main className="mx-auto flex min-h-full max-w-lg flex-col gap-4 bg-bg p-6 text-fg">
-			<Header me={me} onChanged={setMe} />
-			<Picture me={me} onChanged={setMe} />
-			<Passphrase />
+		<main className="mx-auto flex min-h-full max-w-lg flex-col gap-4 bg-bg p-5 text-fg sm:p-6">
+			{/*
+			 * The way back, first and above everything.
+			 *
+			 * This is a page somebody arrives at from the front of the site, does
+			 * one thing on, and leaves — and until this existed the only way out
+			 * was the browser's own back button, which is not where anybody looks
+			 * on a page that has its own address. A page with no exit reads as a
+			 * place you have been sent rather than one you visited.
+			 */}
+			<nav className="animate-rise flex items-center gap-2">
+				<a
+					href="/"
+					className={cn(
+						"flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5",
+						"text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+					)}
+				>
+					<ArrowLeft className="size-3.5" />
+					{t("Back to meetings")}
+				</a>
 
-			<p className="px-1 text-fg-muted text-[11.5px] leading-relaxed">
+				{me.admin && (
+					<a
+						href="/admin"
+						className={cn(
+							"ml-auto flex items-center gap-1.5 rounded-md border border-tally/30 bg-tally/10 px-2.5 py-1.5",
+							"text-[12px] text-fg transition-colors hover:bg-tally/20",
+						)}
+					>
+						<Shield className="size-3.5 text-tally" />
+						{t("Admin console")}
+					</a>
+				)}
+			</nav>
+
+			<div className="animate-rise [animation-delay:60ms]">
+				<Header me={me} onChanged={setMe} />
+			</div>
+
+			<div className="animate-rise [animation-delay:120ms]">
+				<Picture me={me} onChanged={setMe} />
+			</div>
+
+			<div className="animate-rise [animation-delay:180ms]">
+				<Passphrase />
+			</div>
+
+			<p className="animate-rise [animation-delay:240ms] px-1 text-fg-muted text-[11.5px] leading-relaxed">
 				{t("Your passphrase is not stored here and cannot be sent to you. If you lose it, an administrator sets a new one.")}
 			</p>
 		</main>
@@ -98,7 +143,7 @@ function SignIn({ onIn }: { onIn: () => void }) {
 
 	return (
 		<main className="grid min-h-full place-items-center bg-bg p-6 text-fg">
-			<form onSubmit={submit} className="flex w-full max-w-sm flex-col gap-4">
+			<form onSubmit={submit} className="animate-rise flex w-full max-w-sm flex-col gap-4">
 				<header className="flex flex-col items-center gap-2 text-center">
 					<UserRound className="size-8 text-fg-muted" />
 					<h1 className="font-semibold text-xl tracking-tight">{t("Your account")}</h1>

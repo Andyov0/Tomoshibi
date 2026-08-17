@@ -277,6 +277,10 @@ const zhHans: Dictionary = {
 	"Removing somebody ends their call. It does not stop them rejoining with the same name.": "移出只会结束他这次通话,并不能阻止他用同一个名字再进来。",
 	"You can do this because you administer this server. Removing somebody ends their call; it does not stop them rejoining.": "你能这么做是因为你是本站管理员。移出只会结束他这次通话,并不能阻止他再进来。",
 	"Close": "关闭",
+	"Admin console": "管理后台",
+	"Hello, {name}": "你好,{name}",
+	"What would you like to do?": "想做点什么?",
+	"Back to meetings": "返回会议",
 };
 
 export default zhHans;

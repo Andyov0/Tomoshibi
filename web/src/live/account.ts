@@ -11,6 +11,15 @@ export interface Me {
 	name: string;
 	trip: string;
 	avatar?: string;
+	/**
+	 * Whether this person also runs the deployment.
+	 *
+	 * Told to them so the page can offer the way to the management pages, and
+	 * for nothing else. Nothing here is authorised by it: those pages ask the
+	 * administrator list themselves, on every request, and would refuse a
+	 * browser that had been told otherwise.
+	 */
+	admin?: boolean;
 }
 
 /** The account this browser is signed in to, if any. */

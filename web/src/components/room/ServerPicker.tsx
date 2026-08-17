@@ -3,6 +3,7 @@ import { useT } from "@/hooks/useT";
 import { say } from "@/live/i18n";
 import { type Relay, timings } from "@/live/relays";
 import { Check, ChevronDown, Loader2, RotateCw, Wand2 } from "lucide-react";
+import { useLingering } from "@/hooks/useLingering";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
@@ -157,6 +158,12 @@ export function ServerPicker({
 	const t = useT();
 	const [open, setOpen] = useState(false);
 	const { measured, measuring, ready, measure } = useMeasuring(relays);
+
+	// Held on screen while it leaves. Rendered as `open && ...` the sheet was
+	// simply gone on the frame after a press anywhere else — it opened from the
+	// control and closed by vanishing, which reads as the page having redrawn
+	// rather than as a menu being dismissed.
+	const { mounted, leaving } = useLingering(open, 160);
 	// Where the sheet actually goes, in window coordinates.
 	//
 	// Positioned rather than anchored. Anchored to the control it opens from, a
@@ -304,7 +311,7 @@ export function ServerPicker({
 				</span>
 			</button>
 
-			{open && (
+			{mounted && (
 				<ul
 					ref={sheet}
 					role="listbox"
@@ -330,7 +337,8 @@ export function ServerPicker({
 						// appearing: a menu that fades in from nowhere reads as a
 						// page redraw, and one that grows the wrong way reads as a
 						// mistake.
-						"animate-arrive origin-top",
+						"origin-top",
+						leaving ? "animate-depart" : "animate-arrive",
 					)}
 				>
 					<Rows

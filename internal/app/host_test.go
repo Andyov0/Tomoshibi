@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -50,7 +51,7 @@ func tokenFor(t *testing.T, name, passphrase string) (token, identity string) {
 func hosted(t *testing.T) (http.Handler, *store.Store) {
 	t.Helper()
 
-	mux, st := controlWithStore(t, config.PickProbe,
+	mux, st, _ := controlWithStore(t, config.PickProbe,
 		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
 	)
 
@@ -177,6 +178,114 @@ func TestNoTokenIsNotAnInvitation(t *testing.T) {
 
 		if recorder.Code != http.StatusForbidden {
 			t.Errorf("a request carrying %q minted an invite with %d", token, recorder.Code)
+		}
+	}
+}
+
+/*
+An invite that is dead the moment it is made.
+
+The link is created by somebody sitting in the meeting, sent to somebody else,
+and opened minutes or days later. Checking that a room exists on the media server
+at the instant the link is read gets all three of those wrong: a room only exists
+there while somebody is connected to it, so there is no room to find between the
+host pressing start and their browser finishing its handshake, none between the
+last person leaving and the next arriving, and none at all for a meeting arranged
+in advance.
+
+The symptom is the worst kind — the link works when the person who made it tries
+it, because they are connected, and reports that the meeting is over to everybody
+they sent it to.
+
+What ends a link is the room being closed, which throws the links away with it,
+and the ceiling on the invite itself. Both are things somebody did or a clock
+did. A gap between two connections is neither.
+*/
+
+func TestAnInviteIsReadableBeforeAnybodyHasConnected(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
+	)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	token, identity := tokenFor(t, "standup", "the host's passphrase")
+
+	mark, _ := room.SignatureOf(identity)
+	if err := st.SetHost("standup", mark.Trip); err != nil {
+		t.Fatal(err)
+	}
+
+	made := ask(mux, asking(http.MethodPost, "/api/rooms/standup/invites", token, ""))
+	if made.Code != http.StatusOK {
+		t.Fatalf("minting an invite answered %d: %s", made.Code, made.Body)
+	}
+
+	var invite struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(made.Body.Bytes(), &invite); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nobody is connected. There is no media server behind these tests at all,
+	// which is the same shape as a meeting that has not started yet.
+	for i := range 3 {
+		read := ask(mux, httptest.NewRequest(http.MethodGet, "/api/invites/"+invite.Token, nil))
+
+		if read.Code != http.StatusOK {
+			t.Fatalf("reading the invite the %d time answered %d: %s; everybody it was sent "+
+				"to is told the meeting is over", i+1, read.Code, read.Body)
+		}
+	}
+}
+
+/*
+And one link for everybody, rather than one each.
+
+It was single use to begin with, on the reasoning that a link pasted into a group
+chat should let in the person it was meant for and nobody else. That is a fine
+rule for a link and a bad one for a meeting: a host with ten guests had to mint
+ten links and keep track of which had been spent, and the person it was meant for
+still lost their place by reloading.
+*/
+
+func TestOneInviteAdmitsEverybodyItReaches(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
+	)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	token, identity := tokenFor(t, "standup", "the host's passphrase")
+	mark, _ := room.SignatureOf(identity)
+
+	if err := st.SetHost("standup", mark.Trip); err != nil {
+		t.Fatal(err)
+	}
+
+	made := ask(mux, asking(http.MethodPost, "/api/rooms/standup/invites", token, ""))
+
+	var invite struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(made.Body.Bytes(), &invite); err != nil {
+		t.Fatal(err)
+	}
+
+	for i := range 4 {
+		request := httptest.NewRequest(http.MethodPost,
+			"/api/rooms/standup/join?invite="+invite.Token,
+			strings.NewReader(`{"name":"guest"}`))
+		request.Header.Set("Content-Type", "application/json")
+
+		if got := ask(mux, request).Code; got != http.StatusOK {
+			t.Fatalf("guest %d was refused with %d; the host has to mint a link per person "+
+				"and keep track of which have been spent", i+1, got)
 		}
 	}
 }

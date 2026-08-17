@@ -331,6 +331,10 @@ const en = {
 	"No meeting is happening under that name.": "No meeting is happening under that name.",
 	"Joining as {name}": "Joining as {name}",
 	"Relays answering": "Relays answering",
+	"Leave the call": "Leave the call",
+	"The meeting carries on without you.": "The meeting carries on without you.",
+	"End for everybody": "End for everybody",
+	"Everybody is disconnected and links stop working.": "Everybody is disconnected and links stop working.",
 } as const;
 
 export default en;

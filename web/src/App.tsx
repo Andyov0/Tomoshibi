@@ -36,6 +36,19 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * through, and leaving it in the history means the back button returns to a page
  * that generates a different room every time it is visited.
  */
+/**
+ * Which machine was chosen last, so a reload does not silently move the call.
+ *
+ * In session storage rather than local: it is about this tab and this meeting,
+ * and a browser that remembered it for a month would send somebody to a relay
+ * they picked once, in another country, for a different call.
+ */
+const RELAY_KEY = "meet-live.relay";
+
+function lastRelay(): string {
+	return sessionStorage.getItem(RELAY_KEY) ?? "";
+}
+
 function initialRoom(): string {
 	const raw = normaliseRoomName(window.location.hash.replace(/^#\/?/, ""));
 
@@ -107,6 +120,20 @@ export function App() {
 				// in the address bar of a page that had not decided to be a room
 				// yet — somebody signing in read their own URL and found a room
 				// they had not asked for.
+				// A reload while in a call must not lose the call.
+				//
+				// The address has said which room this is all along — it is what
+				// somebody copies to invite people — and after a reload it was
+				// being ignored: the lobby appeared, the room in the address bar
+				// was not the room on the screen, and getting back in meant typing
+				// a name that was already there. What lands instead is the screen
+				// one press from rejoining, rather than a rejoin nobody asked for:
+				// a refresh should not put somebody back on a live microphone.
+				if (account && initialRoom()) {
+					setFront({ at: "ready", me: account, relay: lastRelay() });
+					return;
+				}
+
 				if (said.openedBy === "anyone") {
 					setRoom((held) => held || generateRoomName());
 					setFront({ at: "open" });
@@ -204,8 +231,12 @@ export function App() {
 			if (was.at === "invited") return { at: "done" };
 
 			// And back to the lobby rather than to the device screen, which is a
-			// page for a room they have just left.
-			if (was.at === "ready") return { at: "lobby", me: was.me };
+			// page for a room they have just left. The address goes with them,
+			// or the next reload would land on that same page again.
+			if (was.at === "ready") {
+				window.history.replaceState(null, "", window.location.pathname);
+				return { at: "lobby", me: was.me };
+			}
 
 			return was;
 		});
@@ -285,6 +316,7 @@ export function App() {
 				me={front.me}
 				onOpen={(wanted, relay) => {
 					setRoom(wanted);
+					sessionStorage.setItem(RELAY_KEY, relay);
 					setFront({ at: "ready", me: front.me, relay });
 				}}
 				onSignedOut={() => setFront({ at: "sign in" })}

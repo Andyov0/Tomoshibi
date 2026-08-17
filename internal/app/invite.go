@@ -119,14 +119,17 @@ func (a *App) readInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// And the meeting itself, which is the real limit. A link to a meeting that
-	// has ended is not an expired link — it is a link to nothing, and the
-	// difference matters to whoever is reading the message it arrived in.
-	if !a.meeting(r, invite.Room) {
-		fail(w, http.StatusGone, reasonMeetingOver)
-		return
-	}
-
+	// Not checked against whether a meeting is running this instant, which is
+	// what this did and what made the link a dead one from the moment it was
+	// made. A room only exists on the media server while somebody is connected
+	// to it: between the host pressing start and their browser finishing its
+	// handshake, between the last person leaving and the next arriving, and for
+	// the whole of a meeting arranged in advance, there is no room to find — and
+	// the link that was going to be sent out reported that the meeting was over.
+	//
+	// What ends a link is the room being closed, which throws the links away
+	// with it, and the ceiling above. Both are things somebody did or a clock
+	// did; neither is a gap between two connections.
 	respond(w, map[string]any{"room": invite.Room})
 }
 

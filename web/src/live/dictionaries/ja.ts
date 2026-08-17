@@ -298,6 +298,10 @@ const ja: Dictionary = {
 	"No meeting is happening under that name.": "その名前で行われている会議はありません。",
 	"Joining as {name}": "{name} として参加します",
 	"Relays answering": "応答している中継",
+	"Leave the call": "通話から退出",
+	"The meeting carries on without you.": "会議はあなたが退出しても続きます。",
+	"End for everybody": "全員の会議を終了",
+	"Everybody is disconnected and links stop working.": "全員が切断され、リンクも無効になります。",
 };
 
 export default ja;

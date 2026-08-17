@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,8 @@ import (
 	"testing"
 
 	"time"
+
+	"github.com/livekit/protocol/livekit"
 
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
@@ -177,7 +180,7 @@ func TestARelayThatWillNotForwardSendsThemToTheRoomInstead(t *testing.T) {
 // it, forwarding would be permanent — every room would forward to the machine it
 // first landed on, for good.
 func TestAQuietRoomIsPickedAfreshRatherThanForwardedTo(t *testing.T) {
-	mux, st := controlWithStore(t, config.PickProbe,
+	mux, st, _ := controlWithStore(t, config.PickProbe,
 		forwarder("shanghai", "wss://sh.example.invalid", "sh.example.invalid:39219"),
 		forwarder("guangzhou", "wss://gz.example.invalid", "gz.example.invalid:39219"),
 	)
@@ -219,7 +222,7 @@ broken rather than as a field not filled in.
 */
 
 func TestSomebodySignedInMayOpenARoomWithoutTypingTheirPassphraseAgain(t *testing.T) {
-	mux, st := controlWithStore(t, config.PickProbe,
+	mux, st, _ := controlWithStore(t, config.PickProbe,
 		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
 	)
 
@@ -287,7 +290,7 @@ session says who somebody is and never what they may do.
 */
 
 func TestAnAdministratorCanSignInAtTheFrontOfTheSite(t *testing.T) {
-	mux, st := controlWithStore(t, config.PickProbe,
+	mux, st, _ := controlWithStore(t, config.PickProbe,
 		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
 	)
 
@@ -540,3 +543,77 @@ func TestABridgeReservedForAdministratorsStaysReserved(t *testing.T) {
 		t.Error("a visitor was bridged through a relay reserved for administrators")
 	}
 }
+
+/*
+A name reused after the meeting under it has ended.
+
+The note saying where a room is being held exists so the second person into a
+live meeting lands where the meeting is. Believed on its own it does the opposite
+of its job the moment the meeting ends: somebody closes a call, opens another
+under the same name a minute later, and is sent to the machine the old one was
+on — whatever they picked, and with nothing anywhere saying why. It reads as the
+server choice being ignored, because it is.
+
+It aged out after two hours, which is a long time to be told your choice does not
+matter, and no time at all if the room is still running. So the clock is the
+backstop and the media server is the answer: the note is honoured while there is
+a meeting to honour it for.
+*/
+
+func TestANameReusedAfterAMeetingEndsIsPickedAfresh(t *testing.T) {
+	mux, st, self := controlWithStore(t, config.PickProbe,
+		forwarder("shanghai", "wss://sh.example.invalid", "sh.example.invalid:39219"),
+		forwarder("guangzhou", "wss://gz.example.invalid", "gz.example.invalid:39219"),
+	)
+
+	// A media server that answers, and says there is no meeting under any name.
+	// Without one the join cannot tell "ended" from "cannot ask", and believes
+	// the note — which is the right thing to do when nothing can be reached and
+	// the wrong thing to test with.
+	self.control = quiet{}
+
+	joinVia(t, mux, "standup", "guangzhou")
+
+	// The note is still there — this is not the expiry being tested — and there
+	// is no media server behind these tests, so nothing can confirm a meeting is
+	// running under that name.
+	if got := st.HeldOn("standup"); got != "guangzhou" {
+		t.Fatalf("the room was noted on %q, wanted guangzhou", got)
+	}
+
+	second := joinVia(t, mux, "standup", "shanghai")
+
+	if second.URL != "wss://sh.example.invalid" {
+		t.Errorf("somebody picked shanghai for a name whose meeting had ended and was sent "+
+			"to %s; the note outlived the meeting and the choice counted for nothing",
+			second.URL)
+	}
+
+	if second.Forward != nil {
+		t.Error("media was forwarded to a machine holding nothing")
+	}
+
+	// And the note is gone, so the next join does not ask the same question.
+	if got := st.HeldOn("standup"); got == "guangzhou" {
+		t.Error("a note about a meeting that has ended was left in place; every join for " +
+			"the next two hours asks the media server the same question and gets the " +
+			"same answer")
+	}
+}
+
+// quiet is a media server holding no rooms at all.
+//
+// Its whole job is to answer, so that a test can tell the difference between a
+// meeting that has ended and a media server that could not be asked — which the
+// join treats as opposite cases and which look identical without one.
+type quiet struct{}
+
+func (quiet) Rooms(context.Context) ([]*livekit.Room, error) { return nil, nil }
+
+func (quiet) Participants(context.Context, string) ([]*livekit.ParticipantInfo, error) {
+	return nil, nil
+}
+
+func (quiet) Remove(context.Context, string, string) error       { return nil }
+func (quiet) Mute(context.Context, string, string, string) error { return nil }
+func (quiet) Close(context.Context, string) error                { return nil }

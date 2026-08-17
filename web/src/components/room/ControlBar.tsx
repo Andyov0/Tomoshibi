@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/useT";
 import { retune, share } from "@/live/room";
 import type { Room } from "livekit-client";
-import { MessageSquare, Mic, MicOff, PhoneOff, Video, VideoOff, Volume2 } from "lucide-react";
+import { MessageSquare, Mic, MicOff, Video, VideoOff, Volume2 } from "lucide-react";
+import { Leaving } from "./Leaving";
 import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
 import { ShareButton } from "./ShareButton";
@@ -27,6 +28,7 @@ export function ControlBar({
 	onChat,
 	onListen,
 	onLeave,
+	host,
 }: {
 	room: Room;
 	chatting: boolean;
@@ -39,6 +41,8 @@ export function ControlBar({
 	onChat: () => void;
 	onListen: () => void;
 	onLeave: () => void;
+	/** Whether this person may end the meeting rather than only leave it. */
+	host: boolean;
 }) {
 	const t = useT();
 	const local = useLocalState(room);
@@ -152,9 +156,11 @@ export function ControlBar({
 
 			<span className="mx-1 h-5 w-px bg-border" />
 
-			<Button variant="danger" size="round" aria-label={t("Leave")} onClick={onLeave}>
-				<PhoneOff />
-			</Button>
+			{/* Leaving and, for whoever runs the room, ending it. Together
+			    because they are the same intention at two scales — somebody is
+			    finished — and apart they meant a host pressed the red button, went
+			    home, and left the meeting running behind them. */}
+			<Leaving room={room} host={host} onLeave={onLeave} />
 		</footer>
 	);
 }

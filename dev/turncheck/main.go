@@ -20,6 +20,13 @@ import (
 func main() {
 	address, key, secret := os.Args[1], os.Args[2], os.Args[3]
 
+	// Four arguments means the harder question: not whether an allocation is
+	// granted, but whether anything sent to it comes out the other side.
+	if len(os.Args) > 4 {
+		relayThrough(address, key, secret, os.Args[4])
+		return
+	}
+
 	forward, err := rtc.Forward(address, key, secret)
 	if err != nil {
 		fmt.Println("mint:", err)

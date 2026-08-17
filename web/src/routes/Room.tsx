@@ -36,7 +36,7 @@ import {
 } from "@/live/plan";
 import { silenced, soundOf } from "@/live/hearing";
 import { type Surface, owner, surfaces } from "@/live/surface";
-import { useStanding } from "@/live/host";
+import { type Standing, useStanding } from "@/live/host";
 import { useWatchers, useWatching } from "@/live/watching";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useCallback, useEffect, useState } from "react";
@@ -82,12 +82,19 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 		chat.markRead();
 	}, [chat.markRead]);
 
+	// Whether this browser runs the room. Asked once here and handed to both the
+	// console in the corner and the leave button, because two callers asking
+	// separately is two requests answering the same question and two answers
+	// that can disagree for a few seconds after a handover.
+	const standing = useStanding(room);
+
 	return (
 		<div className="relative h-full">
 			<Stage
 				room={room}
 				relay={relay}
 				carrying={carrying}
+				standing={standing}
 				chat={chat}
 				chatting={chatting}
 				listening={listening}
@@ -104,6 +111,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				onChat={() => (chatting ? setPanel(undefined) : openChat())}
 				onListen={() => setPanel(listening ? undefined : "sound")}
 				onLeave={onLeave}
+				host={standing.yours}
 			/>
 			{/* Outside the stage on purpose: what people can hear must not depend
 			    on what the layout happens to be drawing. */}
@@ -120,12 +128,14 @@ function Stage({
 	screen,
 	relay,
 	carrying,
+	standing,
 	onClosePanel,
 	onOpenSound,
 }: {
 	room: LiveRoom;
 	relay?: string;
 	carrying?: string;
+	standing: Standing;
 	chat: ReturnType<typeof useChat>;
 	chatting: boolean;
 	listening: boolean;
@@ -220,9 +230,6 @@ function Stage({
 
 	useWatching(room, watched);
 
-	// Whether this browser runs the room, which decides whether the console in
-	// the corner exists at all.
-	const standing = useStanding(room);
 
 	// And, when we are the one sharing, everybody who says so.
 	const sharing = all.some((surface) => surface.kind === "screen" && surface.local);

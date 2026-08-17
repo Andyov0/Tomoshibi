@@ -245,6 +245,42 @@
 	}
 
 	/*
+	 * The ground behind a dialog, arriving and leaving.
+	 *
+	 * Separate from the panel's own animation because they are doing different
+	 * jobs: the panel says something appeared, and this says everything else
+	 * stopped being where the attention is. Faded rather than moved — a
+	 * backdrop that slides is a backdrop somebody notices, and this one is
+	 * supposed to be felt and not seen.
+	 */
+	@keyframes fade-in {
+		from {
+			opacity: 0;
+		}
+	}
+
+	@keyframes fade-out {
+		to {
+			opacity: 0;
+		}
+	}
+
+	.animate-fade-in {
+		animation: fade-in 180ms var(--ease-settle) both;
+	}
+
+	.animate-fade-out {
+		animation: fade-out 160ms var(--ease-leave) both;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.animate-fade-in,
+		.animate-fade-out {
+			animation-duration: 1ms;
+		}
+	}
+
+	/*
 	 * How a panel leaves.
 	 *
 	 * Faster than it arrived and travelling less far, which is not a stylistic

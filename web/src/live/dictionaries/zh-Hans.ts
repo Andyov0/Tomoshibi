@@ -298,6 +298,10 @@ const zhHans: Dictionary = {
 	"No meeting is happening under that name.": "这个房间名下没有正在进行的会议。",
 	"Joining as {name}": "以 {name} 的身份加入",
 	"Relays answering": "正在应答的中转",
+	"Leave the call": "离开通话",
+	"The meeting carries on without you.": "会议会在你走后继续。",
+	"End for everybody": "解散会议",
+	"Everybody is disconnected and links stop working.": "所有人会被断开,链接同时失效。",
 };
 
 export default zhHans;

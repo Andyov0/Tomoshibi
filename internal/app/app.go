@@ -596,9 +596,29 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	entry := a.relays.pick(name, body.Relay, r, a.conf.Meet.TrustProxy, isAdmin)
 	holding := entry
 
+	// Where the meeting already is, if there still is one.
+	//
+	// The note is checked against the media server rather than believed on its
+	// own. It used to be believed for two hours, and that is what made a room
+	// come back to the same machine after it had ended: somebody closed a call,
+	// opened another under the same name a minute later, and was sent to the
+	// relay the old one had been on — which reads as the server choice being
+	// ignored, because it was.
+	//
+	// Asked of one relay rather than all of them: any node answers for the whole
+	// cluster, and the first one that answers ends the question. Where none can
+	// be reached the note is believed, which is the old behaviour and the safe
+	// direction — keeping a live meeting together matters more than being right
+	// about a dead one.
 	if held := a.store.HeldOn(name); held != "" && held != entry.Name {
-		if there, ok := a.relays.named(held); ok {
-			holding = there
+		if a.meeting(r, name) {
+			if there, ok := a.relays.named(held); ok {
+				holding = there
+			}
+		} else if err := a.store.ReleaseRoom(name); err != nil {
+			// Cleared rather than left to age out, so the next join does not ask
+			// the same question again for the next two hours.
+			slog.Error("failed to release a room that has ended", "room", name, "error", err)
 		}
 	}
 

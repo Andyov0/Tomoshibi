@@ -454,7 +454,25 @@ function Form({ room, onRoomChange, onJoin, guest = false, as }: PreJoinProps) {
 					 * advance: whether the camera is pointing at the right thing and
 					 * whether the microphone is the right one.
 					 */}
-					{!as && <RoomTitle room={room} onChange={onRoomChange} />}
+					{/*
+					 * The name, always, and editable only where it is still a
+					 * question.
+					 *
+					 * Taking it away entirely left a button alone in half a screen,
+					 * which reads as a page that failed to load the rest of itself —
+					 * and it took with it the one thing this screen is for
+					 * confirming: that the meeting somebody is about to walk into is
+					 * the one they meant. It is not a field for somebody who came
+					 * through the lobby, because they typed it there; it is a
+					 * heading, which is what it always was underneath.
+					 */}
+					{as ? (
+						<h1 className="readout truncate font-semibold text-fg text-xl tracking-tight">
+							{room}
+						</h1>
+					) : (
+						<RoomTitle room={room} onChange={onRoomChange} />
+					)}
 
 					{/*
 					 * Nothing to fill in for somebody signed in.

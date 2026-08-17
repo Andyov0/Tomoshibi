@@ -38,10 +38,17 @@ export interface Relay {
 	maintenance?: boolean;
 }
 
-interface RelayList {
+export interface RelayList {
 	relays: Relay[];
 	/** Whether this deployment will act on a measurement. */
 	measure: boolean;
+	/**
+	 * How many relays there are and how many are answering.
+	 *
+	 * Both, because either alone says nothing: three answering is excellent out
+	 * of three and alarming out of eleven.
+	 */
+	fleet?: { online: number; total: number };
 }
 
 /**

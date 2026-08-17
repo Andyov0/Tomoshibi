@@ -214,6 +214,37 @@
 	}
 
 	/*
+	 * How one screen becomes another.
+	 *
+	 * Shorter than anything inside a screen and travelling almost no distance,
+	 * because a whole page sliding about is a page that feels slow the third time
+	 * somebody sees it. What it has to do is say that this is a different place,
+	 * not perform the journey: sign-in to lobby to devices to call is four steps,
+	 * and a transition anybody notices individually is one they will sit through
+	 * four times.
+	 *
+	 * The alternative — a screen simply replaced between two frames — reads as the
+	 * page having reloaded, which is the one thing it must not look like on a
+	 * flow where each step is a decision somebody just made.
+	 */
+	@keyframes page {
+		from {
+			opacity: 0;
+			transform: translateY(6px) scale(0.995);
+		}
+	}
+
+	.animate-page {
+		animation: page 260ms var(--ease-settle) both;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.animate-page {
+			animation-duration: 1ms;
+		}
+	}
+
+	/*
 	 * How a panel leaves.
 	 *
 	 * Faster than it arrived and travelling less far, which is not a stylistic

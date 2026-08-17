@@ -17,7 +17,7 @@ import {
 	Shield,
 	UserRound,
 } from "lucide-react";
-import { ServerPicker } from "@/components/room/ServerPicker";
+import { ServerList } from "@/components/room/ServerPicker";
 import { meeting } from "@/live/account";
 import { type Relay, relays } from "@/live/relays";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
@@ -57,6 +57,68 @@ they are passing through.
  * whatever is left over below the header. That distinction is invisible until
  * the header grows a second control, at which point everything below it slides.
  */
+/**
+ * How much of the fleet is answering, beside the name of the thing.
+ *
+ * A relay that has stopped answering is invisible from here — the picker simply
+ * does not offer it, and a call still happens on one of the others — which is
+ * the right behaviour and a poor way to find out. This is where somebody who
+ * runs the deployment learns that two of eleven machines are down, at the moment
+ * they are looking at the page anyway rather than the week the bill arrives.
+ *
+ * Both numbers, because either alone says nothing: three answering is excellent
+ * out of three and alarming out of eleven. The light is read first and the
+ * numbers second, so it carries the judgement — everything answering is one
+ * colour, some of it answering is another, and none of it is the third.
+ */
+function Fleet() {
+	const t = useT();
+	const [fleet, setFleet] = useState<{ online: number; total: number }>();
+
+	useEffect(() => {
+		let live = true;
+
+		const look = () =>
+			void relays().then((offered) => {
+				if (live && offered.fleet) setFleet(offered.fleet);
+			});
+
+		look();
+
+		// Slowly. This is a reassurance rather than a monitor, and a page that
+		// polls every few seconds to redraw the same two digits is a page that
+		// keeps a laptop awake for nothing.
+		const timer = setInterval(look, 60_000);
+
+		return () => {
+			live = false;
+			clearInterval(timer);
+		};
+	}, []);
+
+	if (!fleet) return null;
+
+	const all = fleet.online === fleet.total && fleet.total > 0;
+	const none = fleet.online === 0;
+
+	return (
+		<span
+			className="animate-rise flex items-center gap-1.5 text-[11px] text-fg-muted"
+			title={t("Relays answering")}
+		>
+			<span
+				className={cn(
+					"size-1.5 rounded-full",
+					none ? "bg-danger" : all ? "bg-good" : "bg-tally",
+				)}
+			/>
+			<span className="tabular-nums">
+				{fleet.online}/{fleet.total}
+			</span>
+		</span>
+	);
+}
+
 function Frame({ children, corner }: { children: ReactNode; corner?: ReactNode }) {
 	return (
 		<main className="relative grid min-h-full grid-rows-[auto_1fr] overflow-hidden">
@@ -80,6 +142,12 @@ function Frame({ children, corner }: { children: ReactNode; corner?: ReactNode }
 				<div className="flex items-center gap-2">
 					<img src="/favicon.svg" alt="" className="size-5 rounded-[5px]" />
 					<span className="font-semibold text-[13px] tracking-tight">Tomoshibi</span>
+
+					{/* Beside the name rather than under it: it is a property of
+					    this deployment, not a heading of its own. */}
+					<span className="ml-1.5 border-border border-l pl-2.5">
+						<Fleet />
+					</span>
 				</div>
 
 				<div className="flex items-center gap-2">{corner}</div>
@@ -473,7 +541,7 @@ export function Lobby({
 				{servers.length > 1 && (
 					<div className="animate-rise [animation-delay:180ms] flex flex-col gap-1.5">
 						<span className="px-1 text-[11px] text-fg-muted">{t("Server")}</span>
-						<ServerPicker relays={servers} value={server} onChange={setServer} />
+						<ServerList relays={servers} value={server} onChange={setServer} />
 					</div>
 				)}
 			</div>

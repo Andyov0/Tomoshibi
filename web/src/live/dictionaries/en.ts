@@ -330,6 +330,7 @@ const en = {
 	"A meeting is already happening under that name.": "A meeting is already happening under that name.",
 	"No meeting is happening under that name.": "No meeting is happening under that name.",
 	"Joining as {name}": "Joining as {name}",
+	"Relays answering": "Relays answering",
 } as const;
 
 export default en;

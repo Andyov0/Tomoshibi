@@ -42,29 +42,18 @@ const GAP = 8;
 /** How long the spinner turns for, however quickly the answer arrives. */
 const SPIN_AT_LEAST_MS = 550;
 
-export function ServerPicker({
-	relays,
-	value,
-	onChange,
-}: {
-	relays: Relay[];
-	value: string;
-	onChange: (name: string) => void;
-}) {
-	const t = useT();
-	const [open, setOpen] = useState(false);
+/**
+ * The measuring, which both shapes of this need and neither owns.
+ *
+ * Taken once and then only on request. It costs one connection to every relay
+ * from every browser that asks, and a burst of those to an unregistered host in
+ * mainland China is what got a relay's name blacklisted once already — so the
+ * limit is on the asking rather than on the network underneath it.
+ */
+function useMeasuring(relays: Relay[]) {
 	const [measured, setMeasured] = useState<Map<string, number | undefined>>();
 	const [measuring, setMeasuring] = useState(false);
 	const [ready, setReady] = useState(true);
-	// Where the sheet actually goes, in window coordinates.
-	//
-	// Positioned rather than anchored. Anchored to the control it opens from, a
-	// list long enough runs off the top of the window and the rows at the far end
-	// cannot be reached at all — which is what eleven relays did. Nothing about
-	// being anchored was worth that: what somebody wants is to see the list.
-	const [place, setPlace] = useState<{ left: number; width: number; top: number; tall: number }>();
-	const frame = useRef<HTMLDivElement>(null);
-	const sheet = useRef<HTMLUListElement>(null);
 	const alive = useRef(true);
 
 	useEffect(() => {
@@ -74,19 +63,6 @@ export function ServerPicker({
 		};
 	}, []);
 
-	/**
-	 * Take the measurement, at most once every few seconds.
-	 *
-	 * The limit is on the button rather than on the network layer because of
-	 * what a measurement is here: one connection to every relay, from every
-	 * browser that presses it. A button somebody can hold down is a small
-	 * denial-of-service aimed at one's own machines, and — the reason that
-	 * matters more than the load — a burst of connections to an unregistered
-	 * host in mainland China is what got a relay's name blacklisted before.
-	 *
-	 * Five seconds is also about how long it takes to stop believing the number
-	 * you just read, which is the only honest reason to press it again.
-	 */
 	const measure = useCallback(() => {
 		if (!ready) return;
 
@@ -113,6 +89,83 @@ export function ServerPicker({
 			if (alive.current) setReady(true);
 		}, COOLDOWN_MS);
 	}, [ready, relays]);
+
+	return { measured, measuring, ready, measure };
+}
+
+/**
+ * The list, open, as one of the things on a screen rather than behind a control.
+ *
+ * For the lobby, where somebody is deciding what kind of meeting to have and
+ * where it is held is one of those decisions. A dropdown there is a decision
+ * hidden behind a press, and — with eleven relays — a sheet that covers the
+ * page it belongs to. Open, it is simply part of the page.
+ *
+ * Measured on mount, because unlike the dropdown this one is visibly asking to
+ * be read: numbers that appear only after somebody has already chosen are worse
+ * than no numbers.
+ */
+export function ServerList({
+	relays,
+	value,
+	onChange,
+}: {
+	relays: Relay[];
+	value: string;
+	onChange: (name: string) => void;
+}) {
+	const { measured, measuring, ready, measure } = useMeasuring(relays);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: once, on arrival
+	useEffect(() => {
+		measure();
+	}, []);
+
+	return (
+		<ul
+			className={cn(
+				// The same material as the cards above it rather than the raised
+				// sheet a dropdown uses. It is part of this page and not something
+				// laid over it, and a panel that shouted would make the two
+				// decisions above it look like the smaller ones.
+				"max-h-72 overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface",
+			)}
+		>
+			<Rows
+				relays={relays}
+				value={value}
+				measured={measured}
+				measuring={measuring}
+				ready={ready}
+				onMeasure={measure}
+				onChange={onChange}
+				onPicked={() => {}}
+			/>
+		</ul>
+	);
+}
+
+export function ServerPicker({
+	relays,
+	value,
+	onChange,
+}: {
+	relays: Relay[];
+	value: string;
+	onChange: (name: string) => void;
+}) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	const { measured, measuring, ready, measure } = useMeasuring(relays);
+	// Where the sheet actually goes, in window coordinates.
+	//
+	// Positioned rather than anchored. Anchored to the control it opens from, a
+	// list long enough runs off the top of the window and the rows at the far end
+	// cannot be reached at all — which is what eleven relays did. Nothing about
+	// being anchored was worth that: what somebody wants is to see the list.
+	const [place, setPlace] = useState<{ left: number; width: number; top: number; tall: number }>();
+	const frame = useRef<HTMLDivElement>(null);
+	const sheet = useRef<HTMLUListElement>(null);
 
 	// Measured when the menu is first opened rather than on load, because it
 	// costs a connection to every relay and most people never open this. Not on
@@ -280,88 +333,141 @@ export function ServerPicker({
 						"animate-arrive origin-top",
 					)}
 				>
-					<li className="flex items-center justify-between gap-2 border-fg/10 border-b bg-black/15 px-3 py-2">
-						<span className="text-fg-muted text-[10.5px] uppercase tracking-wide">
-							{t("Round trip")}
-						</span>
-
-						<button
-							type="button"
-							disabled={!ready || measuring}
-							onClick={measure}
-							className={cn(
-								"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted",
-								"transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40",
-								"disabled:hover:bg-transparent disabled:hover:text-fg-muted",
-							)}
-						>
-							<RotateCw
-								className={cn(
-									"size-3 transition-transform duration-300",
-									measuring && "animate-spin",
-									// Nudged round on the way back to still, so the icon
-									// settles rather than snapping to where it started.
-									!measuring && !ready && "rotate-180",
-								)}
-							/>
-							{t("Measure again")}
-						</button>
-					</li>
-
-					<Option
-						label={t("Automatic")}
-						describes={t("Whichever answers fastest")}
-						chosen={value === ""}
-						// Marked, because it is not one of the places below it: it
-						// is the absence of a choice, and a row that looked exactly
-						// like the relays would read as a machine called Automatic.
-						icon={<Wand2 className="size-3.5 shrink-0 text-fg-muted" />}
-						onPick={() => {
-							onChange("");
-							setOpen(false);
-						}}
+					<Rows
+						relays={relays}
+						value={value}
+						measured={measured}
+						measuring={measuring}
+						ready={ready}
+						onMeasure={measure}
+						onChange={onChange}
+						onPicked={() => setOpen(false)}
 					/>
-
-					{grouped(relays).map((row, index) =>
-						row.kind === "heading" ? (
-							<Heading key={`h${row.path}`} text={row.text} depth={row.depth} delay={index * 30} />
-						) : (
-							<Option
-								key={row.relay.name}
-								label={marked(row.relay)}
-								describes={
-									row.relay.maintenance
-										? t("Not taking calls")
-										: row.relay.fallback
-											? "[Fallback]"
-											: undefined
-								}
-								chosen={value === row.relay.name}
-								// Shown and not selectable. A relay taken down for an
-								// hour that vanished from the list would look deleted
-								// to whoever used it yesterday.
-								disabled={row.relay.maintenance}
-								depth={row.depth}
-								latency={
-									<Latency
-										ms={measured?.get(row.relay.name)}
-										known={measured !== undefined}
-									/>
-								}
-								// Staggered so the list comes in as a list rather than as
-								// one block. Small enough to read as movement and not as
-								// waiting.
-								delay={index * 30}
-								onPick={() => {
-									onChange(row.relay.name);
-									setOpen(false);
-								}}
-							/>
-						),
-					)}
 				</ul>
 			)}
 		</div>
+	);
+}
+
+
+/**
+ * The rows themselves: the header with its remeasure button, the automatic
+ * choice, and every relay under the heading for where it is.
+ *
+ * Its own component because there are two right ways to show this and the
+ * difference is only where it sits. On a screen with one thing on it — the
+ * lobby, where somebody is deciding what kind of meeting to have — the list
+ * belongs open, because it is one of the decisions rather than a detail behind a
+ * control. On a screen that is mostly a camera preview it belongs behind one,
+ * because it is a detail almost nobody changes.
+ *
+ * Written once for both. Two copies would drift, and the half that drifts is
+ * always the one somebody looks at less.
+ */
+function Rows({
+	relays,
+	value,
+	measured,
+	measuring,
+	ready,
+	onMeasure,
+	onChange,
+	onPicked,
+}: {
+	relays: Relay[];
+	value: string;
+	measured?: Map<string, number | undefined>;
+	measuring: boolean;
+	ready: boolean;
+	onMeasure: () => void;
+	onChange: (name: string) => void;
+	onPicked: () => void;
+}) {
+	const t = useT();
+
+	return (
+		<>
+			<li className="flex items-center justify-between gap-2 border-fg/10 border-b bg-black/15 px-3 py-2">
+				<span className="text-fg-muted text-[10.5px] uppercase tracking-wide">
+					{t("Round trip")}
+				</span>
+
+				<button
+					type="button"
+					disabled={!ready || measuring}
+					onClick={onMeasure}
+					className={cn(
+						"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted",
+						"transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+						"disabled:hover:bg-transparent disabled:hover:text-fg-muted",
+					)}
+				>
+					<RotateCw
+						className={cn(
+							"size-3 transition-transform duration-300",
+							measuring && "animate-spin",
+							// Nudged round on the way back to still, so the icon
+							// settles rather than snapping to where it started.
+							!measuring && !ready && "rotate-180",
+						)}
+					/>
+					{t("Measure again")}
+				</button>
+			</li>
+
+			<Option
+				label={t("Automatic")}
+				describes={t("Whichever answers fastest")}
+				chosen={value === ""}
+				// Marked, because it is not one of the places below it: it
+				// is the absence of a choice, and a row that looked exactly
+				// like the relays would read as a machine called Automatic.
+				icon={<Wand2 className="size-3.5 shrink-0 text-fg-muted" />}
+				onPick={() => {
+					onChange("");
+					onPicked();
+				}}
+			/>
+
+			{grouped(relays).map((row, index) =>
+				row.kind === "heading" ? (
+					<Heading key={`h${row.path}`} text={row.text} depth={row.depth} delay={index * 30} />
+				) : (
+					<Option
+						key={row.relay.name}
+						label={marked(row.relay)}
+						describes={
+							row.relay.maintenance
+								? t("Not taking calls")
+								: row.relay.fallback
+									? "[Fallback]"
+									: undefined
+						}
+						chosen={value === row.relay.name}
+						// Shown and not selectable. A relay taken down for an
+						// hour that vanished from the list would look deleted
+						// to whoever used it yesterday.
+						disabled={row.relay.maintenance}
+						depth={row.depth}
+						latency={
+							<Latency
+								ms={measured?.get(row.relay.name)}
+								known={measured !== undefined}
+							/>
+						}
+						// Staggered so the list comes in as a list rather than as
+						// one block. Small enough to read as movement and not as
+						// waiting.
+						delay={index * 30}
+						onPick={() => {
+							onChange(row.relay.name);
+							onPicked();
+						}}
+					/>
+				),
+			)}
+
+		</>
 	);
 }
 

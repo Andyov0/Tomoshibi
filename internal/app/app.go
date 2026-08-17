@@ -826,6 +826,7 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 
 	respond(w, relayListResponse{
 		Relays: entries,
+		Fleet:  fleetCount{Online: len(list), Total: len(a.relays.all())},
 		// Said rather than inferred, so a client does not have to guess from an
 		// empty list whether measuring would be listened to. Under anything but
 		// probe it would not be, and measuring would be a delay before every
@@ -838,6 +839,18 @@ type relayListResponse struct {
 	Relays []relayEntry `json:"relays"`
 	// Measure says whether this deployment will act on a measurement.
 	Measure bool `json:"measure"`
+	// Fleet is how many relays there are and how many are answering.
+	//
+	// Both numbers, because either alone says nothing: three answering is
+	// excellent out of three and alarming out of eleven. Counted from the same
+	// two lists the choosing uses, so a page cannot disagree with what a join
+	// would actually do.
+	Fleet fleetCount `json:"fleet"`
+}
+
+type fleetCount struct {
+	Online int `json:"online"`
+	Total  int `json:"total"`
 }
 
 // binary serves the build this control node is running to a relay installing

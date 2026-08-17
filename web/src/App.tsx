@@ -8,6 +8,7 @@ import { Lobby, SignIn } from "@/routes/Lobby";
 import { type Choices, PreJoin } from "@/routes/PreJoin";
 import { Room } from "@/routes/Room";
 import { RoomEvent, type Room as LiveRoom } from "livekit-client";
+import type { ReactNode } from "react";
 
 /*
  * Why a call ended, as the media server numbers it.
@@ -236,8 +237,24 @@ export function App() {
 	}, [live, t, onLeave]);
 
 
+	/*
+	 * Every screen arrives, and none of them simply appears.
+	 *
+	 * Sign-in to lobby to devices to call is four steps, each one a decision
+	 * somebody has just made, and a screen replaced between two frames reads as
+	 * the page having reloaded rather than as having moved. Keyed on which screen
+	 * it is, so React discards the old tree and mounts the new one — without the
+	 * key it reuses the node, the animation never restarts, and every step after
+	 * the first is exactly as bare as it was before.
+	 */
+	const page = (at: string, screen: ReactNode) => (
+		<div key={at} className="animate-page h-full">
+			{screen}
+		</div>
+	);
+
 	if (live) {
-		return <Room room={live} relay={holding} carrying={carrying} onLeave={onLeave} />;
+		return page("call", <Room room={live} relay={holding} carrying={carrying} onLeave={onLeave} />);
 	}
 
 	// Nothing rather than a spinner. The two requests behind this take one round
@@ -246,19 +263,24 @@ export function App() {
 	if (front.at === "asking") return <div className="min-h-full bg-bg" />;
 
 	if (front.at === "done") {
-		return (
+		return page(
+			"done",
 			<main className="grid min-h-full place-items-center bg-bg p-6">
 				<p className="animate-rise text-fg-muted text-sm">{t("You have left the room.")}</p>
-			</main>
+			</main>,
 		);
 	}
 
 	if (front.at === "sign in") {
-		return <SignIn onSignedIn={(account) => setFront({ at: "lobby", me: account })} />;
+		return page(
+			"sign in",
+			<SignIn onSignedIn={(account) => setFront({ at: "lobby", me: account })} />,
+		);
 	}
 
 	if (front.at === "lobby") {
-		return (
+		return page(
+			"lobby",
 			<Lobby
 				me={front.me}
 				onOpen={(wanted, relay) => {
@@ -266,11 +288,12 @@ export function App() {
 					setFront({ at: "ready", me: front.me, relay });
 				}}
 				onSignedOut={() => setFront({ at: "sign in" })}
-			/>
+			/>,
 		);
 	}
 
-	return (
+	return page(
+		"devices",
 		<PreJoin
 			room={room}
 			onRoomChange={setRoom}
@@ -280,6 +303,6 @@ export function App() {
 			// they cannot answer, next to a name they did choose.
 			guest={front.at === "invited"}
 			as={front.at === "ready" ? { name: front.me.name, relay: front.relay } : undefined}
-		/>
+		/>,
 	);
 }

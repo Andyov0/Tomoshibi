@@ -297,6 +297,7 @@ const zhHans: Dictionary = {
 	"A meeting is already happening under that name.": "这个房间名已经有会议在进行了。",
 	"No meeting is happening under that name.": "这个房间名下没有正在进行的会议。",
 	"Joining as {name}": "以 {name} 的身份加入",
+	"Relays answering": "正在应答的中转",
 };
 
 export default zhHans;

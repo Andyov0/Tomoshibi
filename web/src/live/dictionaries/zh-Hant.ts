@@ -297,6 +297,7 @@ const zhHant: Dictionary = {
 	"A meeting is already happening under that name.": "這個房間名已經有會議在進行了。",
 	"No meeting is happening under that name.": "這個房間名下沒有正在進行的會議。",
 	"Joining as {name}": "以 {name} 的身分加入",
+	"Relays answering": "正在應答的中轉",
 };
 
 export default zhHant;

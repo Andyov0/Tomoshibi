@@ -297,6 +297,7 @@ const ja: Dictionary = {
 	"A meeting is already happening under that name.": "その名前ではすでに会議が行われています。",
 	"No meeting is happening under that name.": "その名前で行われている会議はありません。",
 	"Joining as {name}": "{name} として参加します",
+	"Relays answering": "応答している中継",
 };
 
 export default ja;

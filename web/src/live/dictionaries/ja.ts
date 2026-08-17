@@ -302,6 +302,7 @@ const ja: Dictionary = {
 	"The meeting carries on without you.": "会議はあなたが退出しても続きます。",
 	"End for everybody": "全員の会議を終了",
 	"Everybody is disconnected and links stop working.": "全員が切断され、リンクも無効になります。",
+	"Back": "戻る",
 };
 
 export default ja;

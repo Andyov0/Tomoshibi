@@ -51,11 +51,12 @@ export function Leaving({
 	}, [open]);
 
 	return (
-		<>
+		<div className="relative">
 			<button
 				type="button"
 				aria-label={t("Leave")}
-				onClick={() => setOpen(true)}
+				aria-expanded={open}
+				onClick={() => setOpen((was) => !was)}
 				className={cn(
 					"grid size-11 place-items-center rounded-full bg-danger text-danger-fg",
 					"transition-[transform,opacity] hover:opacity-90 active:scale-95",
@@ -65,25 +66,43 @@ export function Leaving({
 			</button>
 
 			{mounted && (
-				<div
-					className={cn(
-						"fixed inset-0 z-50 grid place-items-center p-6",
-						// The ground behind it, which is what makes this a decision
-						// rather than another control on the bar: the room is still
-						// there and is no longer where the attention is.
-						"bg-black/50 backdrop-blur-[2px]",
-						leaving ? "animate-fade-out" : "animate-fade-in",
-					)}
-					onMouseDown={(event) => {
-						if (event.target === event.currentTarget) setOpen(false);
-					}}
-				>
+				<>
+					{/*
+					 * Nothing to look at, and its whole job is to be pressed.
+					 *
+					 * A question needs a way out that is not an answer, and on a
+					 * screen this is a press anywhere else. Left as a bare document
+					 * listener it would also catch the press that opened it, so it
+					 * is a layer instead — which additionally stops the press
+					 * landing on whatever was underneath.
+					 */}
+					<button
+						type="button"
+						aria-label={t("Cancel")}
+						onClick={() => setOpen(false)}
+						className="fixed inset-0 z-40 cursor-default"
+					/>
+
+					{/*
+					 * Above the button it belongs to, rather than in the middle of
+					 * the window.
+					 *
+					 * The control bar sits along the bottom edge, so a dialog
+					 * centred in the window puts the answer a long way from the
+					 * question — and on a hand-held screen it reads as being
+					 * somewhere else entirely. Anchored, the two are one gesture:
+					 * press, and the choice is where your thumb already is.
+					 */}
 					<div
 						role="dialog"
 						aria-modal
 						className={cn(
-							"flex w-full max-w-72 flex-col gap-2 rounded-2xl border border-border p-3",
-							"bg-surface shadow-2xl ring-1 ring-black/40",
+							"absolute bottom-full left-1/2 z-50 mb-3 w-64 -translate-x-1/2",
+							"flex flex-col gap-1 rounded-2xl border border-border p-2",
+							"bg-surface-hi/95 shadow-2xl ring-1 ring-black/40 backdrop-blur",
+							// From the button rather than from nowhere, and back into
+							// it on the way out.
+							"origin-bottom",
 							leaving ? "animate-depart" : "animate-arrive",
 						)}
 					>
@@ -93,7 +112,7 @@ export function Leaving({
 							onClick={onLeave}
 							className={cn(
 								"flex items-center gap-3 rounded-xl px-3 py-2.5 text-left",
-								"transition-colors hover:bg-surface-hi disabled:opacity-40",
+								"transition-colors hover:bg-fg/5 disabled:opacity-40",
 							)}
 						>
 							<LogOut className="size-4 shrink-0 text-fg-muted" />
@@ -114,12 +133,19 @@ export function Leaving({
 
 									try {
 										await dissolve(room);
-										// No onLeave here. The media server disconnects
-										// everybody, this browser among them, and the
-										// screen that follows is the one everybody else
-										// sees — leaving as well would race it and
-										// sometimes win, which is how one person ends a
-										// meeting and is told they left it.
+
+										// The media server disconnects everybody, this
+										// browser among them, and that is what should
+										// carry the host out — the screen they land on
+										// is then the one everybody else lands on.
+										//
+										// Waited for rather than relied on. If the
+										// disconnect does not arrive, the person who
+										// just ended the meeting is left sitting in it
+										// looking at a room that no longer exists, which
+										// is the worst outcome of the three and the one
+										// that actually happened.
+										setTimeout(onLeave, 1200);
 									} catch {
 										actionFailed(t("That could not be done. Try again."));
 										setBusy(false);
@@ -143,17 +169,9 @@ export function Leaving({
 								</span>
 							</button>
 						)}
-
-						<button
-							type="button"
-							onClick={() => setOpen(false)}
-							className="rounded-xl px-3 py-2 text-[12.5px] text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg"
-						>
-							{t("Cancel")}
-						</button>
 					</div>
-				</div>
+				</>
 			)}
-		</>
+		</div>
 	);
 }

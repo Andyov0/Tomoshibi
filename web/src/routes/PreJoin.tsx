@@ -12,7 +12,7 @@ import { type Relay as OfferedRelay, relays } from "@/live/relays";
 import { remember } from "@/live/remember";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { cn } from "@/lib/utils";
-import { Mic, MicOff, ShieldAlert, UserRound, Video, VideoOff } from "lucide-react";
+import { ArrowLeft, Mic, MicOff, ShieldAlert, UserRound, Video, VideoOff } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 /*
@@ -104,9 +104,11 @@ export interface PreJoinProps {
 	 * passphrase fields were doing to every signed-in person, on every join.
 	 */
 	as?: { name: string; relay: string };
+	/** Back to wherever this screen was reached from, where there is such a place. */
+	onBack?: () => void;
 }
 
-export function PreJoin({ room, onRoomChange, onJoin, guest = false, as }: PreJoinProps) {
+export function PreJoin({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoinProps) {
 	// Checked before anything reaches for a device, so the page explains why it
 	// cannot rather than failing on a property that is simply not there.
 	if (!devicesAvailable()) {
@@ -114,7 +116,14 @@ export function PreJoin({ room, onRoomChange, onJoin, guest = false, as }: PreJo
 	}
 
 	return (
-		<Form room={room} onRoomChange={onRoomChange} onJoin={onJoin} guest={guest} as={as} />
+		<Form
+			room={room}
+			onRoomChange={onRoomChange}
+			onJoin={onJoin}
+			guest={guest}
+			as={as}
+			onBack={onBack}
+		/>
 	);
 }
 
@@ -221,7 +230,7 @@ function Source() {
 	);
 }
 
-function Form({ room, onRoomChange, onJoin, guest = false, as }: PreJoinProps) {
+function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoinProps) {
 	const t = useT();
 	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
 	const [secret, setSecret] = useState(() => localStorage.getItem(PASSPHRASE_KEY) ?? "");
@@ -467,9 +476,30 @@ function Form({ room, onRoomChange, onJoin, guest = false, as }: PreJoinProps) {
 					 * heading, which is what it always was underneath.
 					 */}
 					{as ? (
-						<h1 className="readout truncate font-semibold text-fg text-xl tracking-tight">
-							{room}
-						</h1>
+						<div className="flex flex-col gap-2">
+							{/*
+							 * The way back, because this screen is a step and not a
+							 * destination. Somebody who came through the lobby and
+							 * changed their mind about which meeting they wanted had
+							 * nothing to press: the only exits were joining a call
+							 * they did not want and the browser's back button.
+							 */}
+							<button
+								type="button"
+								onClick={onBack}
+								className={cn(
+									"flex w-fit items-center gap-1.5 rounded-md px-1.5 py-1 -ml-1.5",
+									"text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+								)}
+							>
+								<ArrowLeft className="size-3.5" />
+								{t("Back")}
+							</button>
+
+							<h1 className="readout truncate font-semibold text-fg text-xl tracking-tight">
+								{room}
+							</h1>
+						</div>
 					) : (
 						<RoomTitle room={room} onChange={onRoomChange} />
 					)}

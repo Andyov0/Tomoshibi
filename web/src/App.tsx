@@ -335,6 +335,17 @@ export function App() {
 			// they cannot answer, next to a name they did choose.
 			guest={front.at === "invited"}
 			as={front.at === "ready" ? { name: front.me.name, relay: front.relay } : undefined}
+			onBack={
+				front.at === "ready"
+					? () => {
+							// The address goes back with them, or a reload would land
+							// on this screen again for a meeting they walked away
+							// from.
+							window.history.replaceState(null, "", window.location.pathname);
+							setFront({ at: "lobby", me: front.me });
+						}
+					: undefined
+			}
 		/>,
 	);
 }

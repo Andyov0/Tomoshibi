@@ -317,6 +317,9 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/audit", a.observe(a.audit))
 	mux.HandleFunc("GET /api/admin/policy", a.observe(a.readPolicy))
 	mux.HandleFunc("GET /api/admin/relays", a.observe(a.listRelays))
+	// One row's own measurement. A reading and not a change, so it asks for no
+	// more than the list it comes from does.
+	mux.HandleFunc("GET /api/admin/relays/{relay}/check", a.observe(a.checkRelay))
 
 	// Adding a relay decides where other people's calls are held, which is the
 	// same kind of authority as closing a room rather than the same kind as

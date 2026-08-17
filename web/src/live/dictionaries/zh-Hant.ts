@@ -302,6 +302,7 @@ const zhHant: Dictionary = {
 	"The meeting carries on without you.": "會議會在你走後繼續。",
 	"End for everybody": "解散會議",
 	"Everybody is disconnected and links stop working.": "所有人會被斷開,連結同時失效。",
+	"Back": "返回",
 };
 
 export default zhHant;

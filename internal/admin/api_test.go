@@ -100,6 +100,7 @@ var endpoints = []struct {
 	{http.MethodGet, "/api/admin/rooms/x/participants", config.Observe},
 	{http.MethodGet, "/api/admin/runtime", config.Observe},
 	{http.MethodGet, "/api/admin/audit", config.Observe},
+	{http.MethodGet, "/api/admin/relays/x/check", config.Observe},
 	{http.MethodDelete, "/api/admin/rooms/x", config.Moderate},
 	{http.MethodDelete, "/api/admin/rooms/x/participants/y", config.Moderate},
 	{http.MethodPost, "/api/admin/rooms/x/participants/y/mute", config.Moderate},

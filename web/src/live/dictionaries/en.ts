@@ -335,6 +335,7 @@ const en = {
 	"The meeting carries on without you.": "The meeting carries on without you.",
 	"End for everybody": "End for everybody",
 	"Everybody is disconnected and links stop working.": "Everybody is disconnected and links stop working.",
+	"Back": "Back",
 } as const;
 
 export default en;

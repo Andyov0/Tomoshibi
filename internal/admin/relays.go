@@ -82,17 +82,7 @@ func (a *API) listRelays(_ Session, w http.ResponseWriter, r *http.Request) {
 
 	var wait sync.WaitGroup
 	for i, relay := range list {
-		views[i] = relayView{
-			Name: relay.Name, URL: relay.URL, Region: relay.Region,
-			Label: relay.Label, Probe: relay.Probe,
-			Turn: relay.Turn, Forwards: relay.Forwards, Apart: relay.Apart,
-			Bridge:   relay.Bridge,
-			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
-			Enabled: relay.Enabled,
-		}
-		if !relay.Added.IsZero() {
-			views[i].Added = relay.Added.UTC().Format(time.RFC3339)
-		}
+		views[i] = viewOf(relay)
 
 		if a.probe == nil {
 			continue
@@ -102,16 +92,88 @@ func (a *API) listRelays(_ Session, w http.ResponseWriter, r *http.Request) {
 		go func(i int, url string) {
 			defer wait.Done()
 
-			ok, took, detail := a.probe.Check(r.Context(), url)
-
-			views[i].Reachable = ok
-			views[i].LatencyMS = took.Milliseconds()
-			views[i].Detail = detail
+			a.measure(r.Context(), &views[i], url)
 		}(i, relay.URL)
 	}
 	wait.Wait()
 
 	respond(w, map[string]any{"relays": views})
+}
+
+// checkRelay measures one machine, and only that one.
+//
+// The list above checks all of them because drawing the page needs every row.
+// The button on a row does not, and it used to: it re-read the list, so
+// asking whether the machine somebody had just restarted was back cost a dial
+// to all eleven — three seconds of waiting for each one that is genuinely
+// down, to answer a question about a machine that is not. Worse on the row
+// itself, where the spinner stopped when the slowest relay in the fleet
+// answered rather than when this one did, which reads as this relay being slow.
+//
+// The reply is one row in the same shape the list sends, so the page can put it
+// where the old reading was rather than reconciling two ideas of a relay.
+func (a *API) checkRelay(_ Session, w http.ResponseWriter, r *http.Request) {
+	if a.relays == nil {
+		refuse(w, http.StatusServiceUnavailable, "no_relay_list")
+		return
+	}
+
+	list, err := a.relays.Relays()
+	if err != nil {
+		refuse(w, http.StatusInternalServerError, "store_unavailable")
+		return
+	}
+
+	name := r.PathValue("relay")
+
+	for _, relay := range list {
+		if relay.Name != name {
+			continue
+		}
+
+		view := viewOf(relay)
+		a.measure(r.Context(), &view, relay.URL)
+
+		respond(w, view)
+		return
+	}
+
+	refuse(w, http.StatusNotFound, "no_such_relay")
+}
+
+// viewOf is a stored relay as a page reads it, before anything is measured.
+func viewOf(relay store.Relay) relayView {
+	view := relayView{
+		Name: relay.Name, URL: relay.URL, Region: relay.Region,
+		Label: relay.Label, Probe: relay.Probe,
+		Turn: relay.Turn, Forwards: relay.Forwards, Apart: relay.Apart,
+		Bridge:   relay.Bridge,
+		Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
+		Enabled: relay.Enabled,
+	}
+
+	if !relay.Added.IsZero() {
+		view.Added = relay.Added.UTC().Format(time.RFC3339)
+	}
+
+	return view
+}
+
+// measure asks the relay whether it is there, and says so in the view.
+//
+// A deployment with nothing to ask with leaves the reading at its zero value,
+// which says unreachable with no explanation. That is honest: nothing measured
+// it, and a page that claimed otherwise would be inventing a result.
+func (a *API) measure(ctx context.Context, view *relayView, url string) {
+	if a.probe == nil {
+		return
+	}
+
+	ok, took, detail := a.probe.Check(ctx, url)
+
+	view.Reachable = ok
+	view.LatencyMS = took.Milliseconds()
+	view.Detail = detail
 }
 
 // addRelay puts a new media server into service.

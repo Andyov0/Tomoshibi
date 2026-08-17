@@ -518,6 +518,39 @@ func pairable(entry, holding store.Relay) bool {
 	return !apart(entry, holding.Name) && !apart(holding, entry.Name)
 }
 
+// bridging finds a relay that can carry a call the picked one cannot.
+//
+// Only ever consulted when the pair somebody landed on will not work, and it
+// returns the machine they should be sent to instead — signalling and all,
+// rather than leaving them connected to one machine while their media goes
+// through another. Two names on a screen are already one more than most people
+// want to think about; three, one of which carries nothing, is a diagram.
+//
+// A bridge has to satisfy everything an ordinary entry does. It must be in
+// service, it must forward, it must have somewhere to forward from, and it must
+// be a relay this person is allowed to use — a machine reserved for
+// administrators does not stop being reserved by being useful. And it must pair
+// with the room's own relay, because a bridge that cannot reach the meeting is
+// no more use than the entry that could not.
+func (r *relays) bridging(holding store.Relay, isAdmin bool) (store.Relay, bool) {
+	for _, candidate := range r.live() {
+		switch {
+		case !candidate.Bridge, !candidate.Forwards, candidate.Turn == "":
+			continue
+		case candidate.Name == holding.Name:
+			continue
+		case candidate.AdminOnly && !isAdmin:
+			continue
+		case !pairable(candidate, holding):
+			continue
+		}
+
+		return candidate, true
+	}
+
+	return store.Relay{}, false
+}
+
 func apart(relay store.Relay, name string) bool {
 	for _, other := range relay.Apart {
 		if strings.EqualFold(strings.TrimSpace(other), name) {

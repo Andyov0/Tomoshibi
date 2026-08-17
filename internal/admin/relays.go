@@ -47,6 +47,7 @@ type relayView struct {
 	Turn      string   `json:"turn,omitempty"`
 	Forwards  bool     `json:"forwards,omitempty"`
 	Apart     []string `json:"apart,omitempty"`
+	Bridge    bool     `json:"bridge,omitempty"`
 	Fallback  bool     `json:"fallback,omitempty"`
 	AdminOnly bool     `json:"adminOnly,omitempty"`
 	Enabled   bool     `json:"enabled"`
@@ -85,6 +86,7 @@ func (a *API) listRelays(_ Session, w http.ResponseWriter, r *http.Request) {
 			Name: relay.Name, URL: relay.URL, Region: relay.Region,
 			Label: relay.Label, Probe: relay.Probe,
 			Turn: relay.Turn, Forwards: relay.Forwards, Apart: relay.Apart,
+			Bridge:   relay.Bridge,
 			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Enabled: relay.Enabled,
 		}
@@ -132,6 +134,7 @@ func (a *API) addRelay(session Session, w http.ResponseWriter, r *http.Request) 
 		Turn      string   `json:"turn"`
 		Forwards  bool     `json:"forwards"`
 		Apart     []string `json:"apart"`
+		Bridge    bool     `json:"bridge"`
 		Fallback  bool     `json:"fallback"`
 		AdminOnly bool     `json:"adminOnly"`
 		Enabled   *bool    `json:"enabled"`
@@ -150,6 +153,7 @@ func (a *API) addRelay(session Session, w http.ResponseWriter, r *http.Request) 
 		Turn:      strings.TrimSpace(body.Turn),
 		Forwards:  body.Forwards,
 		Apart:     trimmed(body.Apart),
+		Bridge:    body.Bridge,
 		Fallback:  body.Fallback,
 		AdminOnly: body.AdminOnly,
 		Enabled:   body.Enabled == nil || *body.Enabled,
@@ -197,6 +201,7 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 		Turn      *string   `json:"turn"`
 		Forwards  *bool     `json:"forwards"`
 		Apart     *[]string `json:"apart"`
+		Bridge    *bool     `json:"bridge"`
 		Fallback  *bool     `json:"fallback"`
 		AdminOnly *bool     `json:"adminOnly"`
 		Enabled   *bool     `json:"enabled"`
@@ -254,6 +259,9 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	}
 	if body.Apart != nil {
 		found.Apart = trimmed(*body.Apart)
+	}
+	if body.Bridge != nil {
+		found.Bridge = *body.Bridge
 	}
 	if body.Fallback != nil {
 		found.Fallback = *body.Fallback

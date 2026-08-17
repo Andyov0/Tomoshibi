@@ -326,6 +326,7 @@ const en = {
 	"Relay names, comma separated. Applies in both directions": "Relay names, comma separated. Applies in both directions",
 	"None": "None",
 	"You have left the room.": "You have left the room.",
+	"Stands in for pairs that cannot reach each other": "Stands in for pairs that cannot reach each other",
 } as const;
 
 export default en;

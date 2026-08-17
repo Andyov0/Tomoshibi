@@ -301,6 +301,14 @@ export interface Relay {
 	 * be in the same country, and still carry nothing usable between each other.
 	 */
 	apart?: string[];
+	/**
+	 * Whether this relay may stand in for one that cannot reach a room.
+	 *
+	 * For a fleet with machines on both sides of a border: somebody who lands on
+	 * a pair that carries nothing is sent here instead, which is the one way
+	 * their call can go rather than not going at all.
+	 */
+	bridge?: boolean;
 	enabled: boolean;
 	added?: string;
 	/** Whether it answered when this page was drawn, from the control node. */
@@ -355,6 +363,7 @@ export const api = {
 			turn?: string;
 			forwards?: boolean;
 			apart?: string[];
+			bridge?: boolean;
 			fallback?: boolean;
 			adminOnly?: boolean;
 		},

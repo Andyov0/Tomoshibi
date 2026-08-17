@@ -434,6 +434,7 @@ function Settings({
 		turn?: string;
 		forwards?: boolean;
 		apart?: string[];
+		bridge?: boolean;
 		fallback?: boolean;
 		adminOnly?: boolean;
 	}) => void;
@@ -557,6 +558,22 @@ function Settings({
 						className="size-3.5 accent-tally"
 					/>
 					{t("Keep in reserve")}
+				</label>
+
+				{/* For a fleet with machines on both sides of a border. Somebody
+				    who lands on a pair that carries nothing between them is sent
+				    here instead of to the machine they picked — which is the one
+				    way their call can go, rather than a direct connection across
+				    the thing every relay here exists to avoid. */}
+				<label className="flex items-center gap-1.5 text-[12px] text-fg-muted">
+					<input
+						type="checkbox"
+						checked={relay.bridge ?? false}
+						disabled={busy}
+						onChange={(event) => onSave({ bridge: event.target.checked })}
+						className="size-3.5 accent-tally"
+					/>
+					{t("Stands in for pairs that cannot reach each other")}
 				</label>
 
 				{/* Its own switch, and deliberately not tied to any other.

@@ -602,6 +602,20 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// A machine that can carry this call, where the one they landed on cannot.
+	//
+	// Sent there outright rather than being left connected to one relay with
+	// their media going through another: two names on a screen are already one
+	// more than most people want to think about, and three — one of which
+	// carries nothing — is a diagram. Where there is no such machine, nothing
+	// changes and the call goes directly to the room, which is what happened
+	// before any of this existed.
+	if holding.Name != entry.Name && !pairable(entry, holding) {
+		if bridge, ok := a.relays.bridging(holding, isAdmin); ok {
+			entry = bridge
+		}
+	}
+
 	// What the client is told to send its media through, where that is not
 	// simply the machine holding the room.
 	var forward *rtc.Forwarding

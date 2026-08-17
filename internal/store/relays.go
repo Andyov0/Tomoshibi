@@ -94,6 +94,20 @@ type Relay struct {
 	// for legibility silently changes where media goes.
 	Apart []string `json:"apart,omitempty"`
 
+	// Bridge marks a relay that may stand in for one that cannot reach a room.
+	//
+	// The case it exists for: a fleet with machines on both sides of a border,
+	// where nothing abroad can usefully carry media to anything inside it, but
+	// one particular machine can talk to both. Somebody abroad joining a meeting
+	// held inside is then sent to that machine instead of to the one they picked,
+	// and their call goes in the one way it can rather than not at all.
+	//
+	// Standing in is not the same as being chosen. A bridge is used only where
+	// the pair somebody actually landed on will not work, and it still has to be
+	// a relay that pair may use — a bridge kept apart from the machine holding
+	// the room is no more use than the entry was.
+	Bridge bool `json:"bridge,omitempty"`
+
 	// Label is what a person is shown instead of the name.
 	//
 	// The name is a key: immutable, because a client that measured it will send

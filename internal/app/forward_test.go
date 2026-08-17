@@ -412,3 +412,131 @@ func TestARelayKeptApartFromOneStillForwardsForTheRest(t *testing.T) {
 			"bad pair took the machine out of service")
 	}
 }
+
+/*
+A machine that can carry a call the picked one cannot.
+
+The fleet has machines on both sides of a border and nothing abroad can usefully
+carry media to anything inside it. Without a way round that, choosing a server
+abroad and joining a meeting held inside gets the behaviour forwarding replaced —
+a direct connection across the border, which is the thing every relay here exists
+to avoid. One machine can talk to both sides, so somebody who lands on a pair
+that will not work is sent to that one instead.
+
+Sent, rather than left where they were with their media routed elsewhere. That is
+the part worth a test: the entry has to change, or the panel says one machine, the
+packets go through another, and nothing anywhere reconciles them.
+
+It is symmetrical, and that is not an accident of the code — it falls out of
+asking whether the pair works rather than which side anybody is on. Somebody
+inside joining a meeting held abroad hits exactly the same case, and a guard
+written for one direction would leave the other going direct.
+
+And a bridge is not a wildcard. It stands in only where it is itself usable: a
+bridge kept apart from the room's own machine is no more use than the entry that
+could not reach it, which is the case that decides whether "route everything
+through the one that works" quietly becomes "route everything through the one
+that does not".
+*/
+
+func overseasAndInland(t *testing.T, bridgeApart ...string) http.Handler {
+	t.Helper()
+
+	return control(t, config.PickProbe,
+		store.Relay{
+			Name: "singapore", URL: "wss://sg.example.invalid", Region: "Oversea/Asia",
+			Turn: "sg.example.invalid:39219", Forwards: true,
+			Apart: []string{"guangzhou", "shanghai ct"},
+		},
+		store.Relay{
+			Name: "guangzhou", URL: "wss://gz.example.invalid", Region: "CN-South",
+			Turn: "gz.example.invalid:39219", Forwards: true,
+			Apart: []string{"singapore"},
+		},
+		store.Relay{
+			Name: "hong kong", URL: "wss://hk.example.invalid", Region: "Oversea/Asia",
+			Turn: "hk.example.invalid:39219", Forwards: true, Bridge: true,
+			Apart: bridgeApart,
+		},
+	)
+}
+
+func TestSomebodyOnAPairThatWillNotWorkIsSentToTheOneThatDoes(t *testing.T) {
+	for _, tc := range []struct{ opened, picked string }{
+		// Abroad joining a meeting held inside, and the reverse. The same case
+		// from either end, which is the point: the question is whether the pair
+		// works, not which side anybody is on.
+		{"guangzhou", "singapore"},
+		{"singapore", "guangzhou"},
+	} {
+		mux := overseasAndInland(t)
+
+		joinVia(t, mux, "standup", tc.opened)
+
+		second := joinVia(t, mux, "standup", tc.picked)
+
+		if second.URL != "wss://hk.example.invalid" {
+			t.Errorf("somebody who picked %q for a room on %q was sent to %s; the pair does "+
+				"not carry media, so this is a direct connection across the border — "+
+				"the thing every relay here exists to avoid",
+				tc.picked, tc.opened, second.URL)
+		}
+
+		if second.Forward == nil || !strings.Contains(second.Forward.URL, "hk.example.invalid") {
+			t.Errorf("picked %q for a room on %q and was given %v to send media through",
+				tc.picked, tc.opened, second.Forward)
+		}
+	}
+}
+
+func TestABridgeThatCannotReachTheRoomIsNotUsed(t *testing.T) {
+	// The bridge is kept apart from the machine holding the meeting, which is
+	// the real arrangement here: one domestic relay cannot reach the bridge at
+	// all. Standing in would route the call through a machine that cannot
+	// deliver it, which is worse than the direct connection it replaced.
+	mux := overseasAndInland(t, "guangzhou")
+
+	joinVia(t, mux, "standup", "guangzhou")
+
+	second := joinVia(t, mux, "standup", "singapore")
+
+	if second.URL == "wss://hk.example.invalid" {
+		t.Fatal("a bridge that cannot reach the room was used anyway; the call is routed " +
+			"through a machine with no path to the meeting")
+	}
+
+	if second.Forward != nil {
+		t.Error("media was forwarded over a pair that does not carry it")
+	}
+
+	if second.URL != "wss://gz.example.invalid" {
+		t.Errorf("sent to %s rather than directly to the room, which is the only thing "+
+			"left that can work", second.URL)
+	}
+}
+
+func TestABridgeReservedForAdministratorsStaysReserved(t *testing.T) {
+	mux := control(t, config.PickProbe,
+		store.Relay{
+			Name: "singapore", URL: "wss://sg.example.invalid", Region: "Oversea/Asia",
+			Turn: "sg.example.invalid:39219", Forwards: true, Apart: []string{"guangzhou"},
+		},
+		store.Relay{
+			Name: "guangzhou", URL: "wss://gz.example.invalid", Region: "CN-South",
+			Turn: "gz.example.invalid:39219", Forwards: true, Apart: []string{"singapore"},
+		},
+		store.Relay{
+			Name: "private", URL: "wss://priv.example.invalid", Region: "Oversea/Asia",
+			Turn: "priv.example.invalid:39219", Forwards: true, Bridge: true, AdminOnly: true,
+		},
+	)
+
+	joinVia(t, mux, "standup", "guangzhou")
+
+	// A machine reserved for administrators does not stop being reserved by
+	// being useful, and being handed one is how somebody discovers a relay they
+	// were never meant to know about.
+	if got := joinVia(t, mux, "standup", "singapore").URL; got == "wss://priv.example.invalid" {
+		t.Error("a visitor was bridged through a relay reserved for administrators")
+	}
+}

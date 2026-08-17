@@ -293,6 +293,7 @@ const ja: Dictionary = {
 	"Relay names, comma separated. Applies in both directions": "中継名をカンマ区切りで。両方向に適用されます",
 	"None": "なし",
 	"You have left the room.": "部屋を退出しました。",
+	"Stands in for pairs that cannot reach each other": "到達できない組み合わせの中継役になる",
 };
 
 export default ja;

@@ -293,6 +293,7 @@ const zhHant: Dictionary = {
 	"Relay names, comma separated. Applies in both directions": "中轉名稱,逗號分隔。雙向生效",
 	"None": "無",
 	"You have left the room.": "已退出房間。",
+	"Stands in for pairs that cannot reach each other": "為互不可達的組合做中轉橋",
 };
 
 export default zhHant;

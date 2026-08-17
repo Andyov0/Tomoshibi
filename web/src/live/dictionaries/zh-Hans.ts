@@ -259,6 +259,8 @@ const zhHans: Dictionary = {
 	"Forwards other rooms": "转发其他房间",
 	"Screen sharing settings": "屏幕共享设置",
 	"User console": "用户面板",
+	"Nobody has this open yet.": "还没有人打开。",
+	"Set a passphrase to start a new room. Anybody can join one that already exists.": "要开新房间得先设口令。已经存在的房间任何人都能加入。",
 };
 
 export default zhHans;

@@ -4,6 +4,7 @@ import { ControlBar } from "@/components/room/ControlBar";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
 import { PictureMenu } from "@/components/room/PictureMenu";
 import { Plane } from "@/components/room/Plane";
+import { Watchers } from "@/components/room/Watchers";
 import { RoomMenu } from "@/components/room/RoomMenu";
 import { Signal } from "@/components/room/Signal";
 import { useConnectionQuality } from "@/live/connection";
@@ -34,6 +35,7 @@ import {
 } from "@/live/plan";
 import { silenced, soundOf } from "@/live/hearing";
 import { type Surface, owner, surfaces } from "@/live/surface";
+import { useWatchers, useWatching } from "@/live/watching";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useCallback, useEffect, useState } from "react";
 
@@ -203,6 +205,23 @@ function Stage({
 			)
 		: undefined;
 
+	// Whose share is on this screen, said out loud so the person sharing can be
+	// told who is looking. The media server tells a publisher nothing about who
+	// subscribed, so the only source for that list is the people watching.
+	//
+	// Only a share that is actually on the stage counts. A share sitting in the
+	// strip as a card is a thing somebody has not opened, and counting it would
+	// make the list say twelve people are watching a picture nobody has looked
+	// at.
+	const watched =
+		pinned && pinned.kind === "screen" && !pinned.local ? owner(pinned).identity : undefined;
+
+	useWatching(room, watched);
+
+	// And, when we are the one sharing, everybody who says so.
+	const sharing = all.some((surface) => surface.kind === "screen" && surface.local);
+	const watchers = useWatchers(room, sharing);
+
 	// Whoever is on screen carries their own words. Anybody who is not — on
 	// another page, or hidden behind a share — falls back to the corner, which
 	// is the only place a message needs a face and a name of its own.
@@ -310,6 +329,22 @@ function Stage({
 					/>
 				</div>
 			</RoomMenu>
+
+			{/*
+			  * Who has our share open.
+			  *
+			  * Only while we are the one sharing, and to the right of the
+			  * pictures rather than over them: a share is something being
+			  * pointed at, and a panel across a corner of it covers whatever was
+			  * there. Kept clear of the control bar at the bottom and of the
+			  * connection reading at the top, both of which sit in the corners
+			  * this would otherwise want.
+			  */}
+			{sharing && (
+				<div className="pointer-events-none absolute top-16 right-3 bottom-24 flex items-start">
+					<Watchers watchers={watchers} />
+				</div>
+			)}
 
 			{/* Placed over the grid rather than instead of it, so the self view
 			    stays where it will be when somebody arrives. */}

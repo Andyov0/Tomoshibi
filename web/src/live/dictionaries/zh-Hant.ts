@@ -259,6 +259,8 @@ const zhHant: Dictionary = {
 	"Forwards other rooms": "轉發其他房間",
 	"Screen sharing settings": "螢幕分享設定",
 	"User console": "使用者面板",
+	"Nobody has this open yet.": "還沒有人打開。",
+	"Set a passphrase to start a new room. Anybody can join one that already exists.": "要開新房間得先設口令。已經存在的房間任何人都能加入。",
 };
 
 export default zhHant;

@@ -499,12 +499,29 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// BySigned they can join any room they are told about and cannot make one —
 	// which is the difference between a meeting server and a thing strangers
 	// find and use.
+	// Whoever they are signed in as, from the cookie rather than from anything
+	// they sent. This is what makes an account's picture theirs: it is worn by
+	// somebody with a session and not by anybody who typed the right passphrase
+	// into a join form, which would make the picture a second credential and a
+	// weaker one.
+	//
+	// Read before the opening policy as well as before the token, because being
+	// signed in is a way of having proved a name. Somebody who signed in at
+	// their own page has no reason to type their passphrase again, and under the
+	// middle setting that left them unable to start a room — signed in, known to
+	// this server by name, and refused for having nothing in a field they had
+	// already answered somewhere else.
+	signature := ""
+	if account, ok := a.signedIn(r); ok && !account.Blocked {
+		signature = account.Trip
+	}
+
 	mayOpen := isAdmin
 	switch a.opening() {
 	case room.ByAnyone:
 		mayOpen = true
 	case room.BySigned:
-		mayOpen = mayOpen || !body.Passphrase.Empty()
+		mayOpen = mayOpen || !body.Passphrase.Empty() || signature != ""
 	}
 
 	// Before the token rather than after it, and waited for rather than sent
@@ -523,16 +540,6 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		// this policy was never meant to touch. The lost tally is the rest of
 		// the cost.
 		slog.Error("failed to record a join", "room", name, "error", err)
-	}
-
-	// Whoever they are signed in as, from the cookie rather than from anything
-	// they sent. This is what makes an account's picture theirs: it is worn by
-	// somebody with a session and not by anybody who typed the right passphrase
-	// into a join form, which would make the picture a second credential and a
-	// weaker one.
-	signature := ""
-	if account, ok := a.signedIn(r); ok && !account.Blocked {
-		signature = account.Trip
 	}
 
 	grant, err := room.Authorise(a.conf.Key, a.conf.Secret, room.Request{

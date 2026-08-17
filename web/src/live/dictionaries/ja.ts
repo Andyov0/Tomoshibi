@@ -259,6 +259,8 @@ const ja: Dictionary = {
 	"Forwards other rooms": "他の部屋を中継する",
 	"Screen sharing settings": "画面共有の設定",
 	"User console": "ユーザーコンソール",
+	"Nobody has this open yet.": "まだ誰も開いていません。",
+	"Set a passphrase to start a new room. Anybody can join one that already exists.": "新しい部屋を作るには合言葉が必要です。既にある部屋には誰でも入れます。",
 };
 
 export default ja;

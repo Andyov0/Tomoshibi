@@ -57,7 +57,20 @@ export async function deployment(): Promise<Deployment> {
 		const body = (await response.json()) as Partial<Deployment>;
 
 		return {
-			openedBy: body.openedBy === "admins" ? "admins" : "anyone",
+			// All three, and not two.
+			//
+			// This narrowed "signed" to "anyone", which quietly disabled the
+			// middle setting on the only screen that could act on it: the server
+			// went on refusing a new name from anybody without a passphrase, and
+			// the page went on saying nothing about it, so somebody who set the
+			// policy saw no change and somebody who hit it got a refusal with no
+			// warning beforehand. The narrowing was there to keep an unknown
+			// value from reaching the interface, which is right — but it has to
+			// let through the values that exist.
+			openedBy:
+				body.openedBy === "admins" || body.openedBy === "signed"
+					? body.openedBy
+					: "anyone",
 			source: typeof body.source === "string" ? body.source : "",
 		};
 	} catch {

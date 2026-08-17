@@ -144,6 +144,14 @@ export function RoomTitle({ room, onChange }: { room: string; onChange: (room: s
 				<p className="text-fg-muted text-xs leading-snug">
 					{t("Only administrators can start new rooms. Enter the name you were given.")}
 				</p>
+			) : opening === "signed" ? (
+				// The middle setting, and the one that needs saying most. A new
+				// name is refused without a passphrase, and until this line
+				// existed the only way to find that out was to press Join and be
+				// turned away with no explanation of what would have worked.
+				<p className="text-fg-muted text-xs leading-snug">
+					{t("Set a passphrase to start a new room. Anybody can join one that already exists.")}
+				</p>
 			) : (
 				// Said only about a name somebody chose. A generated one is not
 				// worth guessing at, and saying so about every room would train

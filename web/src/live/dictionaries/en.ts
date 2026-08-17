@@ -292,6 +292,8 @@ const en = {
 	"Forwards other rooms": "Forwards other rooms",
 	"Screen sharing settings": "Screen sharing settings",
 	"User console": "User console",
+	"Nobody has this open yet.": "Nobody has this open yet.",
+	"Set a passphrase to start a new room. Anybody can join one that already exists.": "Set a passphrase to start a new room. Anybody can join one that already exists.",
 } as const;
 
 export default en;

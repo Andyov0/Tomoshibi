@@ -7,7 +7,10 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
 	"tomoshibi/internal/config"
+	"tomoshibi/internal/room"
 	"tomoshibi/internal/store"
 )
 
@@ -191,5 +194,73 @@ func TestAQuietRoomIsPickedAfreshRatherThanForwardedTo(t *testing.T) {
 
 	if fresh.URL != "wss://sh.example.invalid" {
 		t.Errorf("sent to %s rather than to the freshly picked relay", fresh.URL)
+	}
+}
+
+/*
+Signing in is a way of having proved a name.
+
+Under the middle setting a new name is refused unless whoever asked can prove
+one, and until accounts existed the only proof was a passphrase in the request.
+Now there are two doors and only one of them was being looked at: somebody who
+signed in at their own page has no reason to type their passphrase again, and
+would be turned away from starting a room while signed in, known to this server
+by name, for having left blank a field they had already answered elsewhere.
+
+The refusal is also silent in the useful sense — it arrives as a 403 on a name
+nobody has used, which reads as the name being taken or the deployment being
+broken rather than as a field not filled in.
+*/
+
+func TestSomebodySignedInMayOpenARoomWithoutTypingTheirPassphraseAgain(t *testing.T) {
+	mux, st := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
+	)
+
+	if err := st.SetOpening(room.BySigned); err != nil {
+		t.Fatal(err)
+	}
+
+	// An administrator has to exist, or the policy resolves to "anyone" and this
+	// would pass without proving anything.
+	if err := st.AddAdmin(store.Admin{Trip: "aaaaabbbbb", Name: "someone"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nobody, with nothing. Refused, which is the setting working.
+	anonymous := httptest.NewRequest(http.MethodPost, "/api/rooms/standup/join",
+		strings.NewReader(`{"name":"nobody"}`))
+	anonymous.Header.Set("Content-Type", "application/json")
+
+	if got := ask(mux, anonymous).Code; got != http.StatusForbidden {
+		t.Fatalf("an anonymous visitor opened a new name and got %d; the setting does nothing", got)
+	}
+
+	// The same request, from somebody with a session.
+	account := store.Account{Name: "friend", Trip: "cccccddddd"}
+	if err := st.AddAccount(account); err != nil {
+		t.Fatal(err)
+	}
+
+	token := "a-session-token-for-this-test"
+	now := time.Now().UTC()
+
+	if err := st.KeepSession(token, store.Session{
+		Trip: account.Trip, Name: account.Name, Kind: "account",
+		Opened: now, Expires: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	signed := httptest.NewRequest(http.MethodPost, "/api/rooms/standup/join",
+		strings.NewReader(`{"name":"friend"}`))
+	signed.Header.Set("Content-Type", "application/json")
+	signed.AddCookie(&http.Cookie{Name: "meet-live.account", Value: token})
+
+	recorder := ask(mux, signed)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("somebody signed in was refused a new name with %d: %s; they are known to "+
+			"this server by name and were turned away for leaving blank a field they had "+
+			"already answered somewhere else", recorder.Code, recorder.Body)
 	}
 }

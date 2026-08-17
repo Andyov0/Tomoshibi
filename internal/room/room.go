@@ -233,6 +233,22 @@ func Authorise(key, secret string, req Request) (Grant, error) {
 			// Data messages carry the client's own signalling, which it has no
 			// way to send otherwise.
 			CanPublishData: ptr(true),
+
+			// Attributes on themselves, and only on themselves.
+			//
+			// What this is for is the watching list: the media server tells a
+			// publisher nothing about who has subscribed to their track, so the
+			// only way somebody sharing their screen can be shown who is looking
+			// at it is for the people looking to say so. An attribute is the
+			// right shape for that — it is state rather than an event, it
+			// arrives with the roster for anybody who joins late, and it
+			// disappears with the participant who set it, none of which is true
+			// of a data message with a heartbeat behind it.
+			//
+			// The grant is for their own record. It does not admit them to
+			// anybody else's, and the media server enforces that rather than
+			// this server hoping for it.
+			CanUpdateOwnMetadata: ptr(true),
 		}).
 		SetValidFor(req.TTL)
 

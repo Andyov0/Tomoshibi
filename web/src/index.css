@@ -175,7 +175,7 @@
 	}
 
 	.animate-arrive {
-		animation: arrive 320ms var(--ease-settle) both;
+		animation: arrive 320ms var(--ease-settle) backwards;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -204,7 +204,7 @@
 	}
 
 	.animate-rise {
-		animation: rise 420ms var(--ease-settle) both;
+		animation: rise 420ms var(--ease-settle) backwards;
 	}
 
 	@media (prefers-reduced-motion: reduce) {
@@ -235,7 +235,26 @@
 	}
 
 	.animate-page {
-		animation: page 260ms var(--ease-settle) both;
+		/*
+		 * Backwards rather than both, which matters for a reason nothing about
+		 * the animation suggests.
+		 *
+		 * `both` keeps the final frame's transform on the element for good, and
+		 * the final frame here is the element's own resting position — so the
+		 * transform is an identity, invisible, and permanent. Any transform at
+		 * all makes the element a containing block for `position: fixed`
+		 * descendants, which stop being positioned against the window and start
+		 * being positioned against, and clipped by, whatever this is inside.
+		 *
+		 * What that looked like was a menu that would not scroll: the server
+		 * sheet was placed in window coordinates, resolved against a page
+		 * wrapper instead, and cut off by its overflow. Nothing about it looked
+		 * like an animation problem.
+		 *
+		 * Backwards gives the same result for the same reason `both` was chosen
+		 * — the from-state applies during any delay — and leaves nothing behind.
+		 */
+		animation: page 260ms var(--ease-settle) backwards;
 	}
 
 	@media (prefers-reduced-motion: reduce) {

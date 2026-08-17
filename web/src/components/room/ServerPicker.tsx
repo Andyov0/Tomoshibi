@@ -6,6 +6,7 @@ import { Check, ChevronDown, Loader2, RotateCw, Wand2 } from "lucide-react";
 import { Globe } from "@/components/room/Globe";
 import { useLingering } from "@/hooks/useLingering";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 /**
  * Choosing where the call will be held, with what each one costs.
@@ -287,7 +288,12 @@ export function ServerPicker({
 		if (!open) return;
 
 		const away = (event: MouseEvent) => {
-			if (!frame.current?.contains(event.target as Node)) setOpen(false);
+			// Both, because the sheet is no longer inside the frame: it is on the
+			// document, so a press on one of its own rows is a press outside the
+			// control and would close the menu before the row was chosen.
+			const on = event.target as Node;
+
+			if (!frame.current?.contains(on) && !sheet.current?.contains(on)) setOpen(false);
 		};
 
 		const escape = (event: KeyboardEvent) => {
@@ -354,48 +360,62 @@ export function ServerPicker({
 				</span>
 			</button>
 
-			{mounted && (
-				<ul
-					ref={sheet}
-					role="listbox"
-					style={
-						place && {
-							left: place.left,
-							width: place.width,
-							top: place.top,
-							maxHeight: place.tall,
+			{mounted &&
+				createPortal(
+					/*
+					 * Out of the page and onto the document.
+					 *
+					 * It is positioned in window coordinates, and inside the page it
+					 * was two ancestors away from being positioned against something
+					 * else entirely: a transform anywhere above it — left behind by a
+					 * page transition, of all things — makes a `fixed` child resolve
+					 * against that element and be clipped by its overflow. That is
+					 * not a thing anybody looking at a menu that will not scroll
+					 * would think to check, and it costs nothing to be out of reach
+					 * of it.
+					 */
+					<ul
+						ref={sheet}
+						role="listbox"
+						style={
+							place && {
+								left: place.left,
+								width: place.width,
+								top: place.top,
+								maxHeight: place.tall,
+							}
 						}
-					}
-					className={cn(
-						"fixed z-30 overflow-y-auto overscroll-contain rounded-xl",
-						// Hidden until it has been placed. One frame at the wrong
-						// coordinates is a flash of a menu somewhere it never was,
-						// which is more distracting than the wait it replaces.
-						!place && "invisible",
-						// A ring as well as a border, and a real shadow. It has to
-						// read as a sheet above the page rather than as more page:
-						// on a dark interface a one-pixel border alone disappears.
-						"border border-fg/15 bg-surface-hi shadow-2xl ring-1 ring-black/40",
-						// Arrives from the edge it is anchored to rather than
-						// appearing: a menu that fades in from nowhere reads as a
-						// page redraw, and one that grows the wrong way reads as a
-						// mistake.
-						"origin-top",
-						leaving ? "animate-depart" : "animate-arrive",
-					)}
-				>
-					<Rows
-						relays={relays}
-						value={value}
-						measured={measured}
-						measuring={measuring}
-						ready={ready}
-						onMeasure={measure}
-						onChange={onChange}
-						onPicked={() => setOpen(false)}
-					/>
-				</ul>
-			)}
+						className={cn(
+							"fixed z-30 overflow-y-auto overscroll-contain rounded-xl",
+							// Hidden until it has been placed. One frame at the wrong
+							// coordinates is a flash of a menu somewhere it never was,
+							// which is more distracting than the wait it replaces.
+							!place && "invisible",
+							// A ring as well as a border, and a real shadow. It has to
+							// read as a sheet above the page rather than as more page:
+							// on a dark interface a one-pixel border alone disappears.
+							"border border-fg/15 bg-surface-hi shadow-2xl ring-1 ring-black/40",
+							// Arrives from the edge it is anchored to rather than
+							// appearing: a menu that fades in from nowhere reads as a
+							// page redraw, and one that grows the wrong way reads as a
+							// mistake.
+							"origin-top",
+							leaving ? "animate-depart" : "animate-arrive",
+						)}
+					>
+						<Rows
+							relays={relays}
+							value={value}
+							measured={measured}
+							measuring={measuring}
+							ready={ready}
+							onMeasure={measure}
+							onChange={onChange}
+							onPicked={() => setOpen(false)}
+						/>
+					</ul>,
+					document.body,
+				)}
 		</div>
 	);
 }

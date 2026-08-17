@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/useT";
-import { share } from "@/live/room";
+import { retune, share } from "@/live/room";
 import type { Room } from "livekit-client";
 import { MessageSquare, Mic, MicOff, PhoneOff, Video, VideoOff, Volume2 } from "lucide-react";
 import { useState } from "react";
@@ -116,6 +116,7 @@ export function ControlBar({
 				<ShareButton
 					sharing={local.screen}
 					onStart={(frameRate, quality) => void guard(() => share(room, true, frameRate, quality))()}
+					onAdjust={(frameRate, quality) => void retune(room, frameRate, quality)}
 					onStop={() => void guard(() => share(room, false, 30))()}
 				/>
 			)}

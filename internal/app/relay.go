@@ -478,3 +478,17 @@ func (a *App) forwarding(entry store.Relay) (*rtc.Forwarding, error) {
 
 	return &relayed, nil
 }
+
+// elsewhere names the machine holding a room, when that is not the one being
+// dialled.
+//
+// Empty where they are the same, which is most calls: a panel that says "held
+// on" and "reached through" with the same name twice is asking somebody to
+// compare two identical strings and conclude nothing.
+func elsewhere(entry, holding store.Relay) string {
+	if holding.Name == "" || holding.Name == entry.Name {
+		return ""
+	}
+
+	return holding.Shown()
+}

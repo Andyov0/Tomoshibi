@@ -41,10 +41,12 @@ export interface RoomProps {
 	room: LiveRoom;
 	/** What the machine holding this call is called, as the picker named it. */
 	relay?: string;
+	/** The machine holding the meeting, where the call is being forwarded to it. */
+	carrying?: string;
 	onLeave: () => void;
 }
 
-export function Room({ room, relay, onLeave }: RoomProps) {
+export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	// One at a time, because both float over the same corner and the second
 	// would simply be drawn on top of the first.
 	const [panel, setPanel] = useState<"messages" | "sound">();
@@ -81,6 +83,7 @@ export function Room({ room, relay, onLeave }: RoomProps) {
 			<Stage
 				room={room}
 				relay={relay}
+				carrying={carrying}
 				chat={chat}
 				chatting={chatting}
 				listening={listening}
@@ -112,11 +115,13 @@ function Stage({
 	listening,
 	screen,
 	relay,
+	carrying,
 	onClosePanel,
 	onOpenSound,
 }: {
 	room: LiveRoom;
 	relay?: string;
+	carrying?: string;
 	chat: ReturnType<typeof useChat>;
 	chatting: boolean;
 	listening: boolean;
@@ -270,7 +275,7 @@ function Stage({
 			    it never eats a click meant for a picture underneath. */}
 			{state === ConnectionState.Connected && (
 				<div className="pointer-events-none absolute top-3 left-3 z-10">
-					<Signal reading={connection} relay={relay} />
+					<Signal reading={connection} relay={relay} carrying={carrying} />
 				</div>
 			)}
 

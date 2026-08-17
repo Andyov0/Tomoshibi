@@ -257,6 +257,8 @@ const ja: Dictionary = {
 	"Forwards through": "転送先",
 	"host:port of its TURN server. Empty means it cannot carry a call it is not holding": "TURN サーバーの host:port。空なら、自分が保持していない通話は中継できません",
 	"Forwards other rooms": "他の部屋を中継する",
+	"Screen sharing settings": "画面共有の設定",
+	"User console": "ユーザーコンソール",
 };
 
 export default ja;

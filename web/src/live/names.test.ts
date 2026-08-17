@@ -70,14 +70,32 @@ const HEX = "0123456789abcdef0123456789abcdef";
 
 describe("signatureOf", () => {
 	it("reads a mark that was earned", () => {
-		expect(signatureOf(`t${TRIP}-${HEX}`)).toEqual({ trip: TRIP, proven: true });
+		expect(signatureOf(`t${TRIP}-${HEX}`)).toEqual({ trip: TRIP, proven: true, account: false });
+	});
+
+	/*
+	 * The third kind, and the reason it is not simply "proven".
+	 *
+	 * A mark from a passphrase and a mark from an account session are the same
+	 * mark and the same person — signing in derives it the same way. What
+	 * differs is how they arrived, and one thing turns on that: the picture on
+	 * an account is shown only for somebody who was signed in. Shown for anybody
+	 * who typed the right passphrase into a join form, it would become a second
+	 * credential that nobody chose to make one.
+	 */
+	it("reads a mark that came from an account, and still calls it proven", () => {
+		expect(signatureOf(`a${TRIP}-${HEX}`)).toEqual({ trip: TRIP, proven: true, account: true });
 	});
 
 	// Everybody carries one. What differs is whether it proves anything, and
 	// that difference is the whole mechanism: a mark nobody can tell apart from
 	// an earned one would let an impostor point at theirs and claim it.
 	it("reads a mark that was issued, and does not call it proven", () => {
-		expect(signatureOf(`g${TRIP}-${HEX}`)).toEqual({ trip: TRIP, proven: false });
+		expect(signatureOf(`g${TRIP}-${HEX}`)).toEqual({
+			trip: TRIP,
+			proven: false,
+			account: false,
+		});
 	});
 
 	it("rejects anything that is not shaped like one", () => {

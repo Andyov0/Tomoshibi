@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/useT";
+import { useLingering } from "@/hooks/useLingering";
 import type { Grade, Reading } from "@/live/connection";
 import { useState } from "react";
 
@@ -22,9 +23,22 @@ import { useState } from "react";
  * is one nobody can find when they need it, and its absence gets read as
  * "nothing is being measured" rather than "everything is well".
  */
-export function Signal({ reading, relay }: { reading: Reading; relay?: string }) {
+export function Signal({
+	reading,
+	relay,
+	carrying,
+}: {
+	reading: Reading;
+	relay?: string;
+	carrying?: string;
+}) {
 	const t = useT();
 	const [open, setOpen] = useState(() => remembered());
+
+	// Held on screen while it leaves. Rendered as `open && ...`, the panel was
+	// simply gone on the frame after the press — it opened from the button and
+	// closed by vanishing, which reads as the page having redrawn itself.
+	const { mounted, leaving } = useLingering(open);
 
 	const title =
 		reading.grade === "lost"
@@ -60,7 +74,9 @@ export function Signal({ reading, relay }: { reading: Reading; relay?: string })
 				</span>
 			</button>
 
-			{open && <Detail reading={reading} relay={relay} />}
+			{mounted && (
+				<Detail reading={reading} relay={relay} carrying={carrying} leaving={leaving} />
+			)}
 		</div>
 	);
 }
@@ -101,13 +117,33 @@ function Bars({ grade }: { grade: Grade }) {
 }
 
 /** Everything the browser knows, for when the bars are not enough. */
-function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
+function Detail({
+	reading,
+	relay,
+	carrying,
+	leaving,
+}: {
+	reading: Reading;
+	relay?: string;
+	carrying?: string;
+	leaving: boolean;
+}) {
 	const t = useT();
 
-	// Both known and not the same machine. Where either is missing there is
-	// nothing to compare, and claiming a call is relayed on the strength of one
-	// name would be worse than saying nothing.
-	const relayed = Boolean(relay && reading.holding && relay !== reading.holding);
+	// Said by the server, which picked both machines, and by nothing else.
+	//
+	// This used to be worked out here, by comparing the relay's name against the
+	// region the media server reports for the node holding the room. That was
+	// wrong in both directions and quietly. With no regions configured the two
+	// were never different, so a forwarded call looked exactly like a direct
+	// one and the second line never appeared. With regions configured they are
+	// never the same — one is a label a person reads and the other is an
+	// internal name — so every call would claim to be forwarded.
+	//
+	// The server picked the entry and knows where the room is. It sends the
+	// second name only when there is a second machine, so the absence of one is
+	// the answer rather than the beginning of a comparison.
+	const relayed = Boolean(relay && carrying);
 
 	return (
 		<dl
@@ -117,7 +153,8 @@ function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
 				// From under the bars it belongs to, rather than appearing: a panel
 				// that is simply there on the next frame reads as the page having
 				// redrawn itself.
-				"origin-top animate-arrive",
+				"origin-top",
+				leaving ? "animate-depart" : "animate-arrive",
 			)}
 		>
 			{/*
@@ -144,12 +181,10 @@ function Detail({ reading, relay }: { reading: Reading; relay?: string }) {
 			{relayed ? (
 				<>
 					<Figure label={t("Relay server")} value={relay ?? "—"} delay={0} />
-					<Figure label={t("Original server")} value={reading.holding ?? "—"} delay={30} />
+					<Figure label={t("Original server")} value={carrying ?? "—"} delay={30} />
 				</>
 			) : (
-				(relay || reading.holding) && (
-					<Figure label={t("Server")} value={relay ?? reading.holding ?? "—"} delay={0} />
-				)
+				relay && <Figure label={t("Server")} value={relay} delay={0} />
 			)}
 			{reading.ownAddress && <Figure label={t("Your address")} value={reading.ownAddress} delay={60} />}
 

@@ -303,6 +303,18 @@ type joinResponse struct {
 	Identity string `json:"identity"`
 	// Room is the name that was actually authorised, after normalisation.
 	Room string `json:"room"`
+	// Holding is what to call the machine the meeting is actually on, where that
+	// is not the machine this client dialled.
+	//
+	// Said by this server rather than worked out by the client. The client used
+	// to compare the relay it was sent to against the region the media server
+	// reports for the node holding the room, which only ever worked on a
+	// deployment that had bothered to set a region on every relay — and none of
+	// these had, so the two were never different, and a call being forwarded
+	// looked exactly like one that was not. This server picked both machines and
+	// is the only thing that knows.
+	Holding string `json:"holding,omitempty"`
+
 	// Forward is the relay to send media through, where that is not the machine
 	// holding the room.
 	//
@@ -484,11 +496,22 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		slog.Error("failed to record a join", "room", name, "error", err)
 	}
 
+	// Whoever they are signed in as, from the cookie rather than from anything
+	// they sent. This is what makes an account's picture theirs: it is worn by
+	// somebody with a session and not by anybody who typed the right passphrase
+	// into a join form, which would make the picture a second credential and a
+	// weaker one.
+	signature := ""
+	if account, ok := a.signedIn(r); ok && !account.Blocked {
+		signature = account.Trip
+	}
+
 	grant, err := room.Authorise(a.conf.Key, a.conf.Secret, room.Request{
 		Room:       name,
 		Identity:   body.Identity,
 		Display:    body.Name,
 		Passphrase: body.Passphrase,
+		Account:    signature,
 		TripKey:    a.tripKey,
 		TTL:        a.conf.Meet.TokenTTL,
 	})
@@ -585,6 +608,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		Identity: grant.Identity,
 		Room:     name,
 		Relay:    entry.Shown(),
+		Holding:  elsewhere(entry, holding),
 		Forward:  forward,
 	})
 }

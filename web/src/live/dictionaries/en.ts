@@ -290,6 +290,8 @@ const en = {
 	"Forwards through": "Forwards through",
 	"host:port of its TURN server. Empty means it cannot carry a call it is not holding": "host:port of its TURN server. Empty means it cannot carry a call it is not holding",
 	"Forwards other rooms": "Forwards other rooms",
+	"Screen sharing settings": "Screen sharing settings",
+	"User console": "User console",
 } as const;
 
 export default en;

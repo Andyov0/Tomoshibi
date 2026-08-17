@@ -30,7 +30,9 @@ function open() {
 
 function draw() {
 	const onStart = vi.fn();
-	render(<ShareButton sharing={false} onStart={onStart} onStop={vi.fn()} />);
+	render(
+		<ShareButton sharing={false} onStart={onStart} onAdjust={vi.fn()} onStop={vi.fn()} />,
+	);
 	open();
 
 	return onStart;
@@ -108,14 +110,60 @@ describe("ShareButton", () => {
 		expect(onStart).toHaveBeenCalledWith(120, "1440p");
 	});
 
-	// Stopping is not a choice, so while a share is running the button is a
-	// button: opening a menu to answer a question already answered is a step
-	// somebody has to read before dismissing it.
-	it("is a plain button while a share is running", () => {
-		const onStop = vi.fn();
-		render(<ShareButton sharing onStart={vi.fn()} onStop={onStop} />);
+	/*
+	 * The settings have to be reachable while a share is running.
+	 *
+	 * This used to be a plain stop button the moment sharing began, on the
+	 * reasoning that stopping is not a choice and a menu would be a step to
+	 * dismiss. That is true of stopping and wrong about everything else: the
+	 * only moment anybody can judge whether the picture is too soft or too jerky
+	 * is while they are looking at it, and the settings had gone. Fixing it meant
+	 * stopping, reopening the picker, and choosing the window again in front of
+	 * the meeting.
+	 */
+	it("adjusts a running share in place instead of publishing it again", () => {
+		const onStart = vi.fn();
+		const onAdjust = vi.fn();
+		render(<ShareButton sharing onStart={onStart} onAdjust={onAdjust} onStop={vi.fn()} />);
 
-		fireEvent.click(screen.getByRole("button", { name: "Stop sharing" }));
+		fireEvent.keyDown(screen.getByRole("button", { name: "Screen sharing settings" }), {
+			key: "Enter",
+		});
+		pick("1440p");
+
+		expect(onAdjust).toHaveBeenCalledWith(120, "1440p");
+
+		// Never this. Publishing again makes the browser ask for the screen a
+		// second time, and somebody who already chose a window would be shown the
+		// picker for having adjusted a number, with everybody watching.
+		expect(onStart).not.toHaveBeenCalled();
+	});
+
+	// The same clamp as when starting, and it has to be applied here too: 240 is
+	// offered at 1080p and is not carried onto 4K by a size change mid-share.
+	it("does not carry a fast rate onto a smaller size while sharing", () => {
+		const onAdjust = vi.fn();
+		render(<ShareButton sharing onStart={vi.fn()} onAdjust={onAdjust} onStop={vi.fn()} />);
+
+		fireEvent.keyDown(screen.getByRole("button", { name: "Screen sharing settings" }), {
+			key: "Enter",
+		});
+		pick("1080p");
+		fireEvent.click(screen.getByRole("button", { name: "240" }));
+		pick("4K");
+
+		expect(onAdjust).toHaveBeenLastCalledWith(60, "4k");
+	});
+
+	it("still stops, from the menu", () => {
+		const onStop = vi.fn();
+		render(<ShareButton sharing onStart={vi.fn()} onAdjust={vi.fn()} onStop={onStop} />);
+
+		fireEvent.keyDown(screen.getByRole("button", { name: "Screen sharing settings" }), {
+			key: "Enter",
+		});
+		fireEvent.click(screen.getByRole("menuitem", { name: /Stop sharing/ }));
+
 		expect(onStop).toHaveBeenCalled();
 	});
 });

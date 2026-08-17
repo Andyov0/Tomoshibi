@@ -34,6 +34,18 @@ const (
 	// issued: derived from nothing, fresh each time. It tells two people with
 	// one name apart for the length of a call and claims nothing beyond that.
 	issued = "g"
+
+	// held: the same signature, reached by signing in to an account rather than
+	// by typing a passphrase at the door.
+	//
+	// The two are the same person and the same mark — signing in derives the
+	// signature the same way — so this is not a stronger claim about who
+	// somebody is. What it is is a claim about how they arrived, and the one
+	// thing that turns on it is whether the picture they chose is shown: an
+	// account's picture belongs to the account, and showing it for anybody who
+	// happened to type the right passphrase into a join form would make the
+	// picture a second, weaker credential.
+	held = "a"
 )
 
 // tripAlphabet is lowercase base32 without padding.
@@ -118,6 +130,13 @@ type Signature struct {
 	// the difference between "this is the same person as last time" and "these
 	// two people in this room are not the same person".
 	Proven bool
+
+	// Account says they were signed in to one when they joined.
+	//
+	// Implies Proven and is not a stronger statement of identity: the signature
+	// is derived the same way either way. It records how they arrived, which is
+	// what decides whether the picture on their account is theirs to wear here.
+	Account bool
 }
 
 // SignatureOf reads the mark out of an identity.
@@ -132,11 +151,15 @@ func SignatureOf(identity string) (Signature, bool) {
 	}
 
 	kind := identity[:1]
-	if kind != proven && kind != issued {
+	if kind != proven && kind != issued && kind != held {
 		return Signature{}, false
 	}
 
-	return Signature{Trip: identity[1 : 1+TripLength], Proven: kind == proven}, true
+	return Signature{
+		Trip:    identity[1 : 1+TripLength],
+		Proven:  kind == proven || kind == held,
+		Account: kind == held,
+	}, true
 }
 
 // LoadTripKey reads the signing key for tripcodes, creating one if absent.

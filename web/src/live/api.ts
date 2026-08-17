@@ -74,6 +74,17 @@ export interface Join {
 	/** What to call the machine this call was sent to. */
 	relay?: string;
 	/**
+	 * What to call the machine the meeting is actually on, where that is not the
+	 * one that was dialled.
+	 *
+	 * Said by the server, which picked both. It used to be worked out here by
+	 * comparing the relay against the region the media server reports for the
+	 * node holding the room — which only ever differed on a deployment that had
+	 * set a region on every relay, and none had, so a forwarded call looked
+	 * exactly like a direct one.
+	 */
+	holding?: string;
+	/**
 	 * Where to send media, when that is not the machine holding the room.
 	 *
 	 * A meeting lives on one server, so somebody joining a room that is already

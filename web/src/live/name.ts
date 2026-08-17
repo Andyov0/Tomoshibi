@@ -85,6 +85,17 @@ export interface Signature {
 	 * one.
 	 */
 	proven: boolean;
+	/**
+	 * They were signed in to an account when they joined.
+	 *
+	 * Implies proven, and is not a stronger claim about who they are — the
+	 * signature is derived the same way either way. What it records is how they
+	 * arrived, and the one thing that turns on it is whether the picture on the
+	 * account is theirs to wear: showing it for anybody who typed the right
+	 * passphrase into a join form would make the picture a second credential,
+	 * and a weaker one.
+	 */
+	account: boolean;
 }
 
 /**
@@ -97,13 +108,13 @@ export interface Signature {
  */
 export function signatureOf(identity: string): Signature | undefined {
 	const kind = identity[0];
-	if (kind !== "t" && kind !== "g") return undefined;
+	if (kind !== "t" && kind !== "g" && kind !== "a") return undefined;
 
 	const trip = identity.slice(1, 1 + TRIP_LENGTH);
 	if (trip.length !== TRIP_LENGTH || identity[1 + TRIP_LENGTH] !== "-") return undefined;
 	if (!/^[a-z2-7]+$/.test(trip)) return undefined;
 
-	return { trip, proven: kind === "t" };
+	return { trip, proven: kind === "t" || kind === "a", account: kind === "a" };
 }
 
 /**

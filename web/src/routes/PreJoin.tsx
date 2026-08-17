@@ -11,7 +11,8 @@ import { parseName } from "@/live/name";
 import { type Relay as OfferedRelay, relays } from "@/live/relays";
 import { remember } from "@/live/remember";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
-import { Mic, MicOff, ShieldAlert, Video, VideoOff } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Mic, MicOff, ShieldAlert, UserRound, Video, VideoOff } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 /*
@@ -104,6 +105,8 @@ export function PreJoin({ room, onRoomChange, onJoin }: PreJoinProps) {
  * dead end in a language they do not read has no way to find out why.
  */
 function Page({ children }: { children: ReactNode }) {
+	const t = useT();
+
 	return (
 		<main className="flex min-h-full flex-col gap-6 p-5 sm:p-6">
 			<header className="flex items-center justify-between gap-4">
@@ -118,7 +121,30 @@ function Page({ children }: { children: ReactNode }) {
 					<span className="font-semibold text-[13px] tracking-tight">Tomoshibi</span>
 				</div>
 
-				<LanguagePicker />
+				<div className="flex items-center gap-2">
+					{/*
+					 * The way to one's own account, from the page everybody starts on.
+					 *
+					 * An anchor rather than a route: the account pages are a separate
+					 * document with their own session cookie, and nothing about them
+					 * belongs in the bundle somebody loads to join a call. It is here
+					 * rather than behind a menu because somebody who has been given an
+					 * account has been told to go and change the passphrase they were
+					 * sent, and a link they have to hunt for is one they do not follow.
+					 */}
+					<a
+						href="/account"
+						className={cn(
+							"flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5",
+							"text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+						)}
+					>
+						<UserRound className="size-3.5" />
+						<span className="hidden sm:inline">{t("User console")}</span>
+					</a>
+
+					<LanguagePicker />
+				</div>
 			</header>
 
 			<div className="flex flex-1 items-center justify-center">{children}</div>

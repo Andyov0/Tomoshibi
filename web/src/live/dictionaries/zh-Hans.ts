@@ -257,6 +257,8 @@ const zhHans: Dictionary = {
 	"Forwards through": "转发地址",
 	"host:port of its TURN server. Empty means it cannot carry a call it is not holding": "它 TURN 服务的 host:port。留空则它无法承载不在自己身上的通话",
 	"Forwards other rooms": "转发其他房间",
+	"Screen sharing settings": "屏幕共享设置",
+	"User console": "用户面板",
 };
 
 export default zhHans;

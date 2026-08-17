@@ -182,3 +182,85 @@ func verify(t *testing.T, token string) *auth.ClaimGrants {
 
 	return claims
 }
+
+/*
+Who may wear an account's picture.
+
+The signature is the same whether it came from a passphrase typed at the door or
+from a session already signed in — it is derived the same way and it is the same
+person. So the mark alone cannot answer the question the picture asks, which is
+not "who is this" but "did they arrive as the account".
+
+The distinction exists because a picture shown to anybody who types the right
+passphrase into a join form is a second credential nobody chose to make one. It
+also has to survive the identity a client holds across a sign-out: a tab that
+kept its old identity would keep wearing the picture with no session behind it.
+*/
+
+func TestAnAccountsMarkIsOnlyWornBySomebodySignedIn(t *testing.T) {
+	key, secret := "APIkey", "a secret long enough for the media server to accept it"
+	tripKey := []byte("a key for signing passphrases here")
+
+	signature := Trip(tripKey, "the account passphrase")
+
+	// Typed at the door. The same mark, and not the account.
+	typed, err := Authorise(key, secret, Request{
+		Room: "standup", Display: "somebody", Passphrase: "the account passphrase",
+		TripKey: tripKey, TTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byPassphrase, ok := SignatureOf(typed.Identity)
+	if !ok {
+		t.Fatal("a passphrase produced no mark at all")
+	}
+
+	if !byPassphrase.Proven {
+		t.Error("a mark from a passphrase is not proven; it is the same person on every visit")
+	}
+
+	if byPassphrase.Account {
+		t.Error("typing the right passphrase into a join form wore the account's mark; the " +
+			"picture on that account would become a second credential, and a weaker one")
+	}
+
+	// Signed in. The same mark, and the account.
+	held, err := Authorise(key, secret, Request{
+		Room: "standup", Display: "somebody", Account: signature,
+		TripKey: tripKey, TTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bySession, ok := SignatureOf(held.Identity)
+	if !ok {
+		t.Fatal("a session produced no mark at all")
+	}
+
+	if !bySession.Account || !bySession.Proven {
+		t.Errorf("somebody signed in got %+v, wanted a mark that is both", bySession)
+	}
+
+	if bySession.Trip != byPassphrase.Trip {
+		t.Error("the two routes produced different marks; signing in would make somebody a " +
+			"stranger to everybody who knows them")
+	}
+
+	// And the identity does not survive signing out. A tab holding the old one
+	// would go on wearing the picture with no session behind it.
+	after, err := Authorise(key, secret, Request{
+		Room: "standup", Identity: held.Identity, Display: "somebody",
+		Passphrase: "the account passphrase", TripKey: tripKey, TTL: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if mark, _ := SignatureOf(after.Identity); mark.Account {
+		t.Error("an identity minted while signed in was handed back after signing out and " +
+			"kept the account's mark")
+	}
+}

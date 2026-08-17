@@ -39,6 +39,10 @@ export function App() {
 	// the picker used rather than as an address.
 	const [holding, setHolding] = useState<string>();
 
+	// And the machine it is actually on, where the two came apart. Undefined for
+	// most calls, which is what makes the panel say one name rather than two.
+	const [carrying, setCarrying] = useState<string>();
+
 	// Held in a ref as well so the unmount cleanup can reach it without making
 	// the effect depend on it, which would disconnect on every render.
 	const current = useRef<LiveRoom>();
@@ -81,6 +85,7 @@ export function App() {
 				// Kept so the call can say where it is being held, in the words
 				// the picker used rather than as an address.
 				setHolding(grant.relay);
+				setCarrying(grant.holding);
 				await connect(made, grant);
 
 				// After connecting rather than before, so somebody appears in the
@@ -107,7 +112,7 @@ export function App() {
 	}, []);
 
 	if (live) {
-		return <Room room={live} relay={holding} onLeave={onLeave} />;
+		return <Room room={live} relay={holding} carrying={carrying} onLeave={onLeave} />;
 	}
 
 	return <PreJoin room={room} onRoomChange={setRoom} onJoin={onJoin} />;

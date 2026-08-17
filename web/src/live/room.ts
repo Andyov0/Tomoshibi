@@ -3,6 +3,7 @@ import {
 	type Participant,
 	Room,
 	RoomEvent,
+	Track,
 	type VideoCodec,
 	VideoPresets,
 } from "livekit-client";
@@ -453,5 +454,85 @@ export function rememberFrameRate(frameRate: ShareFrameRate): void {
 		localStorage.setItem(RATE_KEY, String(frameRate));
 	} catch {
 		// Worth doing, never worth failing over.
+	}
+}
+
+/**
+ * Change a share's settings without asking for the screen again.
+ *
+ * The obvious way to apply a new size or frame rate is to publish the share
+ * again with different options, and it cannot be done: the browser will not
+ * hand back a capture without asking, so every adjustment would put the picker
+ * in front of somebody who had already chosen a window — and if they picked the
+ * wrong one in a hurry, the meeting has just watched them do it. In practice
+ * that means the settings can only be chosen before a share starts, which is
+ * exactly when somebody has the least idea whether they are right.
+ *
+ * So the capture is kept and re-tuned in place, in two parts, because they are
+ * two different mechanisms and only one of them is the one that matters:
+ *
+ *   - the capture, through `applyConstraints`, which is what the browser draws
+ *     into the track. Requested rather than commanded: a display source has its
+ *     own idea of how large it is and constraints can only ask for less.
+ *   - the encoding, through the sender's parameters, which is what is actually
+ *     sent. This is the half that decides whether anybody sees the difference —
+ *     a capture at 4K published with a 1080p bitrate ceiling is a blurry 4K.
+ *
+ * Returns whether the encoding was reached. A false means the capture may have
+ * changed while what goes out did not, which is worth saying rather than
+ * swallowing: it is the difference between "this did nothing" and "this did
+ * half of what it said".
+ */
+export async function retune(
+	room: Room,
+	frameRate: ShareFrameRate,
+	quality: ShareQuality,
+): Promise<boolean> {
+	const publication = room.localParticipant.getTrackPublication(Track.Source.ScreenShare);
+	const track = publication?.videoTrack;
+
+	if (!track) return false;
+
+	const profile = settingsFor(frameRate, quality);
+
+	// A hint about what the pixels are, which the encoder uses to decide between
+	// holding the picture still and holding the motion smooth. Set before the
+	// constraints so a frame captured during the change is already labelled.
+	track.mediaStreamTrack.contentHint = profile.contentHint;
+
+	try {
+		await track.mediaStreamTrack.applyConstraints({
+			width: profile.width,
+			height: profile.height,
+			frameRate: profile.frameRate,
+		});
+	} catch {
+		// A source that will not narrow. The encoding below is still worth
+		// setting: sending fewer frames of a picture the browser insists on
+		// capturing at its own size is most of what was asked for.
+	}
+
+	const sender = track.sender;
+	if (!sender) return false;
+
+	const parameters = sender.getParameters();
+
+	if (!parameters.encodings?.length) return false;
+
+	for (const encoding of parameters.encodings) {
+		encoding.maxBitrate = profile.maxBitrate;
+		encoding.maxFramerate = profile.frameRate;
+	}
+
+	// What to give up when the connection cannot carry all of it. The whole
+	// point of choosing a size is that it is not the thing quietly given away,
+	// so anything but automatic holds the resolution and drops frames instead.
+	parameters.degradationPreference = profile.degradationPreference;
+
+	try {
+		await sender.setParameters(parameters);
+		return true;
+	} catch {
+		return false;
 	}
 }

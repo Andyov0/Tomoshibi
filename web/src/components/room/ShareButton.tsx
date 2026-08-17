@@ -47,11 +47,21 @@ import { useState } from "react";
 export function ShareButton({
 	sharing,
 	onStart,
+	onAdjust,
 	onStop,
 }: {
 	sharing: boolean;
 	/** Begin, in the manner chosen. */
 	onStart: (frameRate: ShareFrameRate, quality: ShareQuality) => void;
+	/**
+	 * Change a share that is already running.
+	 *
+	 * Separate from onStart because it must not be onStart: publishing again
+	 * would make the browser ask for the screen a second time, and somebody who
+	 * has already chosen a window would be shown the picker for having adjusted
+	 * a number — with the meeting watching them choose.
+	 */
+	onAdjust: (frameRate: ShareFrameRate, quality: ShareQuality) => void;
 	onStop: () => void;
 }) {
 	const t = useT();
@@ -65,37 +75,36 @@ export function ShareButton({
 	const [quality, setQuality] = useState<ShareQuality>(rememberedQuality);
 	const [frameRate, setFrameRate] = useState<ShareFrameRate>(rememberedFrameRate);
 
-	// Stopping is not a choice, so while a share is running the button is a
-	// button. Opening a menu to answer a question that has already been answered
-	// is a step somebody has to read before they can dismiss it.
-	if (sharing) {
-		return (
-			<Button
-				variant="default"
-				size="round"
-				aria-label={t("Stop sharing")}
-				aria-pressed
-				onClick={onStop}
-			>
-				<MonitorOff />
-			</Button>
-		);
-	}
-
 	const rates = ratesFor(quality);
 	const rate = rates.includes(frameRate) ? frameRate : (rates[rates.length - 1] ?? 30);
+
+	// The rate a size can actually carry. Changing the size mid-share while
+	// 240 was chosen would otherwise ask 4K for 240 frames a second, which the
+	// menu already refuses to offer and which nothing else would catch.
+	const clamp = (wanted: ShareFrameRate, size: ShareQuality): ShareFrameRate => {
+		const allowed = ratesFor(size);
+
+		return allowed.includes(wanted) ? wanted : (allowed[allowed.length - 1] ?? 30);
+	};
 
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger asChild>
+				{/* The same control either way, and it changes what it shows
+				    rather than what it is. It used to become a plain stop button
+				    the moment a share began, which settled the question of how to
+				    stop and removed the only place the settings live — so a
+				    picture that turned out too soft or too jerky could not be
+				    fixed without stopping, reopening the picker, and choosing the
+				    window again in front of everybody. */}
 				<Button
-					variant="secondary"
+					variant={sharing ? "default" : "secondary"}
 					size="round"
-					aria-label={t("Share your screen")}
-					aria-pressed={false}
-					className="text-fg-muted"
+					aria-label={sharing ? t("Screen sharing settings") : t("Share your screen")}
+					aria-pressed={sharing}
+					className={sharing ? undefined : "text-fg-muted"}
 				>
-					<MonitorUp />
+					{sharing ? <MonitorOff /> : <MonitorUp />}
 				</Button>
 			</DropdownMenuTrigger>
 
@@ -115,6 +124,13 @@ export function ShareButton({
 							event.preventDefault();
 							setQuality(option);
 							rememberQuality(option);
+
+							// Applied at once where there is something to apply it
+							// to. A setting that takes effect on the next share is
+							// a setting nobody can judge: the whole reason to
+							// change it mid-share is that the picture in front of
+							// you is wrong now.
+							if (sharing) onAdjust(clamp(rate, option), option);
 						}}
 						className="flex-col items-start gap-0"
 					>
@@ -138,6 +154,7 @@ export function ShareButton({
 									onClick={() => {
 										setFrameRate(option);
 										rememberFrameRate(option);
+										if (sharing) onAdjust(option, quality);
 									}}
 									className={cn(
 										"rounded-md border px-2 py-1 text-[12px] tabular-nums transition-colors",
@@ -155,10 +172,17 @@ export function ShareButton({
 
 				<DropdownMenuSeparator />
 
-				<DropdownMenuItem onSelect={() => onStart(rate, quality)} className="gap-2">
-					<MonitorUp className="size-4" />
-					<span className="text-fg">{t("Share your screen")}</span>
-				</DropdownMenuItem>
+				{sharing ? (
+					<DropdownMenuItem onSelect={onStop} className="gap-2">
+						<MonitorOff className="size-4" />
+						<span className="text-fg">{t("Stop sharing")}</span>
+					</DropdownMenuItem>
+				) : (
+					<DropdownMenuItem onSelect={() => onStart(rate, quality)} className="gap-2">
+						<MonitorUp className="size-4" />
+						<span className="text-fg">{t("Share your screen")}</span>
+					</DropdownMenuItem>
+				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

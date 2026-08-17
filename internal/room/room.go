@@ -84,6 +84,19 @@ func ValidIdentity(identity string) bool {
 // about a participant that nobody, including that participant, can change after
 // the fact. A mark sent any other way would be a claim.
 func MintIdentity(trip string) string {
+	return mint(trip, false)
+}
+
+// MintAccountIdentity is the same, for somebody who arrived signed in.
+//
+// Separate rather than a boolean on the one everybody calls, so that the ordinary
+// path cannot acquire the mark by a caller passing the wrong argument. The only
+// place this is reached from is the join, and only after a session has been read.
+func MintAccountIdentity(trip string) string {
+	return mint(trip, true)
+}
+
+func mint(trip string, account bool) string {
 	var raw [random / 2]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		// crypto/rand does not fail on any platform this runs on, and a
@@ -93,6 +106,10 @@ func MintIdentity(trip string) string {
 
 	if trip == "" {
 		return issued + IssueTrip() + "-" + hex.EncodeToString(raw[:])
+	}
+
+	if account {
+		return held + trip + "-" + hex.EncodeToString(raw[:])
 	}
 
 	return proven + trip + "-" + hex.EncodeToString(raw[:])
@@ -149,6 +166,12 @@ type Request struct {
 	Display string
 	// Passphrase signs the display name, when they gave one.
 	Passphrase Passphrase
+	// Account is the signature of the account they are signed in to, if any.
+	//
+	// Read from a session cookie by the caller and never from the request body:
+	// a signature a client could send would be a signature a client could
+	// choose, and this one decides whose picture somebody wears.
+	Account string
 	// TripKey signs passphrases for this deployment.
 	TripKey []byte
 	// TTL is how long the token stays valid.
@@ -181,9 +204,22 @@ func Authorise(key, secret string, req Request) (Grant, error) {
 	// Kept only when it still matches, so changing or dropping a passphrase
 	// takes effect immediately rather than being masked by the identity a client
 	// happens to be holding.
+	// Signed in beats typed in. Somebody with a session is the account, so the
+	// signature comes from the account rather than from whatever was in the
+	// passphrase field — which may be empty, because a person who has signed in
+	// has no reason to type it again.
+	if req.Account != "" {
+		trip = req.Account
+	}
+
 	identity := req.Identity
-	if !ValidIdentity(identity) || provenTrip(identity) != trip {
-		identity = MintIdentity(trip)
+	if !ValidIdentity(identity) || provenTrip(identity) != trip ||
+		accountMark(identity) != (req.Account != "") {
+		if req.Account != "" {
+			identity = MintAccountIdentity(trip)
+		} else {
+			identity = MintIdentity(trip)
+		}
 	}
 
 	token := auth.NewAccessToken(key, secret).
@@ -224,6 +260,17 @@ func display(wanted, identity string) string {
 	}
 
 	return trimmed
+}
+
+// accountMark says whether an identity was minted for somebody signed in.
+//
+// Compared at the join so that signing out, or signing in, replaces an identity
+// a client is still holding. Without it somebody who signed out would go on
+// wearing their account's picture for as long as the tab stayed open.
+func accountMark(identity string) bool {
+	mark, ok := SignatureOf(identity)
+
+	return ok && mark.Account
 }
 
 // provenTrip is the passphrase-derived mark an identity carries, or "" when its

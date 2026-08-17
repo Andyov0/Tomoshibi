@@ -144,6 +144,13 @@ func (a *App) accountSignOut(w http.ResponseWriter, r *http.Request) {
 
 // signedIn returns the account this request carries, if it carries a live one.
 func (a *App) signedIn(r *http.Request) (store.Account, bool) {
+	// A relay holds none, and the join reads this on every request. Guarded here
+	// rather than at each call so that adding a second caller cannot reintroduce
+	// the panic.
+	if a.store == nil {
+		return store.Account{}, false
+	}
+
 	cookie, err := r.Cookie(accountCookie)
 	if err != nil {
 		return store.Account{}, false

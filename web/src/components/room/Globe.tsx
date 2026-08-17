@@ -2,7 +2,13 @@ import { useT } from "@/hooks/useT";
 import type { Relay } from "@/live/relays";
 import { LAND } from "@/live/world";
 import { cn } from "@/lib/utils";
-import { type PointerEvent as ReactPointerEvent, useMemo, useRef, useState } from "react";
+import {
+	type PointerEvent as ReactPointerEvent,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 
 /*
 Where the servers are, as a globe you can turn.
@@ -27,6 +33,33 @@ side the person looking is on.
 
 /** The radius the globe is drawn at, in its own coordinates. */
 const R = 100;
+
+/**
+ * How fast it turns on its own, in degrees a second, and how long it waits
+ * before starting again after somebody has had hold of it.
+ *
+ * A degree and a half a second is four minutes for a full turn — about as slow
+ * as movement can be and still be movement. Fast enough to read as a thing that
+ * is alive, slow enough that a marker somebody is reaching for has not gone
+ * anywhere by the time they arrive, which at any real speed it has.
+ *
+ * The direction is the one the planet actually turns. Seen from a fixed point in
+ * space the land drifts eastward, which means the longitude at the centre goes
+ * down — and the wrong way round looks wrong to people who could not tell you
+ * why.
+ */
+const SPIN_RATE = 1.5;
+const SPIN_AFTER = 3000;
+
+/**
+ * The most it advances in one step.
+ *
+ * A tab that has been in the background gets one enormous delta when it comes
+ * back, and the globe would snap through half a turn on the frame somebody
+ * returned to the page. Clamped to a fifth of a second, so a pause looks like a
+ * pause rather than like a jump.
+ */
+const MOST = 0.2;
 
 /** Degrees of longitude and latitude between the guide lines. */
 const GRATICULE = 30;
@@ -143,6 +176,56 @@ export function Globe({
 	const [over, setOver] = useState<string>();
 	const drag = useRef<{ x: number; y: number; from: Spin }>();
 
+	// When it may start turning by itself again. Somebody with hold of it, or
+	// reaching for a marker, is doing something the globe must not fight.
+	const idle = useRef(0);
+
+	/*
+	 * Turning on its own.
+	 *
+	 * Through requestAnimationFrame rather than a timer, for two reasons that
+	 * both matter more than smoothness: the browser stops calling it when the tab
+	 * is not visible, so a page left open in the background is not a page turning
+	 * a globe nobody can see, and it hands over the real elapsed time, so the
+	 * speed is the same on a slow machine as on a fast one instead of being
+	 * whatever the frame rate happens to be.
+	 *
+	 * Held to about thirty steps a second. Every step re-projects a thousand
+	 * coastal points, and at sixty it is twice the work for a difference nobody
+	 * can see on something moving three degrees a second.
+	 */
+	useEffect(() => {
+		// Somebody who has asked not to be shown movement is not asking for a
+		// slower globe; they are asking for a still one.
+		if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+
+		let frame = 0;
+		let last = 0;
+
+		const step = (now: number) => {
+			frame = requestAnimationFrame(step);
+
+			if (!last) {
+				last = now;
+				return;
+			}
+
+			const since = (now - last) / 1000;
+
+			if (since < 1 / 30) return;
+
+			last = now;
+
+			if (drag.current || now < idle.current) return;
+
+			setSpin((was) => ({ ...was, lon: was.lon - SPIN_RATE * Math.min(since, MOST) }));
+		};
+
+		frame = requestAnimationFrame(step);
+
+		return () => cancelAnimationFrame(frame);
+	}, []);
+
 	const placed = useMemo(
 		() => relays.filter((relay) => relay.lat !== undefined && relay.lon !== undefined),
 		[relays],
@@ -181,6 +264,14 @@ export function Globe({
 		setTurned(true);
 	};
 
+	// Held still for a moment after anything somebody did, rather than stopped
+	// for good. A globe that never moves again after one stray drag is a globe
+	// somebody broke by touching it; one that carries on the instant they let go
+	// is one that will not let them read it.
+	const rest = () => {
+		idle.current = performance.now() + SPIN_AFTER;
+	};
+
 	const turn = (event: ReactPointerEvent<SVGSVGElement>) => {
 		const held = drag.current;
 		if (!held) return;
@@ -198,6 +289,7 @@ export function Globe({
 
 	const release = () => {
 		drag.current = undefined;
+		rest();
 	};
 
 	return (
@@ -261,7 +353,13 @@ export function Globe({
 														: "fill-danger",
 								)}
 								onPointerDown={(event) => event.stopPropagation()}
-								onPointerEnter={() => setOver(relay.name)}
+								onPointerEnter={() => {
+									// Still while somebody is reading a marker, or the
+									// label in the corner belongs to whichever dot has
+									// drifted under the pointer since.
+									rest();
+									setOver(relay.name);
+								}}
 								onPointerLeave={() => setOver((was) => (was === relay.name ? undefined : was))}
 								onClick={() => !relay.maintenance && onChange(relay.name)}
 							/>

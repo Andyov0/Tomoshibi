@@ -93,6 +93,18 @@ function project(lon: number, lat: number, spin: Spin) {
 	};
 }
 
+/*
+ * Two decimal places, which is not a detail.
+ *
+ * One was enough for a globe somebody drags — a drag moves things by whole
+ * pixels — and is far too coarse for one that turns by itself. At a degree and a
+ * half a second the land advances about a twelfth of a unit per frame, so at one
+ * decimal several frames in a row round to the same coordinates and produce the
+ * same path, and then one of them steps by a tenth. The motion is perfectly
+ * even and looks like a stutter, because it is being drawn on a grid coarser
+ * than the movement.
+ */
+
 /** One coastline, as the path of whichever of its points face us. */
 function outline(ring: readonly number[], spin: Spin): string {
 	let path = "";
@@ -109,7 +121,7 @@ function outline(ring: readonly number[], spin: Spin): string {
 			continue;
 		}
 
-		path += `${drawing ? "L" : "M"}${at.x.toFixed(1)} ${at.y.toFixed(1)}`;
+		path += `${drawing ? "L" : "M"}${at.x.toFixed(2)} ${at.y.toFixed(2)}`;
 		drawing = true;
 	}
 
@@ -130,7 +142,7 @@ function meridians(spin: Spin): string {
 				continue;
 			}
 
-			path += `${drawing ? "L" : "M"}${at.x.toFixed(1)} ${at.y.toFixed(1)}`;
+			path += `${drawing ? "L" : "M"}${at.x.toFixed(2)} ${at.y.toFixed(2)}`;
 			drawing = true;
 		}
 	}
@@ -146,7 +158,7 @@ function meridians(spin: Spin): string {
 				continue;
 			}
 
-			path += `${drawing ? "L" : "M"}${at.x.toFixed(1)} ${at.y.toFixed(1)}`;
+			path += `${drawing ? "L" : "M"}${at.x.toFixed(2)} ${at.y.toFixed(2)}`;
 			drawing = true;
 		}
 	}
@@ -190,9 +202,12 @@ export function Globe({
 	 * speed is the same on a slow machine as on a fast one instead of being
 	 * whatever the frame rate happens to be.
 	 *
-	 * Held to about thirty steps a second. Every step re-projects a thousand
-	 * coastal points, and at sixty it is twice the work for a difference nobody
-	 * can see on something moving three degrees a second.
+	 * Every callback rather than every other one. The throttle that was here
+	 * halved the work and cost more than it saved: requestAnimationFrame already
+	 * runs at the display's rate, so a gate of "at least a thirtieth of a second"
+	 * lands on some frames and not others depending on how the two rates drift
+	 * past each other, and uneven frames are exactly what somebody means when
+	 * they say motion is not smooth.
 	 */
 	useEffect(() => {
 		// Somebody who has asked not to be shown movement is not asking for a
@@ -211,9 +226,6 @@ export function Globe({
 			}
 
 			const since = (now - last) / 1000;
-
-			if (since < 1 / 30) return;
-
 			last = now;
 
 			if (drag.current || now < idle.current) return;

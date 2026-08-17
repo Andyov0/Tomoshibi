@@ -39,9 +39,14 @@ The room record is the fixture here. It is what says where a meeting already is,
 and every case below is really a question about what this server does with it.
 */
 
-// where a relay has a TURN server and is allowed to use it.
+// where a relay has a TURN server, is allowed to use it, and is on the same side
+// of the border as the others here.
+//
+// The region is not decoration. Forwarding is refused between networks, and a
+// relay with none is paired with nobody — so a fixture that leaves it out tests
+// the guard rather than the thing it was written for, and does it silently.
 func forwarder(name, url, turn string) store.Relay {
-	return store.Relay{Name: name, URL: url, Turn: turn, Forwards: true}
+	return store.Relay{Name: name, URL: url, Turn: turn, Forwards: true, Region: "CN-East"}
 }
 
 // joinVia asks to join a room through a named relay and reads the answer.
@@ -134,14 +139,15 @@ func TestARelayThatWillNotForwardSendsThemToTheRoomInstead(t *testing.T) {
 			"whoever pays for it said no, which is a real answer: relaying costs " +
 				"the machine two bytes for every one it carries",
 			store.Relay{
-				Name: "shanghai", URL: "wss://sh.example.invalid",
+				Name: "shanghai", URL: "wss://sh.example.invalid", Region: "CN-East",
 				Turn: "sh.example.invalid:39219", Forwards: false,
 			},
 		},
 		{
 			"it runs no TURN server, so there is nothing to point a browser at",
 			store.Relay{
-				Name: "shanghai", URL: "wss://sh.example.invalid", Forwards: true,
+				Name: "shanghai", URL: "wss://sh.example.invalid", Region: "CN-East",
+				Forwards: true,
 			},
 		},
 	} {
@@ -327,5 +333,82 @@ func TestAnAdministratorCanSignInAtTheFrontOfTheSite(t *testing.T) {
 	// And the wrong passphrase is still the wrong passphrase.
 	if got := sign("andy", "not it").Code; got != http.StatusUnauthorized {
 		t.Errorf("a wrong passphrase signed in as an administrator with %d", got)
+	}
+}
+
+/*
+Two relays that must not carry each other's calls.
+
+Reachability between two machines is a fact about the networks between them and
+nothing here can derive it: two relays can both be fast, both be in the same
+country, both answer every probe, and still carry nothing usable between each
+other. So the pairs that are no good are written down by whoever found out.
+
+It is worth a test rather than a comment because it is invisible when wrong. The
+call still connects; it just goes the long way through a path that does not work,
+and the only symptom is somebody saying the meeting was bad — which reads as the
+relay they picked being bad rather than as a pair that should never have formed.
+
+The symmetry is the part that would rot. Written on one side of the comparison
+only, the pair would forward or not depending on which end a client happened to
+come in at, and every test of the remembered half would pass.
+*/
+
+func TestRelaysKeptApartDoNotCarryEachOthersCalls(t *testing.T) {
+	// Only one of them says so, and it has to hold from both directions.
+	hongKong := store.Relay{
+		Name: "hong kong", URL: "wss://hk.example.invalid", Region: "Oversea/Asia",
+		Turn: "hk.example.invalid:39219", Forwards: true, Apart: []string{"shanghai ct"},
+	}
+	shanghai := store.Relay{
+		Name: "shanghai ct", URL: "wss://shct.example.invalid", Region: "CN-East",
+		Turn: "shct.example.invalid:39219", Forwards: true,
+	}
+
+	for _, tc := range []struct{ first, second store.Relay }{
+		{shanghai, hongKong},
+		{hongKong, shanghai},
+	} {
+		mux := control(t, config.PickProbe, tc.first, tc.second)
+
+		joinVia(t, mux, "standup", tc.first.Name)
+
+		second := joinVia(t, mux, "standup", tc.second.Name)
+
+		if second.Forward != nil {
+			t.Errorf("a room held on %q was forwarded through %q, which is a pair somebody "+
+				"wrote down as no good; the call goes the long way through a path that "+
+				"does not work and looks like the relay was bad",
+				tc.first.Name, tc.second.Name)
+		}
+
+		// And they are sent straight to the machine holding the room, which is
+		// the behaviour forwarding replaced and is still correct here.
+		if second.URL != tc.first.URL {
+			t.Errorf("sent to %s rather than to the machine holding the room", second.URL)
+		}
+	}
+}
+
+func TestARelayKeptApartFromOneStillForwardsForTheRest(t *testing.T) {
+	// The rule is about a pair and not about a machine. A relay excluded from one
+	// other must go on forwarding for everybody else, or writing down a single
+	// bad pair would quietly take it out of service.
+	mux := control(t, config.PickProbe,
+		store.Relay{
+			Name: "hong kong", URL: "wss://hk.example.invalid", Region: "Oversea/Asia",
+			Turn: "hk.example.invalid:39219", Forwards: true, Apart: []string{"shanghai ct"},
+		},
+		store.Relay{
+			Name: "guangzhou", URL: "wss://gz.example.invalid", Region: "CN-South",
+			Turn: "gz.example.invalid:39219", Forwards: true,
+		},
+	)
+
+	joinVia(t, mux, "standup", "guangzhou")
+
+	if joinVia(t, mux, "standup", "hong kong").Forward == nil {
+		t.Fatal("a relay kept apart from one other stopped forwarding for everybody; one " +
+			"bad pair took the machine out of service")
 	}
 }

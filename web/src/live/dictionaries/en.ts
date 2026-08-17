@@ -294,7 +294,7 @@ const en = {
 	"User console": "User console",
 	"Nobody has this open yet.": "Nobody has this open yet.",
 	"Set a passphrase to start a new room. Anybody can join one that already exists.": "Set a passphrase to start a new room. Anybody can join one that already exists.",
-	"This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.": "This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.",
+	"Meetings here are started by the people who belong here. If somebody sent you a link, open that instead.": "Meetings here are started by the people who belong here. If somebody sent you a link, open that instead.",
 	"Start a meeting": "Start a meeting",
 	"A new room with a name nobody has used.": "A new room with a name nobody has used.",
 	"Join a meeting": "Join a meeting",
@@ -314,6 +314,18 @@ const en = {
 	"Hello, {name}": "Hello, {name}",
 	"What would you like to do?": "What would you like to do?",
 	"Back to meetings": "Back to meetings",
+	"Name it yourself, or leave it blank for one nobody has used.": "Name it yourself, or leave it blank for one nobody has used.",
+	"Name for the new room": "Name for the new room",
+	"Start": "Start",
+	"End this meeting": "End this meeting",
+	"Close the room": "Close the room",
+	"Everybody will be disconnected and told the room has closed. Links to it stop working.": "Everybody will be disconnected and told the room has closed. Links to it stop working.",
+	"The host closed this room.": "The host closed this room.",
+	"You were removed from this room.": "You were removed from this room.",
+	"Never forwards with": "Never forwards with",
+	"Relay names, comma separated. Applies in both directions": "Relay names, comma separated. Applies in both directions",
+	"None": "None",
+	"You have left the room.": "You have left the room.",
 } as const;
 
 export default en;

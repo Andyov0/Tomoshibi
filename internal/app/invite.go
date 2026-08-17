@@ -30,15 +30,15 @@ flexible": a link pasted into a group chat should let in the person it was meant
 for, and a link found in an old message should not work at all.
 */
 
-// How long an invite lasts, and how many it admits.
+// The ceiling on an invite, which is not the rule.
 //
-// A day, because a meeting invited to on Monday for Tuesday is ordinary and a
-// link found in a message from March should be dead. One person, because that is
-// what somebody means when they send a link to somebody.
-const (
-	inviteFor  = 24 * time.Hour
-	inviteUses = 1
-)
+// The rule is the meeting: while the room is running the link works, and when it
+// ends the link is worth nothing. This is the backstop under that, because
+// "while the room is running" is answered by asking the media server and a link
+// should not outlive that conversation being possible. A day, because a meeting
+// invited to on Monday for Tuesday is ordinary and a link found in a message
+// from March should be dead however the asking went.
+const inviteFor = 24 * time.Hour
 
 // The cookie a redeemed invite leaves behind.
 //
@@ -80,8 +80,7 @@ func (a *App) makeInvite(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	if err := a.store.KeepInvite(token, store.Invite{
-		Room: name, By: who.Mark.Trip, Created: now,
-		Expires: now.Add(inviteFor), Uses: inviteUses,
+		Room: name, By: who.Mark.Trip, Created: now, Expires: now.Add(inviteFor),
 	}); err != nil {
 		fail(w, http.StatusInternalServerError, reasonServerError)
 		return
@@ -94,7 +93,6 @@ func (a *App) makeInvite(w http.ResponseWriter, r *http.Request) {
 		"token":   token,
 		"room":    name,
 		"expires": now.Add(inviteFor).Format(time.RFC3339),
-		"uses":    inviteUses,
 	})
 }
 
@@ -116,18 +114,44 @@ func (a *App) readInvite(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !invite.Live(time.Now().UTC()) {
-		// Which of the two, because they are different sentences to the person
-		// reading them and only one of them means "ask for another link".
-		if time.Now().After(invite.Expires) {
-			fail(w, http.StatusGone, reasonInviteExpired)
-			return
-		}
+		fail(w, http.StatusGone, reasonInviteExpired)
+		return
+	}
 
-		fail(w, http.StatusGone, reasonInviteSpent)
+	// And the meeting itself, which is the real limit. A link to a meeting that
+	// has ended is not an expired link — it is a link to nothing, and the
+	// difference matters to whoever is reading the message it arrived in.
+	if !a.meeting(r, invite.Room) {
+		fail(w, http.StatusGone, reasonMeetingOver)
 		return
 	}
 
 	respond(w, map[string]any{"room": invite.Room})
+}
+
+// meeting reports whether a room is currently being held anywhere.
+//
+// Asked of the media server, which is the only thing that knows. Where it cannot
+// be reached the answer is yes: a guest holding a link that was legitimately
+// issued should not be turned away because a relay was slow to answer, and the
+// ceiling on the invite is still underneath this.
+func (a *App) meeting(r *http.Request, name string) bool {
+	if a.control == nil {
+		return true
+	}
+
+	live, err := a.control.Rooms(r.Context())
+	if err != nil {
+		return true
+	}
+
+	for _, one := range live {
+		if one.GetName() == name {
+			return true
+		}
+	}
+
+	return false
 }
 
 // invited reports whether this request carries a live invite to this room.
@@ -136,10 +160,7 @@ func (a *App) readInvite(w http.ResponseWriter, r *http.Request) {
 // how somebody gets in who can satisfy neither: they have no passphrase, they
 // are not an administrator, and the name they were sent is one they could not
 // have opened themselves.
-//
-// The identity is what the invite is spent on, so a reload comes back through
-// the same one rather than through a second invite.
-func (a *App) invited(r *http.Request, name, identity string) bool {
+func (a *App) invited(r *http.Request, name string) bool {
 	token := strings.TrimSpace(r.URL.Query().Get("invite"))
 
 	if token == "" {
@@ -152,7 +173,7 @@ func (a *App) invited(r *http.Request, name, identity string) bool {
 		return false
 	}
 
-	_, err := a.store.Redeem(token, name, identity, time.Now().UTC())
+	_, err := a.store.Redeem(token, name, time.Now().UTC())
 
 	switch {
 	case err == nil:

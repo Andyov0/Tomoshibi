@@ -433,6 +433,7 @@ function Settings({
 		probe?: string;
 		turn?: string;
 		forwards?: boolean;
+		apart?: string[];
 		fallback?: boolean;
 		adminOnly?: boolean;
 	}) => void;
@@ -443,6 +444,7 @@ function Settings({
 	const [label, setLabel] = useState(relay.label ?? "");
 	const [probe, setProbe] = useState(relay.probe ?? "");
 	const [turn, setTurn] = useState(relay.turn ?? "");
+	const [apart, setApart] = useState((relay.apart ?? []).join(", "));
 
 	// Reloaded when the relay changes underneath this form.
 	//
@@ -463,7 +465,8 @@ function Settings({
 		setLabel(relay.label ?? "");
 		setProbe(relay.probe ?? "");
 		setTurn(relay.turn ?? "");
-	}, [relay.name, relay.url, relay.region, relay.label, relay.probe, relay.turn]);
+		setApart((relay.apart ?? []).join(", "));
+	}, [relay.name, relay.url, relay.region, relay.label, relay.probe, relay.turn, relay.apart]);
 
 	const dirty =
 		name !== relay.name ||
@@ -471,7 +474,8 @@ function Settings({
 		region !== (relay.region ?? "") ||
 		label !== (relay.label ?? "") ||
 		probe !== (relay.probe ?? "") ||
-		turn !== (relay.turn ?? "");
+		turn !== (relay.turn ?? "") ||
+		apart !== (relay.apart ?? []).join(", ");
 
 	return (
 		<div className="flex flex-col gap-3 border-border border-t px-4 py-3">
@@ -520,6 +524,15 @@ function Settings({
 						value={turn}
 						onChange={(event) => setTurn(event.target.value)}
 						placeholder="host:39219"
+						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</Field>
+
+				<Field label={t("Never forwards with")} hint={t("Relay names, comma separated. Applies in both directions")}>
+					<input
+						value={apart}
+						onChange={(event) => setApart(event.target.value)}
+						placeholder={t("None")}
 						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
@@ -584,7 +597,20 @@ function Settings({
 				<button
 					type="button"
 					disabled={busy || !dirty}
-					onClick={() => onSave({ name, url, region, label, probe, turn })}
+					onClick={() =>
+						onSave({
+							name,
+							url,
+							region,
+							label,
+							probe,
+							turn,
+							apart: apart
+								.split(",")
+								.map((one) => one.trim())
+								.filter(Boolean),
+						})
+					}
 					className="ml-auto rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
 				>
 					{t("Save")}

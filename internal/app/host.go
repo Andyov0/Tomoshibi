@@ -50,6 +50,7 @@ func (a *App) mountHost(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/rooms/{room}/host", a.handOver)
 	mux.HandleFunc("POST /api/rooms/{room}/mute", a.quieten)
 	mux.HandleFunc("DELETE /api/rooms/{room}/people/{identity}", a.turnOut)
+	mux.HandleFunc("POST /api/rooms/{room}/close", a.dissolve)
 }
 
 // bearer is who a request proves it is, from the token it carries.
@@ -234,6 +235,55 @@ func (a *App) turnOut(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadGateway, reasonMediaUnreachable)
 		return
 	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// dissolve ends the meeting for everybody at once.
+//
+// The one control here that is not about a person. Removing somebody is a
+// judgement about them; this is the host saying the meeting is over, and it has
+// to reach everybody — a host who leaves a room they cannot close leaves a
+// meeting that goes on without them, under a name they will use again next week.
+//
+// Three things happen and the order is the point. The links go first, because an
+// invite outliving the room it was to would be a way back into a name the host
+// deliberately ended — and a room here is a name, so the next meeting held under
+// it would inherit them. The room record lets go of its relay, so nothing sends
+// the next person to a machine that is no longer holding anything. And the media
+// server ends the room last, which is what actually disconnects everybody, with
+// a reason their client can tell apart from being removed.
+func (a *App) dissolve(w http.ResponseWriter, r *http.Request) {
+	name := strings.ToLower(r.PathValue("room"))
+
+	who, ok := a.mayHost(r, name)
+	if !ok {
+		fail(w, http.StatusForbidden, reasonNotYours)
+		return
+	}
+
+	if gone, err := a.store.DropInvites(name); err != nil {
+		slog.Error("failed to drop the invites to a closed room", "room", name, "error", err)
+	} else if gone > 0 {
+		slog.Info("dropped invites to a closed room", "room", name, "gone", gone)
+	}
+
+	if err := a.store.ReleaseRoom(name); err != nil {
+		slog.Error("failed to release a closed room", "room", name, "error", err)
+	}
+
+	if err := a.acting(r, func(control admin.Control) error {
+		return control.Close(r.Context(), name)
+	}); err != nil {
+		// Said out loud, because the two halves have come apart: the links are
+		// gone and the meeting is not. Whoever pressed this is looking at a room
+		// that did not close, and the honest answer is that it did not.
+		slog.Error("failed to close a room", "room", name, "error", err)
+		fail(w, http.StatusBadGateway, reasonMediaUnreachable)
+		return
+	}
+
+	slog.Info("room closed", "room", name, "by", who.Mark.Trip)
 
 	w.WriteHeader(http.StatusNoContent)
 }

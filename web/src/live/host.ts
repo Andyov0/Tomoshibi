@@ -110,6 +110,20 @@ export async function turnOut(room: Room, person: Participant): Promise<void> {
 	if (!response.ok) throw new Error("remove_failed");
 }
 
+/**
+ * End the meeting for everybody.
+ *
+ * The one control that is not about a person. A host who leaves a room they
+ * cannot close leaves a meeting that goes on without them, under a name they
+ * will use again next week — and because a room here is a name, whoever stayed
+ * is sitting in next week's meeting.
+ */
+export async function dissolve(room: Room): Promise<void> {
+	const response = await ask(room, "/close", { method: "POST" });
+
+	if (!response.ok) throw new Error("close_failed");
+}
+
 /** Hand the room to somebody else. */
 export async function handOver(room: Room, person: Participant): Promise<void> {
 	const response = await ask(room, "/host", {

@@ -261,7 +261,7 @@ const ja: Dictionary = {
 	"User console": "ユーザーコンソール",
 	"Nobody has this open yet.": "まだ誰も開いていません。",
 	"Set a passphrase to start a new room. Anybody can join one that already exists.": "新しい部屋を作るには合言葉が必要です。既にある部屋には誰でも入れます。",
-	"This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.": "この配備では誰でも会議を始められるわけではありません。リンクを受け取っているなら、そちらを開いてください。",
+	"Meetings here are started by the people who belong here. If somebody sent you a link, open that instead.": "会議はここの参加者が始めます。リンクを受け取っているなら、そちらを開いてください。",
 	"Start a meeting": "会議を始める",
 	"A new room with a name nobody has used.": "誰も使っていない名前で新しい部屋を作ります。",
 	"Join a meeting": "会議に参加する",
@@ -281,6 +281,18 @@ const ja: Dictionary = {
 	"Hello, {name}": "{name} さん、こんにちは",
 	"What would you like to do?": "何をしますか？",
 	"Back to meetings": "会議に戻る",
+	"Name it yourself, or leave it blank for one nobody has used.": "自分で名前を付けるか、空欄のままなら誰も使っていない名前になります。",
+	"Name for the new room": "新しい部屋の名前",
+	"Start": "開始",
+	"End this meeting": "会議を解散する",
+	"Close the room": "解散する",
+	"Everybody will be disconnected and told the room has closed. Links to it stop working.": "全員が切断され、部屋が解散したと表示されます。この部屋へのリンクも無効になります。",
+	"The host closed this room.": "ホストがこの部屋を解散しました。",
+	"You were removed from this room.": "この部屋から退出させられました。",
+	"Never forwards with": "中継しない相手",
+	"Relay names, comma separated. Applies in both directions": "中継名をカンマ区切りで。両方向に適用されます",
+	"None": "なし",
+	"You have left the room.": "部屋を退出しました。",
 };
 
 export default ja;

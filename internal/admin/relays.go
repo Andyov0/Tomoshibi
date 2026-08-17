@@ -39,17 +39,18 @@ type Reachable interface {
 // relayView is one relay as a page sees it: what was configured, plus whether
 // it is answering.
 type relayView struct {
-	Name      string `json:"name"`
-	URL       string `json:"url"`
-	Region    string `json:"region,omitempty"`
-	Label     string `json:"label,omitempty"`
-	Probe     string `json:"probe,omitempty"`
-	Turn      string `json:"turn,omitempty"`
-	Forwards  bool   `json:"forwards,omitempty"`
-	Fallback  bool   `json:"fallback,omitempty"`
-	AdminOnly bool   `json:"adminOnly,omitempty"`
-	Enabled   bool   `json:"enabled"`
-	Added     string `json:"added,omitempty"`
+	Name      string   `json:"name"`
+	URL       string   `json:"url"`
+	Region    string   `json:"region,omitempty"`
+	Label     string   `json:"label,omitempty"`
+	Probe     string   `json:"probe,omitempty"`
+	Turn      string   `json:"turn,omitempty"`
+	Forwards  bool     `json:"forwards,omitempty"`
+	Apart     []string `json:"apart,omitempty"`
+	Fallback  bool     `json:"fallback,omitempty"`
+	AdminOnly bool     `json:"adminOnly,omitempty"`
+	Enabled   bool     `json:"enabled"`
+	Added     string   `json:"added,omitempty"`
 
 	// Reachable and Latency are measured when the page is drawn, from this
 	// machine. A client's own measurement may differ and usually will — this is
@@ -83,7 +84,7 @@ func (a *API) listRelays(_ Session, w http.ResponseWriter, r *http.Request) {
 		views[i] = relayView{
 			Name: relay.Name, URL: relay.URL, Region: relay.Region,
 			Label: relay.Label, Probe: relay.Probe,
-			Turn: relay.Turn, Forwards: relay.Forwards,
+			Turn: relay.Turn, Forwards: relay.Forwards, Apart: relay.Apart,
 			Fallback: relay.Fallback, AdminOnly: relay.AdminOnly,
 			Enabled: relay.Enabled,
 		}
@@ -124,15 +125,16 @@ func (a *API) addRelay(session Session, w http.ResponseWriter, r *http.Request) 
 	}
 
 	var body struct {
-		Name      string `json:"name"`
-		URL       string `json:"url"`
-		Region    string `json:"region"`
-		Label     string `json:"label"`
-		Turn      string `json:"turn"`
-		Forwards  bool   `json:"forwards"`
-		Fallback  bool   `json:"fallback"`
-		AdminOnly bool   `json:"adminOnly"`
-		Enabled   *bool  `json:"enabled"`
+		Name      string   `json:"name"`
+		URL       string   `json:"url"`
+		Region    string   `json:"region"`
+		Label     string   `json:"label"`
+		Turn      string   `json:"turn"`
+		Forwards  bool     `json:"forwards"`
+		Apart     []string `json:"apart"`
+		Fallback  bool     `json:"fallback"`
+		AdminOnly bool     `json:"adminOnly"`
+		Enabled   *bool    `json:"enabled"`
 	}
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
@@ -147,6 +149,7 @@ func (a *API) addRelay(session Session, w http.ResponseWriter, r *http.Request) 
 		Label:     strings.TrimSpace(body.Label),
 		Turn:      strings.TrimSpace(body.Turn),
 		Forwards:  body.Forwards,
+		Apart:     trimmed(body.Apart),
 		Fallback:  body.Fallback,
 		AdminOnly: body.AdminOnly,
 		Enabled:   body.Enabled == nil || *body.Enabled,
@@ -186,16 +189,17 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	// Pointers throughout, so that clearing a field and leaving it alone are
 	// different requests. An empty string is a thing somebody meant.
 	var body struct {
-		Probe     *string `json:"probe"`
-		Name      *string `json:"name"`
-		URL       string  `json:"url"`
-		Region    *string `json:"region"`
-		Label     *string `json:"label"`
-		Turn      *string `json:"turn"`
-		Forwards  *bool   `json:"forwards"`
-		Fallback  *bool   `json:"fallback"`
-		AdminOnly *bool   `json:"adminOnly"`
-		Enabled   *bool   `json:"enabled"`
+		Probe     *string   `json:"probe"`
+		Name      *string   `json:"name"`
+		URL       string    `json:"url"`
+		Region    *string   `json:"region"`
+		Label     *string   `json:"label"`
+		Turn      *string   `json:"turn"`
+		Forwards  *bool     `json:"forwards"`
+		Apart     *[]string `json:"apart"`
+		Fallback  *bool     `json:"fallback"`
+		AdminOnly *bool     `json:"adminOnly"`
+		Enabled   *bool     `json:"enabled"`
 	}
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil {
@@ -247,6 +251,9 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	}
 	if body.Forwards != nil {
 		found.Forwards = *body.Forwards
+	}
+	if body.Apart != nil {
+		found.Apart = trimmed(*body.Apart)
 	}
 	if body.Fallback != nil {
 		found.Fallback = *body.Fallback
@@ -390,4 +397,25 @@ func (a *API) orderRelays(session Session, w http.ResponseWriter, r *http.Reques
 	}
 
 	respond(w, map[string]any{"ordered": len(body.Names)})
+}
+
+// trimmed tidies a list of relay names typed into a field.
+//
+// Blanks dropped rather than kept, because a trailing comma is how anybody types
+// a list and an empty name in this one would be a name no relay has — harmless
+// today and exactly the sort of entry somebody later reads as meaningful.
+func trimmed(names []string) []string {
+	out := make([]string, 0, len(names))
+
+	for _, name := range names {
+		if name = strings.TrimSpace(name); name != "" {
+			out = append(out, name)
+		}
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+
+	return out
 }

@@ -2,11 +2,25 @@ import { type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
 import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { connect, create } from "@/live/room";
+import { useT } from "@/hooks/useT";
 import { joinFailed } from "@/live/notices";
 import { Lobby, SignIn } from "@/routes/Lobby";
 import { type Choices, PreJoin } from "@/routes/PreJoin";
 import { Room } from "@/routes/Room";
-import type { Room as LiveRoom } from "livekit-client";
+import { RoomEvent, type Room as LiveRoom } from "livekit-client";
+
+/*
+ * Why a call ended, as the media server numbers it.
+ *
+ * Written out rather than imported from the protocol package, which is a
+ * transitive dependency of the client rather than one this application declares
+ * — importing from it would make the manifest wrong in the direction the
+ * dependency test cannot see. The numbers are wire format and do not move; read
+ * out of `@livekit/protocol`'s own generated enum, where PARTICIPANT_REMOVED is
+ * 4 and ROOM_DELETED is 5.
+ */
+const DISCONNECT_REMOVED = 4;
+const DISCONNECT_ROOM_CLOSED = 5;
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
@@ -46,9 +60,11 @@ type Front =
 	| { at: "open" }
 	| { at: "sign in" }
 	| { at: "lobby"; me: Me }
-	| { at: "invited"; room: string };
+	| { at: "invited"; room: string }
+	| { at: "done" };
 
 export function App() {
+	const t = useT();
 	const [room, setRoom] = useState(initialRoom);
 	const [front, setFront] = useState<Front>({ at: "asking" });
 	const [live, setLive] = useState<LiveRoom>();
@@ -172,7 +188,44 @@ export function App() {
 		void current.current?.disconnect();
 		current.current = undefined;
 		setLive(undefined);
+
+		// A guest has nowhere to be sent back to.
+		//
+		// Everybody else came from a lobby or from a page they can use again, and
+		// returning them there is right. Somebody who arrived on a link has no
+		// account, and the screens behind this one are a sign-in they cannot
+		// satisfy and a room they were not invited to twice — offering either is
+		// offering a door that does not open. So the call ends and the page says
+		// so, and there is nothing else on it, because there is nothing else they
+		// can usefully do here.
+		setFront((was) => (was.at === "invited" ? { at: "done" } : was));
 	}, []);
+
+	// Why the call ended, when it did not end because somebody pressed leave.
+	//
+	// Two of the media server's reasons mean something a person needs told, and
+	// they are not the same thing: a room that was closed ended for everybody,
+	// and being removed happened to them alone. Left unsaid, both look identical
+	// from the outside — the call simply stops and the page goes back to the
+	// front — and the reading somebody lands on is that it broke.
+	useEffect(() => {
+		if (!live) return;
+
+		const ended = (reason?: number) => {
+			if (reason === DISCONNECT_ROOM_CLOSED) {
+				joinFailed(t("The host closed this room."));
+			} else if (reason === DISCONNECT_REMOVED) {
+				joinFailed(t("You were removed from this room."));
+			}
+		};
+
+		live.on(RoomEvent.Disconnected, ended);
+
+		return () => {
+			live.off(RoomEvent.Disconnected, ended);
+		};
+	}, [live, t, onLeave]);
+
 
 	if (live) {
 		return <Room room={live} relay={holding} carrying={carrying} onLeave={onLeave} />;
@@ -182,6 +235,14 @@ export function App() {
 	// trip on a warm connection, and a spinner shown for that long is a flash
 	// somebody notices without being able to read.
 	if (front.at === "asking") return <div className="min-h-full bg-bg" />;
+
+	if (front.at === "done") {
+		return (
+			<main className="grid min-h-full place-items-center bg-bg p-6">
+				<p className="animate-rise text-fg-muted text-sm">{t("You have left the room.")}</p>
+			</main>
+		);
+	}
 
 	if (front.at === "sign in") {
 		return <SignIn onSignedIn={(account) => setFront({ at: "lobby", me: account })} />;

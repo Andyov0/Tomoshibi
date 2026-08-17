@@ -292,6 +292,15 @@ export interface Relay {
 	turn?: string;
 	/** Whether it may carry a call held on another machine. */
 	forwards?: boolean;
+	/**
+	 * Relays this one must not forward with, by name.
+	 *
+	 * In either direction: if either of a pair lists the other, the pair does not
+	 * forward. Reachability between two machines is a fact about the networks
+	 * between them and nothing can derive it — two relays can both be fast, both
+	 * be in the same country, and still carry nothing usable between each other.
+	 */
+	apart?: string[];
 	enabled: boolean;
 	added?: string;
 	/** Whether it answered when this page was drawn, from the control node. */
@@ -345,6 +354,7 @@ export const api = {
 			probe?: string;
 			turn?: string;
 			forwards?: boolean;
+			apart?: string[];
 			fallback?: boolean;
 			adminOnly?: boolean;
 		},

@@ -607,7 +607,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	var forward *rtc.Forwarding
 
 	if holding.Name != entry.Name {
-		switch relayed, err := a.forwarding(entry); {
+		switch relayed, err := a.forwarding(entry, holding); {
 		case err != nil:
 			// Minted from nothing, which should not happen and must not become
 			// a client gathering candidates against a TURN server it cannot
@@ -622,11 +622,13 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 			forward = relayed
 
 		default:
-			// This relay does not forward: either it runs no TURN server or
-			// whoever pays for it has said not to. Relaying costs it two bytes
-			// for every one, so that is a real answer and not a misconfiguration.
-			// The call goes straight to the machine holding the room, which is
-			// what everybody got before forwarding existed.
+			// This pair does not forward: the relay runs no TURN server, whoever
+			// pays for it has said not to, or the two are on opposite sides of a
+			// border and sending media the long way round would be worse than not
+			// choosing at all. All three are real answers rather than
+			// misconfigurations, and all three end the same way — the call goes
+			// straight to the machine holding the room, which is what everybody
+			// got before forwarding existed.
 			entry = holding
 		}
 	}
@@ -653,7 +655,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// It does not open a name nobody has used. An invitation is to a meeting
 	// that exists, and one that could open a room would be a way around the
 	// setting deciding who may.
-	if a.invited(r, name, grant.Identity) {
+	if a.invited(r, name) {
 		keepInvite(w, r, r.TLS != nil || forwardedProto(r, a.conf.Meet.TrustProxy) == "https")
 	}
 
@@ -995,9 +997,13 @@ const (
 	// An invite that is not here, has run out, or has already let somebody in.
 	// Three codes rather than one, because they are three different sentences to
 	// the person holding the link and only one of them means "ask for another".
-	reasonNoSuchInvite    = "no_such_invite"
-	reasonInviteExpired   = "invite_expired"
-	reasonInviteSpent     = "invite_spent"
+	reasonNoSuchInvite  = "no_such_invite"
+	reasonInviteExpired = "invite_expired"
+	reasonInviteSpent   = "invite_spent"
+	// The meeting a link was to has ended, which is not the same as the link
+	// having expired: it is a link to nothing rather than a link that ran out,
+	// and that is the difference between "ask for another" and "you missed it".
+	reasonMeetingOver     = "meeting_over"
 	reasonPassphraseShort = "passphrase_too_short"
 	reasonPassphraseSame  = "passphrase_unchanged"
 	reasonPassphraseTaken = "passphrase_in_use"

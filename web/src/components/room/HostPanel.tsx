@@ -1,10 +1,10 @@
 import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
-import { handOver, invite, silence, turnOut, useOthers, type Standing } from "@/live/host";
+import { dissolve, handOver, invite, silence, turnOut, useOthers, type Standing } from "@/live/host";
 import { actionFailed } from "@/live/notices";
 import { cn } from "@/lib/utils";
 import type { Room } from "livekit-client";
-import { Check, Crown, Link2, Loader2, MicOff, UserMinus, X } from "lucide-react";
+import { Check, Crown, DoorClosed, Link2, Loader2, MicOff, UserMinus, X } from "lucide-react";
 import { useState } from "react";
 
 /**
@@ -39,6 +39,13 @@ export function HostPanel({
 	const [busy, setBusy] = useState<string>();
 	const [link, setLink] = useState<string>();
 	const [copied, setCopied] = useState(false);
+
+	// Asked once rather than done at once. Ending a meeting for eleven people is
+	// not undoable and the button for it sits next to three that are, so the
+	// press that matters is deliberately the second one — and the question names
+	// what will happen rather than asking whether they are sure, which is a
+	// question nobody has ever answered no to by reading it.
+	const [ending, setEnding] = useState(false);
 
 	const act = async (who: string, run: () => Promise<unknown>) => {
 		if (busy) return;
@@ -183,6 +190,51 @@ export function HostPanel({
 						</li>
 					))}
 				</ul>
+			)}
+
+			<div className="h-px bg-border" />
+
+			{ending ? (
+				<div className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 p-2.5">
+					<p className="text-[11.5px] text-fg leading-snug">
+						{t("Everybody will be disconnected and told the room has closed. Links to it stop working.")}
+					</p>
+
+					<div className="flex gap-2">
+						<button
+							type="button"
+							disabled={busy === "close"}
+							onClick={() => act("close", () => dissolve(room))}
+							className={cn(
+								"flex flex-1 items-center justify-center gap-1.5 rounded-md bg-danger px-2.5 py-1.5",
+								"text-[12px] text-danger-fg transition-opacity hover:opacity-90 disabled:opacity-40",
+							)}
+						>
+							{busy === "close" && <Loader2 className="size-3.5 animate-spin" />}
+							{t("Close the room")}
+						</button>
+
+						<button
+							type="button"
+							onClick={() => setEnding(false)}
+							className="rounded-md border border-border px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-surface-2"
+						>
+							{t("Cancel")}
+						</button>
+					</div>
+				</div>
+			) : (
+				<button
+					type="button"
+					onClick={() => setEnding(true)}
+					className={cn(
+						"flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px]",
+						"text-fg-muted transition-colors hover:border-danger/40 hover:bg-danger/10 hover:text-fg",
+					)}
+				>
+					<DoorClosed className="size-3.5" />
+					{t("End this meeting")}
+				</button>
 			)}
 
 			{/*

@@ -261,7 +261,7 @@ const zhHant: Dictionary = {
 	"User console": "使用者面板",
 	"Nobody has this open yet.": "還沒有人打開。",
 	"Set a passphrase to start a new room. Anybody can join one that already exists.": "要開新房間得先設口令。已經存在的房間任何人都能加入。",
-	"This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.": "本站不允許隨便誰都開會議。如果別人發了連結給你,直接打開那個連結。",
+	"Meetings here are started by the people who belong here. If somebody sent you a link, open that instead.": "會議由這裡的成員發起。如果有人給了你連結,直接打開它就好。",
 	"Start a meeting": "開始會議",
 	"A new room with a name nobody has used.": "新建一個還沒人用過的房間。",
 	"Join a meeting": "加入會議",
@@ -281,6 +281,18 @@ const zhHant: Dictionary = {
 	"Hello, {name}": "你好,{name}",
 	"What would you like to do?": "想做點什麼?",
 	"Back to meetings": "返回會議",
+	"Name it yourself, or leave it blank for one nobody has used.": "自己起個名字,留空就隨機生成一個沒人用過的。",
+	"Name for the new room": "新房間的名字",
+	"Start": "開始",
+	"End this meeting": "解散會議",
+	"Close the room": "確認解散",
+	"Everybody will be disconnected and told the room has closed. Links to it stop working.": "所有人會被斷開並收到「房間已解散」的提示,指向這個房間的連結同時失效。",
+	"The host closed this room.": "房主已解散這個房間。",
+	"You were removed from this room.": "你已被移出這個房間。",
+	"Never forwards with": "不與之互相代理",
+	"Relay names, comma separated. Applies in both directions": "中轉名稱,逗號分隔。雙向生效",
+	"None": "無",
+	"You have left the room.": "已退出房間。",
 };
 
 export default zhHant;

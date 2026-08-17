@@ -25,12 +25,24 @@ whoever arrives gets an issued mark, which says only that they are not the other
 people in the call. It is not a credential and it is not an identity, which is
 exactly right for somebody who was sent a link.
 
-Single use is the default and it is a real constraint rather than a gesture: a
-link pasted into a group chat lets in the first person and no one else. What it
-must not do is lock out the person who redeemed it — a reload, a dropped
-connection, a phone that slept — so redeeming records the identity it was spent
-on, and that identity may come back through the same invite for as long as it
-lasts. The link is spent on a person, not on a page load.
+It lasts as long as the meeting does, and that is the only limit worth having.
+It was single use to begin with, on the reasoning that a link pasted into a group
+chat should let in the person it was meant for and nobody else. That is a fine
+rule for a link and a bad one for a meeting: the person it was meant for reloads,
+their phone sleeps, they are asked to bring a colleague, and each of those is the
+link failing at the only thing it is for. Worse, a host with six guests had to
+mint six links and keep track of which had been spent.
+
+So the meeting is the boundary. While the room is running the link works, for
+whoever has it; when the room ends the link is worth nothing, and closing the room
+throws the links away outright. What that gives away is that anybody the link
+reaches during the meeting can join it — which is what a meeting link means
+everywhere else, and what somebody pasting one into a group chat is doing on
+purpose.
+
+The ceiling below is a backstop, not the rule. It exists because "while the room
+is running" is answered by asking the media server, and a link should not
+outlive that conversation being possible.
 */
 
 var invites = []byte("invites")
@@ -56,33 +68,20 @@ type Invite struct {
 	// Created and Expires bound it in time.
 	Created time.Time `json:"created"`
 	Expires time.Time `json:"expires"`
-	// Uses is how many people it admits. One, unless somebody asked otherwise.
-	Uses int `json:"uses"`
-	// Spent is how many have come through.
-	Spent int `json:"spent,omitempty"`
-	// Holders are the identities it was spent on.
+	// Spent is how many have come through, for whoever wants to know.
 	//
-	// Kept so that redeeming is spent on a person rather than on a page load: a
-	// reload, a dropped connection or a phone that slept all come back with the
-	// identity they were given, and being turned away then would be the invite
-	// working exactly as specified and failing at what it is for.
-	Holders []string `json:"holders,omitempty"`
+	// Counted rather than limited. It says how far a link travelled, which is
+	// worth seeing on a page and is not a thing anything decides on.
+	Spent int `json:"spent,omitempty"`
 }
 
-// Live reports whether an invite is still worth anything at all.
+// Live reports whether an invite is still within its ceiling.
+//
+// Not the whole question. Whether the meeting is still running is asked of the
+// media server, which is the only thing that knows, and this is the backstop
+// underneath it.
 func (i Invite) Live(now time.Time) bool {
-	return now.Before(i.Expires) && i.Spent < i.Uses
-}
-
-// Admits reports whether this identity may come through, spent or not.
-func (i Invite) Admits(identity string) bool {
-	for _, held := range i.Holders {
-		if held == identity {
-			return true
-		}
-	}
-
-	return false
+	return now.Before(i.Expires)
 }
 
 // NewInviteToken draws one nobody can guess.
@@ -146,13 +145,8 @@ func (s *Store) Invite(token string) (Invite, bool) {
 	return invite, found
 }
 
-// Redeem spends an invite on one identity, or says why it cannot be.
-//
-// The whole check happens inside one transaction. Reading, deciding and writing
-// separately would let two people holding the same link both read a live invite
-// and both be admitted, which is the one thing single use exists to prevent and
-// the one case a link pasted into a group chat produces.
-func (s *Store) Redeem(token, room, identity string, now time.Time) (Invite, error) {
+// Redeem records somebody coming through an invite, or says why they may not.
+func (s *Store) Redeem(token, room string, now time.Time) (Invite, error) {
 	var invite Invite
 
 	err := s.db.Update(func(tx *bolt.Tx) error {
@@ -181,17 +175,7 @@ func (s *Store) Redeem(token, room, identity string, now time.Time) (Invite, err
 			return ErrInviteExpired
 		}
 
-		// Already through, coming back. A reload must not be turned away.
-		if invite.Admits(identity) {
-			return nil
-		}
-
-		if invite.Spent >= invite.Uses {
-			return ErrInviteSpent
-		}
-
 		invite.Spent++
-		invite.Holders = append(invite.Holders, identity)
 
 		encoded, err := json.Marshal(invite)
 		if err != nil {
@@ -234,6 +218,46 @@ func (s *Store) Invites(room string, now time.Time) []Invite {
 	})
 
 	return live
+}
+
+// DropInvites throws away every invite to a room.
+//
+// Called when a room is closed, which is the moment its links stop meaning
+// anything. Left in place they would be a way back into a name the host
+// deliberately ended — and because a room here is a name, the next meeting held
+// under it would inherit them.
+func (s *Store) DropInvites(room string) (gone int, err error) {
+	err = s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(invites)
+		if bucket == nil {
+			return nil
+		}
+
+		var theirs [][]byte
+
+		if err := bucket.ForEach(func(key, raw []byte) error {
+			var invite Invite
+			if err := json.Unmarshal(raw, &invite); err == nil && invite.Room == room {
+				theirs = append(theirs, append([]byte(nil), key...))
+			}
+
+			return nil
+		}); err != nil {
+			return err
+		}
+
+		for _, key := range theirs {
+			if err := bucket.Delete(key); err != nil {
+				return err
+			}
+		}
+
+		gone = len(theirs)
+
+		return nil
+	})
+
+	return gone, err
 }
 
 // SweepInvites removes the ones nobody can use.

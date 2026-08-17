@@ -187,7 +187,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
 				<header className="animate-rise flex flex-col gap-2">
 					<h1 className="font-semibold text-[22px] tracking-tight">{t("Sign in")}</h1>
 					<p className="text-fg-muted text-[13px] leading-relaxed">
-						{t("This deployment does not let just anybody start a meeting. If you were sent a link, open it instead.")}
+						{t("Meetings here are started by the people who belong here. If somebody sent you a link, open that instead.")}
 					</p>
 				</header>
 
@@ -285,8 +285,10 @@ export function Lobby({
 }) {
 	const t = useT();
 	const [typed, setTyped] = useState("");
+	const [naming, setNaming] = useState("");
 
 	const wanted = normaliseRoomName(typed);
+	const opening = normaliseRoomName(naming);
 
 	return (
 		<Frame corner={<Corner me={me} onSignedOut={onSignedOut} />}>
@@ -299,33 +301,68 @@ export function Lobby({
 				</header>
 
 				{/*
-				 * Starting one first, and as a press rather than a field. Naming a
-				 * new meeting is a decision nobody wants to make in order to have
-				 * one — the name is generated, and anybody who cares can rename it
-				 * on the next screen, where they can see it.
+				 * Naming the new meeting, with the generated name as the answer to
+				 * leaving it blank rather than as the only answer.
+				 *
+				 * It used to generate one outright, on the reasoning that naming a
+				 * meeting is a decision nobody wants to make in order to have one.
+				 * That is true of most meetings and wrong about the ones people
+				 * hold every week: a recurring call has a name its people already
+				 * know, and being handed "crisp-bough-thrive-4185" instead means
+				 * telling everybody a new one each time. So the field is offered
+				 * and is not required, which serves both without asking anybody
+				 * which they are.
 				 */}
-				<button
-					type="button"
-					onClick={() => onOpen(generateRoomName())}
+				<form
+					onSubmit={(event) => {
+						event.preventDefault();
+						onOpen(validRoomName(opening) ? opening : generateRoomName());
+					}}
 					className={cn(
-						"animate-rise [animation-delay:60ms] group",
-						"flex items-center gap-3.5 rounded-xl border border-border bg-surface p-4 text-left",
-						"transition-[border-color,background-color] hover:border-tally/40 hover:bg-surface-hi",
+						"animate-rise [animation-delay:60ms]",
+						"flex flex-col gap-3 rounded-xl border border-border bg-surface p-4",
 					)}
 				>
-					<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-tally/15 text-tally">
-						<Plus className="size-5" />
-					</span>
+					<span className="flex items-center gap-3.5">
+						<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-tally/15 text-tally">
+							<Plus className="size-5" />
+						</span>
 
-					<span className="flex min-w-0 flex-col gap-0.5">
-						<span className="font-medium text-[14px]">{t("Start a meeting")}</span>
-						<span className="text-[12px] text-fg-muted leading-snug">
-							{t("A new room with a name nobody has used.")}
+						<span className="flex min-w-0 flex-col gap-0.5">
+							<span className="font-medium text-[14px]">{t("Start a meeting")}</span>
+							<span className="text-[12px] text-fg-muted leading-snug">
+								{t("Name it yourself, or leave it blank for one nobody has used.")}
+							</span>
 						</span>
 					</span>
 
-					<ArrowRight className="ml-auto size-4 shrink-0 text-fg-muted transition-transform group-hover:translate-x-0.5" />
-				</button>
+					<div className="flex gap-2">
+						<input
+							value={naming}
+							onChange={(event) => setNaming(event.target.value)}
+							placeholder={t("Room name")}
+							aria-label={t("Name for the new room")}
+							maxLength={64}
+							className={cn(
+								"h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 text-sm text-fg",
+								"outline-none transition-[border-color,box-shadow] placeholder:text-fg-muted",
+								"focus-visible:border-fg/40 focus-visible:ring-2 focus-visible:ring-fg/25",
+							)}
+						/>
+
+						<Button
+							type="submit"
+							variant="primary"
+							// Never disabled. Blank is an answer here, and a button
+							// that greys out until a field is filled says the field
+							// is required when it is the opposite.
+							className="group gap-1.5"
+						>
+							{t("Start")}
+							<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+						</Button>
+					</div>
+				</form>
 
 				<form
 					onSubmit={(event) => {

@@ -74,6 +74,26 @@ type Relay struct {
 	// bill, and it belongs to whoever pays it rather than being inferred.
 	Forwards bool `json:"forwards,omitempty"`
 
+	// Apart names the relays this one must not forward with.
+	//
+	// By name and in either direction: if either of a pair lists the other, the
+	// pair does not forward, whichever end a client came in at. Symmetry is not
+	// a convenience — a rule written on one side of a comparison is a rule on
+	// neither, and the half that was forgotten is the half that produces the
+	// outage.
+	//
+	// It exists because reachability between two machines is a fact about the
+	// networks between them and nothing here can derive it. Two relays can both
+	// be fast, both be in the same country, both answer every probe, and still
+	// carry nothing usable between each other — and the only symptom of pairing
+	// them is a call that stutters, which reads as the relay somebody picked
+	// being bad rather than as a pair that should never have been formed.
+	//
+	// Deliberately not derived from the region. Region groups the picker for
+	// people to read, and inferring a network rule from it means a change made
+	// for legibility silently changes where media goes.
+	Apart []string `json:"apart,omitempty"`
+
 	// Label is what a person is shown instead of the name.
 	//
 	// The name is a key: immutable, because a client that measured it will send

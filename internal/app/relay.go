@@ -464,16 +464,28 @@ func (a *App) UseEnrolment(enrolment *admin.Enrolment) {
 }
 
 // forwarding mints what a client needs to reach a room through a relay that is
-// not holding it, or reports that this relay will not do that.
+// not holding it, or reports that this pair will not do that.
 //
 // Three answers rather than two, and the middle one is the point: a nil
-// forwarding with no error means the relay declines, which is an ordinary
-// setting and not a fault. Relaying costs a machine two bytes for every one it
-// carries, so an operator saying no to that is answering a question about a
-// bill. An error means the credentials could not be made at all, which is a
-// fault and is logged as one.
-func (a *App) forwarding(entry store.Relay) (*rtc.Forwarding, error) {
+// forwarding with no error means the pair declines, which is an ordinary
+// outcome and not a fault. An error means the credentials could not be made at
+// all, which is a fault and is logged as one.
+func (a *App) forwarding(entry, holding store.Relay) (*rtc.Forwarding, error) {
 	if !entry.Forwards || entry.Turn == "" {
+		// Either it runs no TURN server, or whoever pays for it has said no.
+		// Relaying costs a machine two bytes for every one it carries, so that
+		// is a question about a bill and a real answer to it.
+		return nil, nil
+	}
+
+	if !pairable(entry, holding) {
+		// Logged rather than silently dropped. An operator who expects a pair to
+		// forward and finds it does not has one line to look for, and it names
+		// the reason — otherwise this is invisible: the call still connects, it
+		// just goes somewhere else.
+		slog.Info("refused to forward between relays kept apart",
+			"entry", entry.Name, "holding", holding.Name)
+
 		return nil, nil
 	}
 
@@ -483,6 +495,37 @@ func (a *App) forwarding(entry store.Relay) (*rtc.Forwarding, error) {
 	}
 
 	return &relayed, nil
+}
+
+// pairable reports whether one relay may carry a call held on another.
+//
+// Reachability between two machines is a fact about the networks between them
+// and nothing here can derive it. Two relays can both be fast, both be in the
+// same country, both answer every probe, and still carry nothing usable between
+// each other — so which pairs are no good is written down by whoever found out,
+// per relay, by name.
+//
+// Read from both sides. A rule written on one side of a comparison is a rule on
+// neither: the pair would forward or not depending on which end a client
+// happened to come in at, and the half that was forgotten is the half that
+// produces the outage.
+//
+// This was first written as a rule about regions — same side of the border, same
+// network — which is a tidier idea and the wrong one. It forbade pairs that work
+// perfectly well, and it meant a region renamed for legibility silently changed
+// where media went.
+func pairable(entry, holding store.Relay) bool {
+	return !apart(entry, holding.Name) && !apart(holding, entry.Name)
+}
+
+func apart(relay store.Relay, name string) bool {
+	for _, other := range relay.Apart {
+		if strings.EqualFold(strings.TrimSpace(other), name) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // elsewhere names the machine holding a room, when that is not the one being

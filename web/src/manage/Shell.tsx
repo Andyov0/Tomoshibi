@@ -1,3 +1,4 @@
+import { Flagged } from "@/components/room/Flag";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Activity, Clock, LayoutGrid, ScrollText, Server, Users, UsersRound } from "lucide-react";
@@ -230,7 +231,11 @@ export function Card({
 	return (
 		<section className={cn("rounded-lg border border-border bg-surface", className)}>
 			<header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-border border-b px-3 py-2.5 sm:px-4">
-				<h2 className="font-medium text-[13px]">{title}</h2>
+				{/* A relay's label arrives here with a flag in it, and on Windows
+				    there is no glyph for one. */}
+				<h2 className="font-medium text-[13px]">
+					<Flagged text={title} />
+				</h2>
 				{note && <p className="text-fg-muted text-xs">{note}</p>}
 				{actions && <div className="ml-auto">{actions}</div>}
 			</header>

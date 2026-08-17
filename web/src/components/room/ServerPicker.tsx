@@ -3,6 +3,7 @@ import { useT } from "@/hooks/useT";
 import { say } from "@/live/i18n";
 import { type Relay, timings } from "@/live/relays";
 import { Check, ChevronDown, Loader2, RotateCw, Wand2 } from "lucide-react";
+import { Flagged } from "@/components/room/Flag";
 import { Globe } from "@/components/room/Globe";
 import { useLingering } from "@/hooks/useLingering";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -339,7 +340,7 @@ export function ServerPicker({
 				)}
 			>
 				<span className="min-w-0 flex-1 truncate">
-					{chosen ? marked(chosen) : t("Automatic")}
+					{chosen ? <Flagged text={marked(chosen)} /> : t("Automatic")}
 				</span>
 
 				{chosen && <Latency ms={measured?.get(chosen.name)} known={measured !== undefined} />}
@@ -723,7 +724,9 @@ function Option({
 				{icon}
 
 				<span className="min-w-0 flex-1">
-					<span className="block truncate text-fg text-sm">{label}</span>
+					<span className="block truncate text-fg text-sm">
+						<Flagged text={label} />
+					</span>
 					{describes && (
 						<span className="mt-0.5 block truncate text-fg-muted text-[11px]">{describes}</span>
 					)}

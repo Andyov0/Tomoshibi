@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { useT } from "@/hooks/useT";
+import { Flagged } from "@/components/room/Flag";
 import { useLingering } from "@/hooks/useLingering";
 import type { Grade, Reading } from "@/live/connection";
 import { useState } from "react";
@@ -257,7 +258,9 @@ function Figure({
 					warn ? "text-tally" : "text-fg",
 				)}
 			>
-				{value}
+				{/* A relay's name arrives here with a flag in it, and on Windows
+				    there is no glyph for one. */}
+				<Flagged text={value} />
 			</dd>
 		</div>
 	);

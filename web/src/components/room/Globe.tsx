@@ -1,3 +1,4 @@
+import { Flagged } from "@/components/room/Flag";
 import { useT } from "@/hooks/useT";
 import type { Relay } from "@/live/relays";
 import { LAND } from "@/live/world";
@@ -408,7 +409,7 @@ export function Globe({
 						over || value ? "opacity-100" : "opacity-0",
 					)}
 				>
-					{label(relays, over ?? value, measured)}
+					<Flagged text={label(relays, over ?? value, measured)} />
 				</span>
 			</div>
 		</div>

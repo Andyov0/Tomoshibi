@@ -1,3 +1,4 @@
+import { Flagged } from "@/components/room/Flag";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ArrowRight, ChevronLeft, LogIn } from "lucide-react";
@@ -99,7 +100,9 @@ export function RoomsPanel({
 										    holds the machine that was asked rather than
 										    the machine holding the call. */}
 										{one.relay && (
-											<span className="truncate text-[11px] text-fg-muted">{one.relay}</span>
+											<span className="truncate text-[11px] text-fg-muted">
+												<Flagged text={one.relay} />
+											</span>
 										)}
 									</button>
 								</li>
@@ -288,7 +291,7 @@ function Person({
 					{person.relay && (
 						<span className="flex items-center gap-1">
 							<LogIn className="size-3" />
-							{person.relay}
+							<Flagged text={person.relay} />
 						</span>
 					)}
 
@@ -299,7 +302,7 @@ function Person({
 					{person.holding && (
 						<span className="flex items-center gap-1">
 							<ArrowRight className="size-3" />
-							{person.holding}
+							<Flagged text={person.holding} />
 							{person.forwarded && (
 								<span className="rounded bg-tally/15 px-1.5 py-px text-[10px] text-fg">
 									forwarded

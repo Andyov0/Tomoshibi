@@ -73,13 +73,49 @@ export interface Now {
 	cpu: { count: number; load: number };
 }
 
-export interface Sample {
+/**
+ * One bucket of the trend.
+ *
+ * The rates are the mean over the bucket and the peaks are the highest single
+ * reading inside it, which are different questions and both worth asking: a
+ * six-hour mean says what the evening cost and hides the two minutes that hit
+ * the ceiling. Rooms and clients are gauges and have no peak, because they move
+ * on the timescale of a meeting rather than of a packet — their mean already
+ * describes their shape.
+ *
+ * `n` is how many five-second readings are behind the bucket. A bucket holding
+ * one of a possible thirty-six is not wrong, but it is not the same claim as a
+ * full one.
+ */
+export interface Point {
 	at: string;
 	in: number;
 	out: number;
+	inPeak: number;
+	outPeak: number;
 	rooms: number;
 	clients: number;
 	nack: number;
+	nackPeak: number;
+	n: number;
+}
+
+/**
+ * The load over a stretch of time, as the server answers it.
+ *
+ * The width of a bucket comes with the points and is not inferred from them.
+ * The same array is an hour or half a year depending on `step`, and a page that
+ * assumed either would label an axis with the wrong day and be believed. The
+ * range comes too, because what was asked for is not always what could be
+ * answered: a deployment three days old asked for six months has three days.
+ */
+export interface Trend {
+	span: string;
+	/** Seconds to a bucket. */
+	step: number;
+	from: string;
+	to: string;
+	points: Point[];
 }
 
 export interface LiveRoom {
@@ -266,6 +302,8 @@ function explain(reason: string | undefined, status: number): string {
 			return "The media server did not answer.";
 		case "no_track":
 			return "No track was named.";
+		case "no_such_span":
+			return "That is not a stretch of time this server can answer for.";
 		case "no_such_policy":
 			return "Rooms are opened either by anyone or by administrators, and that was neither.";
 		case "store_unwritable":
@@ -335,7 +373,19 @@ export const api = {
 	signOut: () => call<void>("/session", { method: "DELETE" }),
 
 	now: () => call<Now>("/now"),
-	history: () => call<Sample[]>("/history"),
+
+	/**
+	 * The trend, over a named span or between two moments.
+	 *
+	 * The span is a key rather than a number of seconds, so that the page and
+	 * the server agree on what a month is without either of them saying it in a
+	 * query string. A pair of moments is the only way to ask about a window
+	 * that has already passed: every named span ends now.
+	 */
+	history: (span: string, range?: { from: string; to: string }) =>
+		call<Trend>(
+			`/history?${new URLSearchParams(range ? { from: range.from, to: range.to } : { span })}`,
+		),
 	rooms: () => call<{ live: LiveRoom[]; known: KnownRoom[] | null }>("/rooms"),
 	participants: (room: string) =>
 		call<Participant[]>(`/rooms/${encodeURIComponent(room)}/participants`),

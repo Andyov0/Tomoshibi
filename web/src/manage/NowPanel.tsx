@@ -1,29 +1,83 @@
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useLingering } from "@/hooks/useLingering";
+import { t } from "@/live/i18n";
 import { cn } from "@/lib/utils";
-import { type Now, api } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type Now, type Point, api } from "./api";
 import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
 import { Trend } from "./Trend";
-import { LINK_BITS, rate, since, size } from "./units";
-import { t } from "@/live/i18n";
+import { LINK_BITS, count, moment, rate, since, size, width } from "./units";
 
 /**
  * How the server is doing, and how it got here.
  *
- * The plot is the point. A single reading says whether the link is busy now; a
- * half hour of them says whether the evening was climbing, and whether the
+ * The plot is the point. A single reading says whether the link is busy now; an
+ * hour of them says whether the evening was climbing, and whether the
  * retransmissions underneath began before or after it did — which is the
- * difference between somebody's connection and this one running out.
+ * difference between somebody's connection and this one running out. Six months
+ * of them answers the question a single evening cannot: whether this is what
+ * the link has always done.
  *
- * The reading itself is polled a floor above and handed down, because it also
- * belongs in the rail, where it is legible from every other panel.
+ * How far back to look is a choice rather than a constant, because the spans
+ * are not variations on one question. Ten minutes is somebody watching a call
+ * go wrong; a month is somebody deciding whether to pay for more bandwidth.
+ *
+ * The live reading is polled a floor above and handed down, because it also
+ * belongs in the rail, where it is legible from every other panel. The trend is
+ * polled here, because it is only ever looked at here.
  */
 export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => void }) {
-	// Sampled every five seconds on the server, so asking oftener than that
-	// returns the same list with the same last element.
-	const { value: history, error } = usePoll(api.history, { every: 5000, onSignedOut });
+	const [span, setSpan] = useState<Span>("1h");
+	const [range, setRange] = useState<{ from: string; to: string }>();
+	const [choosing, setChoosing] = useState(false);
+	const [hovered, setHovered] = useState<number | null>(null);
 
-	const samples = history ?? [];
-	const window = now?.bytes.window ?? 0;
+	const ask = useCallback(
+		() => api.history(span, span === "custom" ? range : undefined),
+		[span, range],
+	);
+
+	// Six months of buckets do not move every five seconds. The fine spans are
+	// asked for at the rate the server samples at, and the coarse ones at a rate
+	// that keeps the last bucket honest without sending a hundred kilobytes of
+	// half a year twelve times a minute to a page nobody is looking at.
+	const brisk = span === "10m" || span === "1h";
+
+	const {
+		value: trend,
+		error,
+		refresh,
+	} = usePoll(ask, { every: brisk ? 5_000 : 30_000, onSignedOut });
+
+	// The poll holds its question in a ref, so that changing it does not restart
+	// the timer — and the other half of that bargain is that a new question is
+	// not asked until the next tick, which on a coarse span is half a minute of
+	// looking at the range somebody has just left. Skipped on the first render,
+	// where the poll is already about to ask.
+	const asked = useRef(false);
+	useEffect(() => {
+		if (!asked.current) {
+			asked.current = true;
+			return;
+		}
+
+		void refresh();
+	}, [refresh, span, range]);
+
+	const points = trend?.points ?? [];
+	const step = trend?.step ?? 5;
+
+	// Kept so the readout has something to draw while it is leaving. The pointer
+	// is already gone by then, and a readout that empties before it fades is a
+	// flicker rather than an exit.
+	const last = useRef<Point>();
+	const point = hovered === null ? undefined : points[hovered];
+	if (point) last.current = point;
+
+	const reading = useLingering(point !== undefined, 160);
+	const idle = useLingering(point === undefined, 160);
 
 	return (
 		<div className="mx-auto flex max-w-5xl flex-col gap-3 sm:gap-4">
@@ -31,25 +85,76 @@ export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => v
 
 			<Card
 				title="Uplink"
-				note={window > 0 ? `30 minutes · ${window}-second means` : "30 minutes"}
+				note={t("one point every {step}", { step: width(step) })}
 				actions={
 					<span className="readout font-semibold text-base tabular-nums">
 						{rate(now?.bytes.outPerSec ?? 0)}
 					</span>
 				}
 			>
+				<Spans
+					span={span}
+					choosing={choosing}
+					onSpan={(next) => {
+						setSpan(next);
+						setChoosing(false);
+					}}
+					onChoose={() => setChoosing((open) => !open)}
+				/>
+
+				<Custom
+					open={choosing}
+					onShow={(chosen) => {
+						setRange(chosen);
+						setSpan("custom");
+						setChoosing(false);
+					}}
+				/>
+
 				<div className="px-1 pt-2 pb-1">
-					<Trend samples={samples} />
+					{/*
+					  * Fed rather than rebuilt when the span changes, so the range
+					  * swaps under a canvas that stays where it is. Rebuilding it
+					  * flashes a blank plot between one question and the next,
+					  * which reads as the page having broken rather than as a
+					  * different question being answered.
+					  */}
+					<Trend points={points} onHover={setHovered} />
 				</div>
 
 				<Ceiling bitsPerSecond={(now?.bytes.outPerSec ?? 0) * 8} />
 
-				<div className="flex flex-wrap gap-x-4 gap-y-1 px-3 pb-3 sm:px-4">
-					<Key colour="bg-tally" label="out" />
-					<Key colour="bg-fg-muted" label="in" />
-					<span className="ml-auto text-fg-muted text-[11px]">
-						{samples.length > 0 ? `${samples.length} samples` : "filling"}
-					</span>
+				{/*
+				  * One line, whichever of the two things is in it.
+				  *
+				  * The height is reserved because the alternative is a card that
+				  * grows by a line whenever the pointer crosses the chart, taking
+				  * everything below it on the page with it — which is worse than
+				  * having no readout at all. So the two cross over in place: one
+				  * leaves as the other arrives, and nothing moves.
+				  */}
+				<div className="relative mb-3 h-6 overflow-hidden px-3 sm:px-4">
+					{idle.mounted && (
+						<div
+							className={cn(
+								"absolute inset-x-3 inset-y-0 flex items-center gap-x-4 sm:inset-x-4",
+								idle.leaving ? "animate-depart" : "animate-arrive",
+							)}
+						>
+							<Key colour="bg-tally" label={t("out")} />
+							<Key colour="bg-fg-muted" label={t("in")} />
+							<Key colour="bg-tally/30" label={t("peak")} />
+							<span className="ml-auto text-fg-muted text-[11px]">
+								{points.length > 0
+									? t("{count} points", { count: points.length })
+									: t("nothing recorded")}
+							</span>
+						</div>
+					)}
+
+					{reading.mounted && last.current && (
+						<Reading point={last.current} step={step} leaving={reading.leaving} />
+					)}
 				</div>
 			</Card>
 
@@ -100,11 +205,234 @@ export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => v
 			{now?.fleet ? <Fleet now={now} /> : <ThisServer now={now} />}
 
 			<p className="px-1 text-fg-muted text-[11.5px] leading-relaxed">
-				Rates are a mean over the window named above and totals are since this process started.
-				Both are good for a trend and for how near the ceiling is, and neither is an account of
-				what a month cost. The history is held in memory and starts again on restart.
+				{t(
+					"A point is the mean over its own bucket and the band behind the line is the highest single reading inside it, which is where a burst shows. Totals are since this process started. The trend outlives a restart: fine detail recently, coarser the further back it goes, out to six months.",
+				)}
 			</p>
 		</div>
+	);
+}
+
+/**
+ * How far back the chart looks.
+ *
+ * The list is the deployment owner's, in their order: longest first, because
+ * somebody who opens this to answer a question about last month starts from the
+ * left. What they asked for had both "one day" and "24 hours" in it, which are
+ * the same length of time, so there is one button for them rather than two that
+ * do the same thing.
+ *
+ * The keys are the server's vocabulary and the labels are this page's. Sending
+ * a number of seconds instead would put the definition of a month in two places
+ * and make disagreeing about it silent.
+ */
+const SPANS = [
+	{ key: "6mo", label: "6 months" },
+	{ key: "3mo", label: "3 months" },
+	{ key: "1mo", label: "1 month" },
+	{ key: "1w", label: "1 week" },
+	{ key: "24h", label: "24 hours" },
+	{ key: "1h", label: "1 hour" },
+	{ key: "10m", label: "10 minutes" },
+] as const;
+
+type Span = (typeof SPANS)[number]["key"] | "custom";
+
+/**
+ * The row of them, drawn the way the rail beside this page is drawn.
+ *
+ * The named spans are a radio group, because that is what they are: one of them
+ * is true at a time, and a screen reader told so can say which. Custom sits
+ * beside the group rather than inside it — it opens a pair of fields rather
+ * than choosing anything, and a radio that is not one is worse than no role at
+ * all to somebody who cannot see the row.
+ */
+function Spans({
+	span,
+	choosing,
+	onSpan,
+	onChoose,
+}: {
+	span: Span;
+	choosing: boolean;
+	onSpan: (span: Span) => void;
+	onChoose: () => void;
+}) {
+	return (
+		<div className="flex flex-wrap items-center gap-1 px-3 pt-3 sm:px-4">
+			<div role="radiogroup" aria-label={t("How far back")} className="flex flex-wrap gap-1">
+				{SPANS.map((one) => (
+					<button
+						key={one.key}
+						type="button"
+						role="radio"
+						aria-checked={span === one.key}
+						onClick={() => onSpan(one.key)}
+						className={chip(span === one.key)}
+					>
+						{t(one.label)}
+					</button>
+				))}
+			</div>
+
+			<button
+				type="button"
+				aria-expanded={choosing}
+				onClick={onChoose}
+				className={chip(span === "custom")}
+			>
+				{t("Custom")}
+			</button>
+		</div>
+	);
+}
+
+/** One of the buttons in that row, chosen or not. */
+function chip(chosen: boolean): string {
+	return cn(
+		"rounded-md px-2 py-1 text-[11.5px] transition-colors",
+		"focus-visible:outline-2 focus-visible:outline-fg focus-visible:outline-offset-1",
+		chosen ? "bg-surface-hi text-fg" : "text-fg-muted hover:bg-surface-hi/60 hover:text-fg",
+	);
+}
+
+/**
+ * A window that has already passed.
+ *
+ * Every named span above ends at this instant, which is what makes them cheap
+ * to say and useless for last Tuesday evening. This is the only way to ask
+ * about a stretch of time that is over.
+ *
+ * The browser draws the pickers. A date and time field is a thing every
+ * platform already has, with a keyboard behaviour, a locale and an accessibility
+ * story none of which this application could reproduce and all of which it would
+ * get subtly wrong — the same reason the password manager holds the passphrases.
+ *
+ * It is sent as an instant rather than as the text that was typed: the fields
+ * are in whoever is reading's own timezone and the server keeps UTC, and a
+ * range that quietly shifted by the offset between them would draw a perfectly
+ * plausible chart of the wrong eight hours.
+ */
+function Custom({
+	open,
+	onShow,
+}: {
+	open: boolean;
+	onShow: (range: { from: string; to: string }) => void;
+}) {
+	const { mounted, leaving } = useLingering(open, 160);
+
+	const [from, setFrom] = useState(() => typed(new Date(Date.now() - 24 * 3600 * 1000)));
+	const [to, setTo] = useState(() => typed(new Date()));
+
+	if (!mounted) return null;
+
+	const backwards = !(new Date(from).getTime() < new Date(to).getTime());
+
+	return (
+		<div
+			className={cn(
+				"flex flex-wrap items-end gap-2 px-3 pt-3 sm:px-4",
+				leaving ? "animate-depart" : "animate-arrive",
+			)}
+		>
+			<Field label={t("From")} value={from} onChange={setFrom} />
+			<Field label={t("To")} value={to} onChange={setTo} />
+
+			<Button
+				variant="secondary"
+				size="sm"
+				disabled={backwards}
+				onClick={() =>
+					onShow({
+						from: new Date(from).toISOString(),
+						to: new Date(to).toISOString(),
+					})
+				}
+			>
+				{t("Show")}
+			</Button>
+		</div>
+	);
+}
+
+function Field({
+	label,
+	value,
+	onChange,
+}: {
+	label: string;
+	value: string;
+	onChange: (value: string) => void;
+}) {
+	return (
+		<label className="flex flex-col gap-1">
+			<span className="text-fg-muted text-[11px]">{label}</span>
+			<Input
+				type="datetime-local"
+				value={value}
+				onChange={(event) => onChange(event.target.value)}
+				className="h-8 w-auto text-[12px]"
+			/>
+		</label>
+	);
+}
+
+/** What a datetime-local field wants, which is local time and no zone. */
+function typed(when: Date): string {
+	const pad = (value: number) => String(value).padStart(2, "0");
+
+	return (
+		`${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}` +
+		`T${pad(when.getHours())}:${pad(when.getMinutes())}`
+	);
+}
+
+/**
+ * What the pointer is over.
+ *
+ * The chart was a shape and nothing else: a line with no scale a person could
+ * read off it, which is most of why it was described as not doing anything. The
+ * numbers are the answer, and every one of them is a figure this page already
+ * shows for the present moment — the same vocabulary, at a different time.
+ *
+ * The peaks are said beside the means rather than instead of them, because on a
+ * coarse span they are the two halves of the answer: what the hour cost, and
+ * how close the worst minute of it came.
+ */
+function Reading({ point, step, leaving }: { point: Point; step: number; leaving: boolean }) {
+	return (
+		<div
+			className={cn(
+				"absolute inset-x-3 inset-y-0 flex flex-nowrap items-center gap-x-3 sm:inset-x-4",
+				leaving ? "animate-depart" : "animate-arrive",
+			)}
+		>
+			<span className="readout shrink-0 text-fg text-[11px] tabular-nums">
+				{moment(point.at, step)}
+			</span>
+
+			<Was label={t("out")} value={rate(point.out)} peak={rate(point.outPeak)} />
+			<Was label={t("in")} value={rate(point.in)} peak={rate(point.inPeak)} />
+			<Was label={t("rooms")} value={count(point.rooms)} />
+			<Was label={t("people")} value={count(point.clients)} />
+			<Was label={t("asked for again")} value={`${point.nack.toFixed(1)}/s`} />
+		</div>
+	);
+}
+
+function Was({ label, value, peak }: { label: string; value: string; peak?: string }) {
+	return (
+		<span className="flex min-w-0 shrink items-baseline gap-1 truncate text-[11px]">
+			<span className="text-fg-muted">{label}</span>
+			<span className="text-fg tabular-nums">{value}</span>
+			{/* The peak only where it says something the mean does not. */}
+			{peak && peak !== value && (
+				<span className="text-fg-muted/70 tabular-nums">
+					{t("peak")} {peak}
+				</span>
+			)}
+		</span>
 	);
 }
 

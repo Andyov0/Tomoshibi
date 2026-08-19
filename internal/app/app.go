@@ -79,9 +79,17 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 		a.control = media.Manage(conf.Key, conf.Secret)
 	}
 
-	// Guarded on the store as well as the setting: a relay keeps none, and a
-	// sweeper with nothing to sweep would dereference it on its first tick.
-	if conf.Meet.Rooms.Remember > 0 && st != nil {
+	// Guarded on the store alone: a relay keeps none, and a sweeper with nothing
+	// to sweep would dereference it on its first tick.
+	//
+	// It used to be guarded on the room retention as well, from when ageing out
+	// names was the only thing this timer did. That quietly turned off the
+	// sessions, the arrivals and the trend on any deployment configured to keep
+	// its room names for ever — which is an offered setting, says nothing about
+	// any of those three, and left the finest resolution of the trend writing
+	// eight and a half thousand buckets a day with nothing ever taking one
+	// away.
+	if st != nil {
 		go a.forgetting()
 	}
 
@@ -166,10 +174,28 @@ func (a *App) sweep() {
 	} else if gone > 0 {
 		slog.Info("swept old arrivals", "gone", gone)
 	}
+
+	if gone, err := a.store.SweepTrend(now); err != nil {
+		slog.Error("failed to sweep the trend", "error", err)
+	} else if gone > 0 {
+		slog.Info("swept trend buckets past their resolution's retention", "gone", gone)
+	}
 }
 
 // forget clears one sweep's worth, and keeps going while there is more.
+//
+// A retention of zero keeps every name for ever, and is an offered setting. The
+// guard is here rather than at the caller because the arithmetic below turns
+// that setting into its exact opposite without saying a word: a cutoff of this
+// instant is a cutoff every name ever joined falls before, so the sweep meant to
+// respect "keep them for ever" would take all of them on its first pass. It was
+// safe only for as long as the timer itself was switched off when the retention
+// was zero, and the timer now has three other records to sweep.
 func (a *App) forget() {
+	if a.conf.Meet.Rooms.Remember <= 0 {
+		return
+	}
+
 	since := time.Now().Add(-a.conf.Meet.Rooms.Remember)
 	total := 0
 

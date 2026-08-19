@@ -70,6 +70,49 @@ export function day(iso: string): string {
 }
 
 /**
+ * When a bucket was, said at the precision its width deserves.
+ *
+ * A six-hour bucket labelled to the second claims an exactness it does not
+ * have, and a ten-second bucket labelled only by its date cannot be told from
+ * the one beside it. The step is the only thing that knows which of those this
+ * is, so it is asked rather than guessed from the value.
+ */
+export function moment(iso: string, step: number): string {
+	if (step >= 86_400) return day(iso);
+	if (step >= 3_600) return `${day(iso)} ${clock(iso).slice(0, 5)}`;
+	if (step >= 60) return clock(iso).slice(0, 5);
+
+	return clock(iso);
+}
+
+/**
+ * A count that may be an average of counts.
+ *
+ * Rooms and people are whole things, but the mean of them over a bucket is not,
+ * and rounding two and a half rooms to two says the server was quieter than it
+ * was. The decimal appears only when there is one, so the ordinary case still
+ * reads as a number of rooms.
+ */
+export function count(value: number): string {
+	return value % 1 === 0 ? String(value) : value.toFixed(1);
+}
+
+/**
+ * How wide a bucket is, in the shortest form that is still unambiguous.
+ *
+ * Not translated, and not an oversight: these are unit symbols rather than
+ * words, and they are the same symbols in all four languages this interface is
+ * written in.
+ */
+export function width(seconds: number): string {
+	if (seconds >= 86_400) return `${Math.round(seconds / 86_400)}d`;
+	if (seconds >= 3_600) return `${Math.round(seconds / 3_600)}h`;
+	if (seconds >= 60) return `${Math.round(seconds / 60)}m`;
+
+	return `${Math.round(seconds)}s`;
+}
+
+/**
  * What this deployment's link is thought to carry.
  *
  * Used only to draw how full the pipe is. The figure is not measured and cannot

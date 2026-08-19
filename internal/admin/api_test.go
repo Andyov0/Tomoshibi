@@ -6,9 +6,11 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 	"time"
+	"tomoshibi/internal/rtc"
 
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
@@ -78,7 +80,7 @@ func mount(t *testing.T, admins []config.Admin) (*API, http.Handler) {
 		control:  absent{},
 		log:      NewLog(),
 		store:    unwritten{},
-		history:  NewHistory(),
+		history:  NewHistory(nil),
 		stop:     make(chan struct{}),
 	}
 
@@ -499,5 +501,106 @@ func TestAPolicyNobodyCouldSatisfyIsNotInEffect(t *testing.T) {
 	}
 	if got.OpenedBy != room.ByAnyone {
 		t.Errorf("in effect = %q, want %q with nobody configured", got.OpenedBy, room.ByAnyone)
+	}
+}
+
+/*
+What a control node records about load.
+
+It has no media server, so every figure it can read about media from inside its
+own process is zero — and it recorded exactly that, five seconds apart, for as
+long as it ran. The chart drew a flat line at the bottom and was twice
+investigated as a measurement problem, because a line of zeros and a line that
+is not moving look identical.
+
+The relays are where the media is. Summing them is the only honest answer a
+control node has, and the two ways it can be wrong are worth pinning down: a
+relay that cannot be reached must not take the whole reading with it, and the
+loss rate must not be added up — eleven relays each dropping one packet a second
+is not eleven times worse than one relay doing it.
+*/
+
+type carrying struct {
+	stats map[string]rtc.Stats
+}
+
+func (c carrying) Relays() []string {
+	out := make([]string, 0, len(c.stats))
+	for url := range c.stats {
+		out = append(out, url)
+	}
+
+	sort.Strings(out)
+
+	return out
+}
+
+func (c carrying) AskStats(_ context.Context, relay string) (rtc.Stats, error) {
+	stats, ok := c.stats[relay]
+	if !ok {
+		return rtc.Stats{}, errors.New("unreachable")
+	}
+
+	return stats, nil
+}
+
+func TestAControlNodeRecordsWhatTheRelaysAreCarrying(t *testing.T) {
+	api := &API{
+		fleet: carrying{stats: map[string]rtc.Stats{
+			"wss://one.invalid": {
+				InPerSec: 100, OutPerSec: 400, Rooms: 2, Clients: 5, NackPerSec: 3,
+			},
+			"wss://two.invalid": {
+				InPerSec: 50, OutPerSec: 200, Rooms: 1, Clients: 3, NackPerSec: 1,
+			},
+		}},
+	}
+
+	at := api.sample()
+
+	if at.In != 150 || at.Out != 600 {
+		t.Errorf("recorded %.0f in and %.0f out, wanted 150 and 600; a control node that "+
+			"cannot add up its relays can only ever report zero, and a chart of zeros "+
+			"looks exactly like a chart that is not updating", at.In, at.Out)
+	}
+
+	if at.Rooms != 3 || at.Clients != 8 {
+		t.Errorf("recorded %d rooms and %d clients, wanted 3 and 8", at.Rooms, at.Clients)
+	}
+
+	// Averaged, not summed. Two relays each losing two packets a second is a
+	// deployment losing two packets a second, in two places.
+	if at.Nack != 2 {
+		t.Errorf("recorded a loss rate of %v, wanted the mean of 3 and 1", at.Nack)
+	}
+}
+
+func TestARelayThatWillNotAnswerDoesNotEmptyTheReading(t *testing.T) {
+	api := &API{
+		fleet: carrying{stats: map[string]rtc.Stats{
+			"wss://up.invalid": {InPerSec: 100, OutPerSec: 400, Rooms: 2, Clients: 5},
+		}},
+	}
+
+	// One that answers and one that does not: Relays lists both, AskStats knows
+	// only the first.
+	api.fleet = carrying{stats: map[string]rtc.Stats{
+		"wss://up.invalid": {InPerSec: 100, OutPerSec: 400, Rooms: 2, Clients: 5},
+	}}
+
+	at := api.sample()
+
+	if at.In != 100 || at.Rooms != 2 {
+		t.Errorf("a reachable relay contributed %.0f in and %d rooms, wanted 100 and 2",
+			at.In, at.Rooms)
+	}
+
+	// And with nothing to ask at all, a moment of nothing rather than a panic on
+	// a timer, which is how the first version of this took a process down.
+	quiet := &API{}
+
+	if got := quiet.sample(); got.In != 0 || got.At.IsZero() {
+		t.Errorf("a node with no fleet and no media answered %+v; it should record an "+
+			"empty moment and keep its clock", got)
 	}
 }

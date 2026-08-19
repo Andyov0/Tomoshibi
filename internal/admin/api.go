@@ -112,11 +112,19 @@ type API struct {
 // something that pretends, so that a page which needs one says it cannot find
 // out — see [API.attached].
 func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte) *API {
+	// A nil *store.Store put into an interface is an interface that is not nil,
+	// so the trend is only handed one where there is one to hand over — the
+	// same trap the media guard below is written against, and the same cure.
+	var kept Loads
+	if st != nil {
+		kept = st
+	}
+
 	api := &API{
 		conf:    conf,
 		store:   st,
 		log:     NewLog(),
-		history: NewHistory(),
+		history: NewHistory(kept),
 		stop:    make(chan struct{}),
 	}
 
@@ -170,6 +178,14 @@ func (a *API) Close() {
 }
 
 // sample reads one moment for the history.
+//
+// From the media server in this process where there is one, and from every
+// relay where there is not. The second half is the whole of what makes this
+// chart worth drawing on the deployment that actually has it: a control node
+// carries no media at all, so it was recording a moment of nothing, five
+// seconds apart, for ever. The line was flat because every reading in it was
+// zero — not because the measurement was wrong, which is what it looked like
+// and what was investigated twice.
 func (a *API) sample() Sample {
 	// local and not attached: every figure below is read from the media server
 	// in this process, and a control node has none however many relays it can
@@ -177,18 +193,70 @@ func (a *API) sample() Sample {
 	// after a control node started, dereferenced a nil media server, and took
 	// the process down — on a timer, so the crash arrived detached from
 	// anything anybody had just done.
-	if !a.local() {
-		return Sample{At: time.Now().UTC()}
+	if a.local() {
+		stats := a.media.Stats()
+		in, out, _ := a.media.Throughput()
+
+		return Sample{
+			At: time.Now().UTC(), In: in, Out: out,
+			Rooms: stats.GetNumRooms(), Clients: stats.GetNumClients(),
+			Nack: stats.GetNackPerSec(),
+		}
 	}
 
-	stats := a.media.Stats()
-	in, out, _ := a.media.Throughput()
+	return a.fleetSample()
+}
 
-	return Sample{
-		At: time.Now().UTC(), In: in, Out: out,
-		Rooms: stats.GetNumRooms(), Clients: stats.GetNumClients(),
-		Nack: stats.GetNackPerSec(),
+// fleetSample adds up what every relay is carrying.
+//
+// One round of requests every five seconds, to machines this node already dials
+// on a timer for the page beside this one. That is the cost, and it is worth
+// saying what it buys: without it the only figure a control node can honestly
+// report about media is zero, and a deployment whose entire purpose is to hold
+// meetings somewhere else would have a load chart that is a straight line at the
+// bottom for ever.
+//
+// A relay that does not answer contributes nothing rather than breaking the
+// sample. That understates the moment, which is the right way to be wrong here —
+// a gap in a trend reads as quiet, and quiet is closer to the truth than a hole.
+func (a *API) fleetSample() Sample {
+	at := Sample{At: time.Now().UTC()}
+
+	if a.fleet == nil {
+		return at
 	}
+
+	// Short of the sampling interval, so a slow relay delays the reading rather
+	// than colliding with the next one.
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	reading := readFleet(ctx, a.fleet, nil)
+
+	var nack float64
+	var answered int
+
+	for _, node := range reading.Nodes {
+		if !node.Reachable {
+			continue
+		}
+
+		answered++
+		at.In += node.Stats.InPerSec
+		at.Out += node.Stats.OutPerSec
+		at.Rooms += node.Stats.Rooms
+		at.Clients += node.Stats.Clients
+		nack += float64(node.Stats.NackPerSec)
+	}
+
+	// Averaged rather than summed, because it is a rate of loss and not an
+	// amount of anything: eleven relays each losing one packet a second is not
+	// eleven times worse than one relay doing it.
+	if answered > 0 {
+		at.Nack = float32(nack / float64(answered))
+	}
+
+	return at
 }
 
 // UseCluster points the management pages at relays elsewhere.
@@ -489,11 +557,39 @@ func (a *API) gate(
 	}
 }
 
-// now is the one screen that answers "how is it going".
-func (a *API) trend(_ Session, w http.ResponseWriter, _ *http.Request) {
-	respond(w, a.history.Since())
+// trend is the load over a stretch of time.
+//
+// The range comes back with the points, and so does the width of a bucket. A
+// bare list of points cannot be read: the same array describes an hour or half
+// a year depending on figures the caller would otherwise have to assume, and
+// what it asked for is not what it got whenever a resolution has aged out from
+// under the question. It also cannot say how much of a range the server
+// actually had — a deployment three days old asked for six months answers
+// honestly only if it says where its points begin.
+func (a *API) trend(_ Session, w http.ResponseWriter, r *http.Request) {
+	span, from, to, err := askedFor(r.URL.Query(), time.Now().UTC())
+	if err != nil {
+		// One code for a span nobody keeps and for a range that will not parse,
+		// because the page says the same thing about both: that is not a stretch
+		// of time this server can answer for. And the code rather than the
+		// sentence, because the sentence is said in one of four languages and
+		// this server does not know which.
+		refuse(w, http.StatusBadRequest, "no_such_span")
+		return
+	}
+
+	points, step := a.history.Over(from, to)
+
+	respond(w, map[string]any{
+		"span":   span,
+		"step":   step.Seconds(),
+		"from":   from,
+		"to":     to,
+		"points": points,
+	})
 }
 
+// now is the one screen that answers "how is it going".
 func (a *API) now(_ Session, w http.ResponseWriter, r *http.Request) {
 	// A control node holds no media and reads its relays instead. The shape
 	// differs because the thing being described differs: one process has a node

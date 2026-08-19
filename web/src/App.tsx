@@ -5,7 +5,7 @@ import { connect, create } from "@/live/room";
 import { useT } from "@/hooks/useT";
 import { joinFailed } from "@/live/notices";
 import { Lobby, SignIn } from "@/routes/Lobby";
-import { type Choices, PreJoin } from "@/routes/PreJoin";
+import { type Choices, PreJoin, remembered } from "@/routes/PreJoin";
 import { Room } from "@/routes/Room";
 import { RoomEvent, type Room as LiveRoom } from "livekit-client";
 import type { ReactNode } from "react";
@@ -130,7 +130,28 @@ export function App() {
 				// one press from rejoining, rather than a rejoin nobody asked for:
 				// a refresh should not put somebody back on a live microphone.
 				if (account && initialRoom()) {
+					// Back into the call rather than to the screen in front of it.
+					//
+					// The first attempt landed on the device screen, on the
+					// reasoning that a refresh should not put somebody back on a
+					// live microphone. That is the wrong way round: they were
+					// already on it a second ago, and the surprising thing is not
+					// the microphone carrying on — it is a call that stops because
+					// a page was reloaded. Every other application on the machine
+					// survives a refresh, and this one made you press a button to
+					// get back into a conversation you never left.
+					//
+					// With the devices exactly as they were, so nothing is turned
+					// on that was off.
 					setFront({ at: "ready", me: account, relay: lastRelay() });
+
+					void onJoin({
+						name: account.name,
+						passphrase: "",
+						relay: lastRelay(),
+						...remembered(),
+					});
+
 					return;
 				}
 

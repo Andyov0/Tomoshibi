@@ -575,7 +575,12 @@ function Unavailable({ reason }: { reason: string }) {
 }
 
 /** What was chosen last time, or the defaults on a first visit. */
-function remembered(): { camera: boolean; microphone: boolean } {
+/**
+ * The devices as they were left, which is also what a reload should come back
+ * with. Exported for that: somebody rejoining after a refresh has already made
+ * these two decisions and should not be asked again.
+ */
+export function remembered(): { camera: boolean; microphone: boolean } {
 	const fallback = { camera: false, microphone: true };
 
 	try {

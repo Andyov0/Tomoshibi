@@ -1,7 +1,16 @@
 import { Flagged } from "@/components/room/Flag";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ArrowRight, ChevronLeft, LogIn } from "lucide-react";
+import {
+	ArrowRight,
+	ChevronLeft,
+	Clock,
+	DoorClosed,
+	LogIn,
+	MicOff,
+	Server,
+	UserMinus,
+} from "lucide-react";
 import { useCallback, useState } from "react";
 import { type Participant, type Track, api } from "./api";
 import { actionFailed } from "@/live/notices";
@@ -180,7 +189,22 @@ function People({
 	const ask = useCallback(() => api.participants(room), [room]);
 	const { value, error } = usePoll(ask, { onSignedOut });
 
+	// Asked once rather than done at once. Nothing else on this panel ends a call
+	// for everybody in it, and it used to be one press away from a list somebody
+	// is scrolling.
+	const [ending, setEnding] = useState(false);
+
 	const people = value ?? [];
+
+	// Read off whoever is in the room rather than passed down. The list beside
+	// this one holds the same two facts and would have to thread them through
+	// two components to say them here, and they are the same answer either way:
+	// everybody in one room is on one machine, because a meeting lives on one.
+	const held = people.find((one) => one.holding || one.relay)?.holding ?? people[0]?.relay;
+	const started = people.reduce<string | undefined>(
+		(first, one) => (!first || one.joinedAt < first ? one.joinedAt : first),
+		undefined,
+	);
 
 	return (
 		<Card
@@ -198,13 +222,78 @@ function People({
 		>
 			{error && <Failed>{error}</Failed>}
 
-			{canModerate && (
-				<div className="flex justify-end border-border border-b px-4 py-2">
-					<Button variant="danger" size="sm" disabled={acting} onClick={onClose}>
-						Close this room
-					</Button>
-				</div>
-			)}
+			{/*
+			 * What this room is, before what can be done to it.
+			 *
+			 * The panel used to open with a red button and a list of names. The
+			 * button was the loudest thing on the page and the one nobody wants to
+			 * press by accident, and the two facts an operator actually came for —
+			 * which machine is carrying this and how long it has been going — were
+			 * nowhere at all: they had to be read off a row in the list beside,
+			 * one participant at a time.
+			 */}
+			<div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-border border-b px-4 py-2.5 text-[11.5px] text-fg-muted">
+				{held && (
+					<span className="flex items-center gap-1.5">
+						<Server className="size-3" />
+						<Flagged text={held} />
+					</span>
+				)}
+
+				{started && (
+					<span className="flex items-center gap-1.5">
+						<Clock className="size-3" />
+						{since(started)}
+					</span>
+				)}
+
+				{canModerate && (
+					<span className="ml-auto">
+						{ending ? (
+							<span className="flex items-center gap-2">
+								<span className="text-fg">Everybody is disconnected.</span>
+
+								<button
+									type="button"
+									disabled={acting}
+									onClick={onClose}
+									className={cn(
+										"rounded-md bg-danger px-2 py-1 text-[11px] text-danger-fg",
+										"transition-opacity hover:opacity-90 disabled:opacity-40",
+									)}
+								>
+									Close it
+								</button>
+
+								<button
+									type="button"
+									onClick={() => setEnding(false)}
+									className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-surface-2"
+								>
+									Cancel
+								</button>
+							</span>
+						) : (
+							/*
+							 * Quiet until it is asked for. Ending a call for eleven
+							 * people is not undoable and had no step in front of it,
+							 * sitting where a press meant for the list would land.
+							 */
+							<button
+								type="button"
+								onClick={() => setEnding(true)}
+								className={cn(
+									"flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px]",
+									"text-fg-muted transition-colors hover:bg-danger/10 hover:text-fg",
+								)}
+							>
+								<DoorClosed className="size-3" />
+								Close this room
+							</button>
+						)}
+					</span>
+				)}
+			</div>
 
 			{people.length === 0 ? (
 				<Empty>Nobody is here.</Empty>
@@ -264,9 +353,23 @@ function Person({
 				</span>
 
 				{canModerate && (
-					<Button variant="ghost" size="sm" disabled={acting} onClick={onRemove}>
-						Remove
-					</Button>
+					// An icon with a name on it, matching every other row on these
+					// pages. A word floating at the end of a line reads as part of
+					// the line rather than as something to press, which is how a
+					// list of people came to look like it could not be acted on.
+					<button
+						type="button"
+						disabled={acting}
+						onClick={onRemove}
+						aria-label="Remove from the call"
+						title="Remove from the call"
+						className={cn(
+							"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
+							"hover:bg-surface-2 hover:text-danger disabled:opacity-40",
+						)}
+					>
+						<UserMinus className="size-3.5" />
+					</button>
 				)}
 			</div>
 
@@ -368,15 +471,22 @@ function TrackRow({
 				{track.muted && <span className="text-fg-muted text-[11px]">muted</span>}
 
 				{canModerate && !track.muted && (
-					<Button
-						variant="ghost"
-						size="sm"
+					// The same shape as every other action on these pages: an icon
+					// that says what it does when pointed at. A bare word at the end
+					// of a line of figures reads as another figure.
+					<button
+						type="button"
 						disabled={acting}
 						onClick={onMute}
-						className="ml-auto h-6 shrink-0 px-2 text-[11px]"
+						aria-label="Mute this"
+						title="Mute this"
+						className={cn(
+							"ml-auto shrink-0 rounded p-1 text-fg-muted transition-colors",
+							"hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+						)}
 					>
-						Mute
-					</Button>
+						<MicOff className="size-3.5" />
+					</button>
 				)}
 			</div>
 

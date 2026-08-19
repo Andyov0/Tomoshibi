@@ -53,7 +53,7 @@ type Enrolment struct {
 	Secret string
 
 	// Domain is the zone relays are named under: a prefix of `tokyo` under
-	// `relay.shota.sg` makes `tokyo.relay.shota.sg`.
+	// `relay.example.com` makes `tokyo.relay.example.com`.
 	Domain string
 
 	// PublicURL is where a new machine fetches from.

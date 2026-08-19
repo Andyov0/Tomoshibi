@@ -41,7 +41,10 @@ export function SoundPanel({ room, onClose }: { room: Room; onClose: () => void 
 				// while narrow, a card once there is room beside the pictures.
 				// They cover the same corner and only one is ever open.
 				"inset-x-0 bottom-0 h-[55%] rounded-t-2xl",
-				"pb-[env(safe-area-inset-bottom)]",
+				// Room for the controls, which float over this sheet's bottom
+				// edge rather than beside it. Without this, the last slider
+				// sits underneath them.
+				"pb-[calc(env(safe-area-inset-bottom)+3.5rem)] sm:pb-0",
 				"sm:inset-x-auto sm:right-3 sm:bottom-3 sm:h-auto sm:w-72 sm:rounded-xl sm:pb-0",
 				"sm:max-h-[min(26rem,calc(100%-5.5rem))]",
 			)}

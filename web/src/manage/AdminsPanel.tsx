@@ -77,7 +77,7 @@ export function AdminsPanel({
 						<button
 							type="button"
 							onClick={() => setAdding(true)}
-							className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+							className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi"
 						>
 							<Plus className="size-3.5" />
 							{t("Add somebody")}
@@ -163,7 +163,7 @@ function Row({
 							}}
 							placeholder={t("Unnamed")}
 							maxLength={64}
-							className="w-32 min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-fg text-sm outline-none hover:border-border focus:border-border focus:bg-surface-2"
+							className="w-32 min-w-0 rounded border border-transparent bg-transparent px-1 py-0.5 text-fg text-sm outline-none hover:border-border focus:border-border focus:bg-surface-hi"
 						/>
 					) : (
 						<span className="truncate text-fg text-sm">{admin.name || t("Unnamed")}</span>
@@ -189,7 +189,7 @@ function Row({
 					disabled={!canAppoint || busy || onlyOwner}
 					onChange={(event) => onChange(roleTo(event.target.value))}
 					className={cn(
-						"rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px] text-fg",
+						"rounded-md border border-border bg-surface-hi px-2 py-1 text-[12px] text-fg",
 						"outline-none transition-colors hover:border-fg/20",
 						"focus-visible:ring-2 focus-visible:ring-fg/40 disabled:opacity-40",
 					)}
@@ -207,7 +207,7 @@ function Row({
 						title={onlyOwner ? t("The last administrator who can change things cannot be removed") : undefined}
 						className={cn(
 							"rounded-md border border-border p-1.5",
-							onlyOwner ? "opacity-40" : "hover:bg-surface-2 hover:text-danger",
+							onlyOwner ? "opacity-40" : "hover:bg-surface-hi hover:text-danger",
 						)}
 					>
 						{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
@@ -258,7 +258,7 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 					placeholder={t("Name")}
 					aria-label={t("Name")}
 					maxLength={64}
-					className="min-w-32 flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					className="min-w-32 flex-1 rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 				/>
 
 				<input
@@ -268,7 +268,7 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 					aria-label={t("Signature")}
 					maxLength={10}
 					required
-					className="readout min-w-40 flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					className="readout min-w-40 flex-1 rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 				/>
 			</div>
 
@@ -277,7 +277,7 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 				<select
 					value={role}
 					onChange={(event) => setRole(event.target.value)}
-					className="rounded-md border border-border bg-surface-2 px-2 py-1 text-[12px] text-fg outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					className="rounded-md border border-border bg-surface-hi px-2 py-1 text-[12px] text-fg outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 				>
 					<option value="observe">{t("Can watch")}</option>
 					<option value="moderate">{t("Can change things")}</option>
@@ -288,7 +288,7 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 				<button
 					type="submit"
 					disabled={saving || trip.trim().length === 0}
-					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi disabled:opacity-40"
 				>
 					{saving ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
 					{t("Add")}
@@ -297,7 +297,7 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 				<button
 					type="button"
 					onClick={onCancel}
-					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi"
 				>
 					<X className="size-3.5" />
 					{t("Cancel")}
@@ -362,7 +362,7 @@ function OwnPassphrase() {
 						placeholder={t("Current passphrase")}
 						aria-label={t("Current passphrase")}
 						autoComplete="current-password"
-						className="min-w-40 flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="min-w-40 flex-1 rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 
 					<input
@@ -372,7 +372,7 @@ function OwnPassphrase() {
 						placeholder={t("New passphrase")}
 						aria-label={t("New passphrase")}
 						autoComplete="new-password"
-						className="min-w-40 flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="min-w-40 flex-1 rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</div>
 
@@ -380,7 +380,7 @@ function OwnPassphrase() {
 					<button
 						type="submit"
 						disabled={saving || !current || next.length < 8}
-						className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+						className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi disabled:opacity-40"
 					>
 						{saving && <Loader2 className="size-3.5 animate-spin" />}
 						{t("Change it")}

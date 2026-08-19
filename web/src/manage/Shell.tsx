@@ -98,13 +98,19 @@ export function Shell({
 			<main className="min-w-0 flex-1 overflow-y-auto p-3 pb-20 sm:p-5 lg:pb-5">{children}</main>
 
 			{/* The rail, moved to the one edge a thumb reaches without the hand
-			    changing grip. Five is what a row of tabs holds before the labels
-			    start abbreviating. */}
+			    changing grip.
+
+			    One column per panel, counted from PANELS rather than written
+			    down. It was written down once, as five, and then two panels were
+			    added: the row wrapped, the second line held two tabs against the
+			    left edge, and the bottom of every panel disappeared underneath a
+			    bar the page still reserved one row of space for. */}
 			<nav
 				className={cn(
-					"fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-border border-t bg-surface lg:hidden",
+					"fixed inset-x-0 bottom-0 z-20 grid border-border border-t bg-surface lg:hidden",
 					"pb-[env(safe-area-inset-bottom)]",
 				)}
+				style={{ gridTemplateColumns: `repeat(${PANELS.length}, minmax(0, 1fr))` }}
 			>
 				{PANELS.map((one) => (
 					<Tab key={one} panel={one} current={panel} onPanel={onPanel} />

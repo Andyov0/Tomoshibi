@@ -167,7 +167,7 @@ function Page({ children }: { children: ReactNode }) {
 						href="/account"
 						className={cn(
 							"flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5",
-							"text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+							"text-[12px] text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg",
 						)}
 					>
 						<UserRound className="size-3.5" />
@@ -489,7 +489,7 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 								onClick={onBack}
 								className={cn(
 									"flex w-fit items-center gap-1.5 rounded-md px-1.5 py-1 -ml-1.5",
-									"text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+									"text-[12px] text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg",
 								)}
 							>
 								<ArrowLeft className="size-3.5" />

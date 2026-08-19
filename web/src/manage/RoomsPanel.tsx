@@ -312,7 +312,7 @@ function People({
 								<button
 									type="button"
 									onClick={() => setEnding(false)}
-									className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-surface-2"
+									className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-surface-hi"
 								>
 									Cancel
 								</button>
@@ -419,7 +419,7 @@ function Person({
 						title="Remove from the call"
 						className={cn(
 							"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
-							"hover:bg-surface-2 hover:text-danger disabled:opacity-40",
+							"hover:bg-surface-hi hover:text-danger disabled:opacity-40",
 						)}
 					>
 						<UserMinus className="size-3.5" />
@@ -536,7 +536,7 @@ function TrackRow({
 						title="Mute this"
 						className={cn(
 							"ml-auto shrink-0 rounded p-1 text-fg-muted transition-colors",
-							"hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+							"hover:bg-surface-hi hover:text-fg disabled:opacity-40",
 						)}
 					>
 						<MicOff className="size-3.5" />
@@ -603,7 +603,7 @@ function Moving({
 				onClick={() => setOpen((was) => !was)}
 				className={cn(
 					"flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px]",
-					"text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+					"text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg",
 				)}
 			>
 				<Move className="size-3" />
@@ -622,7 +622,7 @@ function Moving({
 					<select
 						value={wanted}
 						onChange={(event) => setWanted(event.target.value)}
-						className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] outline-none"
+						className="rounded-md border border-border bg-surface-hi px-2 py-1.5 text-[12px] outline-none"
 					>
 						<option value="">Choose a machine</option>
 						{relays.map((relay) => (
@@ -641,7 +641,7 @@ function Moving({
 						}}
 						className={cn(
 							"rounded-md border border-border px-2 py-1.5 text-left text-[11.5px]",
-							"transition-colors hover:bg-surface-2 disabled:opacity-40",
+							"transition-colors hover:bg-surface-hi disabled:opacity-40",
 						)}
 					>
 						Hold the next call here
@@ -698,7 +698,7 @@ function Sending({
 				title="Send in through another relay"
 				className={cn(
 					"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
-					"hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+					"hover:bg-surface-hi hover:text-fg disabled:opacity-40",
 				)}
 			>
 				<Move className="size-3.5" />
@@ -725,7 +725,7 @@ function Sending({
 								onPlace(relay.name);
 								setOpen(false);
 							}}
-							className="rounded-md px-2 py-1 text-left text-[12px] transition-colors hover:bg-surface-2"
+							className="rounded-md px-2 py-1 text-left text-[12px] transition-colors hover:bg-surface-hi"
 						>
 							<Flagged text={relay.label || relay.name} />
 						</button>

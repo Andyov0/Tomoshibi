@@ -208,7 +208,7 @@ function Corner({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
 				href="/account"
 				className={cn(
 					"flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5",
-					"text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+					"text-[12px] text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg",
 				)}
 			>
 				{me.avatar ? (
@@ -227,7 +227,7 @@ function Corner({ me, onSignedOut }: { me: Me; onSignedOut: () => void }) {
 				}}
 				aria-label={t("Sign out")}
 				title={t("Sign out")}
-				className="rounded-md border border-border p-1.5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg"
+				className="rounded-md border border-border p-1.5 text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg"
 			>
 				<LogOut className="size-3.5" />
 			</button>
@@ -476,7 +476,7 @@ export function Lobby({
 							aria-label={t("Name for the new room")}
 							maxLength={64}
 							className={cn(
-								"h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 text-sm text-fg",
+								"h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-hi px-3 text-sm text-fg",
 								"outline-none transition-[border-color,box-shadow] placeholder:text-fg-muted",
 								"focus-visible:border-fg/40 focus-visible:ring-2 focus-visible:ring-fg/25",
 							)}
@@ -529,7 +529,7 @@ export function Lobby({
 							aria-label={t("Room name")}
 							maxLength={64}
 							className={cn(
-								"h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-2 px-3 text-sm text-fg",
+								"h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-hi px-3 text-sm text-fg",
 								"outline-none transition-[border-color,box-shadow] placeholder:text-fg-muted",
 								"focus-visible:border-fg/40 focus-visible:ring-2 focus-visible:ring-fg/25",
 							)}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -396,6 +397,30 @@ func (a *API) dropRelay(session Session, w http.ResponseWriter, r *http.Request)
 		})
 		refuse(w, http.StatusNotFound, "no_such_relay")
 		return
+	}
+
+	// And the name that was pointed at it, which nothing was removing.
+	//
+	// Unpoint was written for this and had no callers, so every relay ever
+	// enrolled and later removed left an A record behind. Two things follow
+	// from one: the zone accumulates names for machines that are gone, and —
+	// the one that matters — a name in that zone goes on resolving to an
+	// address the provider is free to hand to somebody else. A record this
+	// deployment created, pointing at a stranger's machine, under a host that a
+	// client somewhere may still have in a saved link.
+	//
+	// After the removal rather than before, and not fatal to it. Somebody
+	// pressing remove wants the relay to stop being used, and a zone that will
+	// not answer must not stand in the way of that.
+	if a.enrolment != nil && a.enrolment.Naming != nil {
+		host := a.enrolment.hostFor(name)
+
+		if err := a.enrolment.Naming.Unpoint(host); err != nil {
+			slog.Error("failed to remove the DNS record for a relay that was removed",
+				"host", host, "error", err)
+		} else {
+			slog.Info("unpointed a removed relay's name", "host", host)
+		}
 	}
 
 	a.log.Record(Entry{Action: "remove relay", Trip: session.Trip, Target: name})

@@ -195,7 +195,7 @@ export function RelaysPanel({
 										actionFailed(t("This deployment cannot bring up relays from a script."));
 									}
 								}}
-								className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+								className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi"
 							>
 								<Terminal className="size-3.5" />
 								{t("Add a machine")}
@@ -204,7 +204,7 @@ export function RelaysPanel({
 							<button
 								type="button"
 								onClick={() => setAdding(true)}
-								className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+								className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi"
 							>
 								<Plus className="size-3.5" />
 								{t("Add by address")}
@@ -408,7 +408,7 @@ function RelayRow({
 							// default on a pointer event is too late, because by then
 							// the browser has already decided the gesture is a scroll.
 							"-ml-1.5 shrink-0 touch-none rounded-md p-1 text-fg-muted transition-colors",
-							"hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+							"hover:bg-surface-hi hover:text-fg disabled:opacity-40",
 							lifted ? "cursor-grabbing text-fg" : "cursor-grab",
 						)}
 					>
@@ -425,7 +425,7 @@ function RelayRow({
 					disabled={busy}
 					aria-label={t("Measure again")}
 					title={t("Measure again")}
-					className="shrink-0 rounded-md border border-border p-1.5 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40"
+					className="shrink-0 rounded-md border border-border p-1.5 text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg disabled:opacity-40"
 				>
 					<RotateCw className={cn("size-3.5", busy && "animate-spin")} />
 				</button>
@@ -495,7 +495,7 @@ function RelayRow({
 								disabled={busy || first}
 								onClick={() => onMove(-1)}
 								aria-label={t("Move up")}
-								className="rounded-l-md border border-border p-1.5 hover:bg-surface-2 disabled:opacity-30"
+								className="rounded-l-md border border-border p-1.5 hover:bg-surface-hi disabled:opacity-30"
 							>
 								<ChevronUp className="size-3.5" />
 							</button>
@@ -504,7 +504,7 @@ function RelayRow({
 								disabled={busy || last}
 								onClick={() => onMove(1)}
 								aria-label={t("Move down")}
-								className="-ml-px rounded-r-md border border-border p-1.5 hover:bg-surface-2 disabled:opacity-30"
+								className="-ml-px rounded-r-md border border-border p-1.5 hover:bg-surface-hi disabled:opacity-30"
 							>
 								<ChevronDown className="size-3.5" />
 							</button>
@@ -514,7 +514,7 @@ function RelayRow({
 							type="button"
 							onClick={onToggle}
 							disabled={busy}
-							className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2 disabled:opacity-50"
+							className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi disabled:opacity-50"
 						>
 							{relay.enabled ? t("Stop sending here") : t("Send calls here")}
 						</button>
@@ -527,8 +527,8 @@ function RelayRow({
 							title={t("Settings")}
 							className={cn(
 								"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
-								"hover:bg-surface-2 hover:text-fg",
-								showing && "bg-surface-2 text-fg",
+								"hover:bg-surface-hi hover:text-fg",
+								showing && "bg-surface-hi text-fg",
 							)}
 						>
 							<ChevronDown
@@ -556,7 +556,7 @@ function RelayRow({
 								<button
 									type="button"
 									onClick={() => setConfirming(false)}
-									className="rounded-md border border-border p-1.5 hover:bg-surface-2"
+									className="rounded-md border border-border p-1.5 hover:bg-surface-hi"
 									aria-label={t("Cancel")}
 								>
 									<X className="size-4" />
@@ -567,7 +567,7 @@ function RelayRow({
 								type="button"
 								onClick={() => setConfirming(true)}
 								disabled={busy}
-								className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-2 hover:text-danger disabled:opacity-50"
+								className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-hi hover:text-danger disabled:opacity-50"
 								aria-label={t("Remove relay")}
 							>
 								<Trash2 className="size-4" />
@@ -686,7 +686,7 @@ function Settings({
 						value={name}
 						onChange={(event) => setName(event.target.value)}
 						maxLength={64}
-						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="readout w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
 
@@ -696,7 +696,7 @@ function Settings({
 						onChange={(event) => setLabel(event.target.value)}
 						placeholder={relay.name}
 						maxLength={64}
-						className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
 			</div>
@@ -707,7 +707,7 @@ function Settings({
 						value={url}
 						onChange={(event) => setUrl(event.target.value)}
 						placeholder="wss://host:port"
-						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="readout w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
 
@@ -716,7 +716,7 @@ function Settings({
 						value={probe}
 						onChange={(event) => setProbe(event.target.value)}
 						placeholder="host:39218"
-						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="readout w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
 
@@ -725,7 +725,7 @@ function Settings({
 						value={turn}
 						onChange={(event) => setTurn(event.target.value)}
 						placeholder="host:39219"
-						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="readout w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
 
@@ -734,7 +734,7 @@ function Settings({
 						value={apart}
 						onChange={(event) => setApart(event.target.value)}
 						placeholder={t("None")}
-						className="readout w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="readout w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
 
@@ -743,7 +743,7 @@ function Settings({
 						value={region}
 						onChange={(event) => setRegion(event.target.value)}
 						maxLength={64}
-						className="w-full rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+						className="w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
 			</div>
@@ -828,7 +828,7 @@ function Settings({
 								.filter(Boolean),
 						})
 					}
-					className="ml-auto rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+					className="ml-auto rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-hi disabled:opacity-40"
 				>
 					{t("Save")}
 				</button>
@@ -932,7 +932,7 @@ function AddRelay({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 				<button
 					type="submit"
 					disabled={saving || !name.trim() || !url.trim()}
-					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2 disabled:opacity-50"
+					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi disabled:opacity-50"
 				>
 					{saving && <Loader2 className="size-4 animate-spin" />}
 					{t("Add relay")}
@@ -941,7 +941,7 @@ function AddRelay({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
 				<button
 					type="button"
 					onClick={onCancel}
-					className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+					className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi"
 				>
 					{t("Cancel")}
 				</button>
@@ -962,7 +962,7 @@ function Command({ command }: { command: string }) {
 
 	return (
 		<div className="relative">
-			<pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-2 p-3 pr-20 text-[11.5px] leading-relaxed">
+			<pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-hi p-3 pr-20 text-[11.5px] leading-relaxed">
 				<code>{command}</code>
 			</pre>
 
@@ -977,7 +977,7 @@ function Command({ command }: { command: string }) {
 						actionFailed(t("Could not copy. Select the text and copy it."));
 					}
 				}}
-				className="absolute top-2 right-2 flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] hover:bg-surface-2"
+				className="absolute top-2 right-2 flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] hover:bg-surface-hi"
 			>
 				{copied ? <Check className="size-3" /> : <Copy className="size-3" />}
 				{copied ? t("Copied") : t("Copy")}
@@ -1017,7 +1017,7 @@ function AddByScript({
 			</p>
 
 			<div className="relative">
-				<pre className="max-h-64 overflow-auto rounded-md border border-border bg-surface-2 p-3 text-[11px] leading-relaxed">
+				<pre className="max-h-64 overflow-auto rounded-md border border-border bg-surface-hi p-3 text-[11px] leading-relaxed">
 					<code>{script}</code>
 				</pre>
 
@@ -1032,7 +1032,7 @@ function AddByScript({
 							actionFailed(t("Could not copy. Select the text and copy it."));
 						}
 					}}
-					className="absolute top-2 right-2 flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] hover:bg-surface-2"
+					className="absolute top-2 right-2 flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[11px] hover:bg-surface-hi"
 				>
 					{copied ? <Check className="size-3" /> : <Copy className="size-3" />}
 					{copied ? t("Copied") : t("Copy")}
@@ -1047,7 +1047,7 @@ function AddByScript({
 				<button
 					type="button"
 					onClick={onDone}
-					className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+					className="rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi"
 				>
 					{t("Done")}
 				</button>

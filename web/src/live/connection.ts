@@ -135,7 +135,7 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 	const previous = useRef<Previous>();
 	// The last numbers a share reported, so a sample that lacks them does not
 	// empty the row.
-	const held = useRef<{ width?: number; height?: number; fps?: number; sending: boolean }>();
+	const held = useRef<{ width?: number; height?: number; fps?: number; sending: boolean; limited?: "cpu" | "bandwidth" | "other" }>();
 
 	// The server's own verdict, kept apart from the numbers because it arrives
 	// on an event rather than on the clock.
@@ -207,6 +207,15 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 						fps: stats.share.fps ?? held.current?.fps,
 						width: stats.share.width ?? held.current?.width,
 						height: stats.share.height ?? held.current?.height,
+						// The one field here that is not a number on a row: it is
+						// the answer to why the numbers are what they are, and it
+						// was the field this carry-forward dropped. A share that
+						// stutters is the complaint somebody can do least about,
+						// and the two causes want opposite answers — an encoder
+						// that cannot keep up wants less asked of it, a path that
+						// cannot carry it wants a nearer machine. On screen they
+						// look identical, which is exactly why this is said.
+						limited: stats.share.limited ?? held.current?.limited,
 					}
 				: undefined;
 

@@ -363,7 +363,6 @@ type Admin struct {
 }
 
 // Allows reports whether this administrator holds a capability.
-// Allows reports whether this administrator holds a capability.
 func (a Admin) Allows(capability string) bool {
 	if capability == Observe {
 		return true

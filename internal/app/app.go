@@ -264,6 +264,21 @@ func (a *App) Handler() http.Handler {
 		// Registered before the endpoints below rather than instead of them, so
 		// that turning this off restores them without the routes having moved.
 		if a.conf.Meet.Silent {
+			// Except this one, which is registered before the return rather
+			// than after it.
+			//
+			// silence() already lets a request carrying credentials through —
+			// that was written for exactly this, and its comment records the
+			// first version having silenced the control node along with
+			// everybody else, so the dashboard reported every relay
+			// unreachable while calls ran on them perfectly. The route then
+			// moved below this return, which recreated the same outage by a
+			// different mechanism: the request passed the silence and found no
+			// handler, fell through to the /twirp/ catch-all, and was offered
+			// to a media server that does not serve it.
+			mux.Handle("GET "+rtc.StatsPath,
+				rtc.StatsHandler(a.media, a.conf.Key, a.conf.Secret, admin.Started))
+
 			return silence(mux)
 		}
 

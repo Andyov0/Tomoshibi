@@ -160,7 +160,7 @@ export function ShareButton({
 										"rounded-md border px-2 py-1 text-[12px] tabular-nums transition-colors",
 										option === rate
 											? "border-tally/50 bg-tally/15 text-fg"
-											: "border-border text-fg-muted hover:bg-surface-2 hover:text-fg",
+											: "border-border text-fg-muted hover:bg-surface-hi hover:text-fg",
 									)}
 								>
 									{option}

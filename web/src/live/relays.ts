@@ -97,6 +97,11 @@ export async function relays(): Promise<RelayList> {
 		return {
 			relays: Array.isArray(body.relays) ? body.relays : [],
 			measure: body.measure === true,
+			// Carried through rather than dropped. The lobby's indicator waits on
+			// this and nothing else, so leaving it out did not make the light say
+			// something wrong — it made the whole light, its three colours and its
+			// polling, never appear at all.
+			fleet: body.fleet,
 		};
 	} catch {
 		// A deployment that does not serve this endpoint is an older one, or a

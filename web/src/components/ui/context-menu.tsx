@@ -27,8 +27,14 @@ export function ContextMenuContent({
 			<Primitive.Content
 				className={cn(
 					"z-50 min-w-52 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg",
-					"data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
-					"data-[state=open]:animate-in data-[state=open]:fade-in-0",
+					// This application's own motion, not a plugin's. The classes
+					// that used to be here — animate-in, fade-in-0 — belong to
+					// tailwindcss-animate, which is not in the manifest and never
+					// has been, so they compiled to nothing and every menu here
+					// cut in and out. arrive and depart are what the rest of the
+					// interface already moves with, and Radix keeps the node
+					// mounted for the closing one.
+					"data-[state=open]:animate-arrive data-[state=closed]:animate-depart",
 					className,
 				)}
 				{...props}

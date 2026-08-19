@@ -473,3 +473,135 @@ func TestTheScriptIsNotServedWithoutASession(t *testing.T) {
 		t.Fatal("the refusal carried the secret")
 	}
 }
+
+/*
+What a reinstall must not take with it.
+
+Both faults below are of one kind: an operation that was correct about the thing
+it was named for and wrong about everything beside it. Neither could fail
+visibly — the relay came back and worked, the removed relay went away — so
+neither had a symptom that pointed anywhere near its cause.
+*/
+
+// A relay's role in the topology is not the installer's to forget.
+//
+// The installer knows four things: what the machine is called, where it is, how
+// to reach it, and that it is in service. Everything else — which machines it
+// carries for, which it may not be paired with, which one it reaches the others
+// through, where it sits on the map — was configured by somebody afterwards, and
+// a replacing enrolment used to write over all of it with zero.
+func TestReinstallingARelayKeepsWhatSomebodyConfiguredOnIt(t *testing.T) {
+	_, relays, _, mux := enrolling(t)
+
+	// Enrolled once, then given a role.
+	if code := post(mux, enrolRequest(
+		`{"secret":"`+enrolSecret+`","prefix":"hongkong","region":"hk","address":"198.51.100.9"}`,
+	)); code != http.StatusOK {
+		t.Fatalf("the first enrolment answered %d", code)
+	}
+
+	list, _ := relays.Relays()
+	configured := list[0]
+	configured.Label = "HK Gomami"
+	configured.Bridge = true
+	configured.Forwards = true
+	configured.Apart = []string{"shanghai-ct"}
+	configured.Probe = "198.51.100.9:39218"
+	configured.Lat, configured.Lon = 22.3, 114.2
+	configured.AdminOnly = true
+	configured.Order = 3
+
+	if err := relays.UpdateRelay(configured); err != nil {
+		t.Fatal(err)
+	}
+
+	// The machine is rebuilt and enrols again onto the same prefix, this time
+	// from a new address and with the region corrected.
+	if code := post(mux, enrolRequest(
+		`{"secret":"`+enrolSecret+`","prefix":"hongkong","region":"hk-east",`+
+			`"address":"203.0.113.44","replace":true}`,
+	)); code != http.StatusOK {
+		t.Fatalf("the replacing enrolment answered %d", code)
+	}
+
+	list, _ = relays.Relays()
+	if len(list) != 1 {
+		t.Fatalf("there are %d relays and there should be one", len(list))
+	}
+
+	after := list[0]
+
+	// The four the installer owns did move.
+	if after.Region != "hk-east" {
+		t.Errorf("the region is %q; the enrolment is the authority on that", after.Region)
+	}
+
+	// And nothing else did.
+	if !after.Bridge {
+		t.Error("the bridge was forgotten: two machines that reached each other through " +
+			"this one now reach each other not at all, and nothing says so")
+	}
+
+	if !after.Forwards || len(after.Apart) != 1 {
+		t.Errorf("forwards %v and apart %v: that this machine carries calls it is not "+
+			"holding, and the one machine it must never be paired with, were both "+
+			"written over with nothing", after.Forwards, after.Apart)
+	}
+
+	if after.Probe == "" || after.Lat == 0 || after.Lon == 0 || after.Label == "" ||
+		after.Order != 3 || !after.AdminOnly {
+		t.Errorf("a reinstall cleared what somebody set: %+v", after)
+	}
+}
+
+// And a relay that is removed takes its name with it.
+//
+// A name left pointing at an address is a name that goes on resolving after the
+// provider hands that address to somebody else, under a host this deployment
+// created and a client may still have written down.
+func TestRemovingARelayRemovesTheNamePointedAtIt(t *testing.T) {
+	api, relays, names, mux := enrolling(t)
+
+	if code := post(mux, enrolRequest(
+		`{"secret":"`+enrolSecret+`","prefix":"osaka","region":"jp","address":"198.51.100.9"}`,
+	)); code != http.StatusOK {
+		t.Fatalf("enrolment answered %d", code)
+	}
+
+	if names.pointed["osaka.relay.example.invalid"] == "" {
+		t.Fatal("the enrolment did not create a name, so this test proves nothing")
+	}
+
+	managing := http.NewServeMux()
+	api.Mount(managing)
+
+	// The passphrase enrolling() configures an administrator with, and the
+	// capability removing a relay asks for.
+	api.conf.Meet.Admins[0].Can = []string{config.Moderate}
+
+	_, token, ok := api.sessions.Open("", "a passphrase")
+	if !ok {
+		t.Fatal("could not open a management session")
+	}
+
+	if code := ask(t, managing, http.MethodDelete, "/api/admin/relays/osaka", token).Code; code != http.StatusOK {
+		t.Fatalf("removing the relay answered %d", code)
+	}
+
+	if list, _ := relays.Relays(); len(list) != 0 {
+		t.Fatalf("the relay is still on the list")
+	}
+
+	if addr, still := names.pointed["osaka.relay.example.invalid"]; still {
+		t.Errorf("the name still resolves, to %s: the machine is gone and this address will "+
+			"be somebody else's", addr)
+	}
+}
+
+// post runs one enrolment request and gives back its status.
+func post(mux http.Handler, request *http.Request) int {
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+
+	return recorder.Code
+}

@@ -45,6 +45,28 @@ function bearer(room: Room): string {
 	return tokenFor(room);
 }
 
+/**
+ * Whatever the server said, or a code that stands for it not having said.
+ *
+ * Every one of the calls below used to throw a fixed string and the panel
+ * turned all of them into "That could not be done. Try again." — which for the
+ * one that fails most, moving a meeting to a machine that cannot be reached, is
+ * advice to try again until morning. The server has always distinguished these:
+ * there are separate codes for a relay it does not know, a relay this person
+ * may not have, and a media server that did not answer. They were being thrown
+ * away one line before they would have been useful.
+ */
+async function refusal(response: Response, fallback: string): Promise<Error> {
+	try {
+		const body = (await response.json()) as { error?: unknown };
+		if (typeof body.error === "string" && body.error) return new Error(body.error);
+	} catch {
+		// A refusal with no body, or one from something in front of the server.
+	}
+
+	return new Error(fallback);
+}
+
 async function ask(room: Room, path: string, init: RequestInit = {}): Promise<Response> {
 	return fetch(`/api/rooms/${encodeURIComponent(room.name)}${path}`, {
 		...init,
@@ -96,7 +118,7 @@ export async function silence(room: Room, person: Participant): Promise<void> {
 		body: JSON.stringify({ identity: person.identity, track: microphone.trackSid }),
 	});
 
-	if (!response.ok) throw new Error("mute_failed");
+	if (!response.ok) throw await refusal(response, "mute_failed");
 }
 
 /** Remove somebody from the room. */
@@ -107,7 +129,7 @@ export async function turnOut(room: Room, person: Participant): Promise<void> {
 		{ method: "DELETE" },
 	);
 
-	if (!response.ok) throw new Error("remove_failed");
+	if (!response.ok) throw await refusal(response, "remove_failed");
 }
 
 /**
@@ -121,7 +143,7 @@ export async function turnOut(room: Room, person: Participant): Promise<void> {
 export async function dissolve(room: Room): Promise<void> {
 	const response = await ask(room, "/close", { method: "POST" });
 
-	if (!response.ok) throw new Error("close_failed");
+	if (!response.ok) throw await refusal(response, "close_failed");
 }
 
 /**
@@ -140,7 +162,7 @@ export async function moveRoom(room: Room, relay: string): Promise<void> {
 		body: JSON.stringify({ relay }),
 	});
 
-	if (!response.ok) throw new Error("move_failed");
+	if (!response.ok) throw await refusal(response, "move_failed");
 }
 
 /** Hand the room to somebody else. */
@@ -150,7 +172,7 @@ export async function handOver(room: Room, person: Participant): Promise<void> {
 		body: JSON.stringify({ to: person.identity }),
 	});
 
-	if (!response.ok) throw new Error("handover_failed");
+	if (!response.ok) throw await refusal(response, "handover_failed");
 }
 
 /**
@@ -163,7 +185,7 @@ export async function handOver(room: Room, person: Participant): Promise<void> {
 export async function invite(room: Room): Promise<string> {
 	const response = await ask(room, "/invites", { method: "POST" });
 
-	if (!response.ok) throw new Error("invite_failed");
+	if (!response.ok) throw await refusal(response, "invite_failed");
 
 	const made = (await response.json()) as { token: string };
 
@@ -183,7 +205,7 @@ export async function invite(room: Room): Promise<string> {
 export async function revoke(room: Room): Promise<void> {
 	const response = await ask(room, "/invites", { method: "DELETE" });
 
-	if (!response.ok) throw new Error("revoke_failed");
+	if (!response.ok) throw await refusal(response, "revoke_failed");
 }
 
 /** Everybody else in the call, for a list that acts on them. */

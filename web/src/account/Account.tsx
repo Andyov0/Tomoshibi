@@ -67,7 +67,7 @@ export function Account() {
 					href="/"
 					className={cn(
 						"flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5",
-						"text-[12px] text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+						"text-[12px] text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg",
 					)}
 				>
 					<ArrowLeft className="size-3.5" />
@@ -201,7 +201,7 @@ function Header({ me, onChanged }: { me: Me; onChanged: (me: Me | undefined) => 
 					});
 					onChanged(undefined);
 				}}
-				className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-surface-2 hover:text-fg"
+				className="ml-auto flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-surface-hi hover:text-fg"
 			>
 				<LogOut className="size-3.5" />
 				{t("Sign out")}
@@ -216,7 +216,7 @@ function Face({ me }: { me: Me }) {
 	}
 
 	return (
-		<span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-surface-2 text-fg-muted">
+		<span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-surface-hi text-fg-muted">
 			{me.name.slice(0, 1).toUpperCase()}
 		</span>
 	);
@@ -289,7 +289,7 @@ function Picture({ me, onChanged }: { me: Me; onChanged: (me: Me) => void }) {
 					type="button"
 					disabled={busy}
 					onClick={() => file.current?.click()}
-					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+					className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-hi disabled:opacity-40"
 				>
 					{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Camera className="size-3.5" />}
 					{t("Choose a picture")}
@@ -300,7 +300,7 @@ function Picture({ me, onChanged }: { me: Me; onChanged: (me: Me) => void }) {
 						type="button"
 						disabled={busy}
 						onClick={() => void send(null)}
-						className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-surface-2 hover:text-danger disabled:opacity-40"
+						className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-surface-hi hover:text-danger disabled:opacity-40"
 					>
 						<Trash2 className="size-3.5" />
 						{t("Remove")}
@@ -383,7 +383,7 @@ function Passphrase() {
 					disabled={busy || !current || next.length < 8}
 					className={cn(
 						"flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px]",
-						"hover:bg-surface-2 disabled:opacity-40",
+						"hover:bg-surface-hi disabled:opacity-40",
 					)}
 				>
 					{busy && <Loader2 className="size-3.5 animate-spin" />}

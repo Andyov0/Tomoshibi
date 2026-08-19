@@ -115,6 +115,28 @@ export function App() {
 					return;
 				}
 
+				// And an invite that is no good is still an invite, which is to
+				// say it is still somebody who was sent here on purpose and who
+				// arrives to find the sign-in page of a deployment they have no
+				// account on. They were not told why, so the reading available to
+				// them is that the link was mistyped or that this is the wrong
+				// site — neither of which is true, and both of which end with them
+				// asking the person who sent it.
+				//
+				// Three sentences rather than one, because they are three
+				// different next moves: one asks for another link, one says the
+				// meeting is over and no link will help, and one says somebody
+				// took this link back.
+				if (invitation?.error) {
+					joinFailed(
+						invitation.error === "invite_expired" || invitation.error === "meeting_over"
+							? t("That meeting has ended.")
+							: invitation.error === "invite_spent"
+								? t("That invitation has already been used.")
+								: t("That invitation is no longer good. Ask for another."),
+					);
+				}
+
 				// A deployment anybody may open a room on has no lobby, so the
 				// bare address means a new meeting and one is made. Made here
 				// rather than on load, which is what used to put a generated name
@@ -295,11 +317,12 @@ export function App() {
 
 	// Why the call ended, when it did not end because somebody pressed leave.
 	//
-	// Two of the media server's reasons mean something a person needs told, and
-	// they are not the same thing: a room that was closed ended for everybody,
-	// and being removed happened to them alone. Left unsaid, both look identical
-	// from the outside — the call simply stops and the page goes back to the
-	// front — and the reading somebody lands on is that it broke.
+	// Three endings, and they are not the same thing: a room that was closed
+	// ended for everybody, being removed happened to them alone, and a
+	// connection that failed happened to nobody on purpose. Each one ends the
+	// call — a room somebody cannot reach is not a room they are in — and each
+	// one says which it was, because from the outside all three are a call that
+	// simply stopped, and the reading somebody lands on then is that it broke.
 	useEffect(() => {
 		if (!live) return;
 
@@ -341,11 +364,43 @@ export function App() {
 				return;
 			}
 
+			// The room is gone for this person either way, so the call goes with
+			// it. Saying so and leaving them sitting in it was the old behaviour
+			// and it read as the notice being wrong: the tiles were still there,
+			// the controls still worked, and nothing they pressed did anything.
 			if (reason === DISCONNECT_ROOM_CLOSED) {
 				joinFailed(t("The host closed this room."));
-			} else if (reason === DISCONNECT_REMOVED) {
-				joinFailed(t("You were removed from this room."));
+				onLeave();
+				return;
 			}
+
+			if (reason === DISCONNECT_REMOVED) {
+				joinFailed(t("You were removed from this room."));
+				onLeave();
+				return;
+			}
+
+			// Anything else is the connection failing, and by the time this fires
+			// the client has already retried and given up — RoomEvent.Disconnected
+			// is the end of that, not the start.
+			//
+			// The call ends, but this is not a departure. onLeave is not called,
+			// because it forgets the room, and forgetting it here would mean a
+			// reload after a drop landed on the front page rather than walking
+			// back in. Front is left where it was too, which puts them on the
+			// device screen for the room they were just in, with its Join button:
+			// one press back, devices already chosen, and nothing automatic that
+			// could loop against a relay that is genuinely down.
+			//
+			// Before this, a drop left the room on screen with a pill in the
+			// corner reading "Connecting…" forever. On a deployment where the
+			// path to the media server is the thing most likely to fail, that was
+			// the most common ending a call had, and it was the one that looked
+			// like the software was broken.
+			joinFailed(t("The connection to this room was lost."));
+			void current.current?.disconnect();
+			current.current = undefined;
+			setLive(undefined);
 		};
 
 		live.on(RoomEvent.Disconnected, ended);

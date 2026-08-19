@@ -288,7 +288,29 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := a.relays.UpdateRelay(relay); err != nil {
+		// Onto what is already recorded, rather than over it.
+		//
+		// UpdateRelay replaces the whole record, and the record this handler
+		// builds holds the four things an installer knows: name, region,
+		// address, and that it is in service. Everything else about a relay is
+		// configured afterwards and by somebody — which machines it forwards
+		// for, which it may not be paired with, which one it bridges through,
+		// where it is on the map, what it is called on screen, where it sits in
+		// the list, whether it is reserved, whether it is a fallback.
+		//
+		// Written over, all of that went to zero on any reinstall, silently and
+		// with nothing to point at afterwards: the relay came back, answered,
+		// carried calls, and had simply stopped being the hop that two other
+		// machines reached each other through. Reinstalling a machine is when
+		// somebody is least able to notice its role has been forgotten, because
+		// they are already expecting things to be briefly wrong.
+		merged, err := a.merged(relay)
+		if err != nil {
+			refuse(w, http.StatusInternalServerError, relayReason(err))
+			return
+		}
+
+		if err := a.relays.UpdateRelay(merged); err != nil {
 			refuse(w, http.StatusInternalServerError, relayReason(err))
 			return
 		}
@@ -462,4 +484,32 @@ func (a *API) taken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond(w, map[string]any{"prefix": prefix, "taken": held})
+}
+
+// merged carries an existing relay's configuration onto a fresh enrolment.
+//
+// The installer is the authority on the four fields it fills in and on nothing
+// else; the record is the authority on everything a person set. Where the
+// existing relay cannot be read the enrolment stands on its own, because an
+// install that has already provisioned the machine should finish rather than
+// refuse.
+func (a *API) merged(fresh store.Relay) (store.Relay, error) {
+	list, err := a.relays.Relays()
+	if err != nil {
+		return store.Relay{}, err
+	}
+
+	for _, was := range list {
+		if was.Name != fresh.Name {
+			continue
+		}
+
+		was.Region = fresh.Region
+		was.URL = fresh.URL
+		was.Enabled = fresh.Enabled
+
+		return was, nil
+	}
+
+	return fresh, nil
 }

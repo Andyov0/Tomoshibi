@@ -71,7 +71,7 @@ export function AccountsPanel({
 						<button
 							type="button"
 							onClick={() => setAdding(true)}
-							className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-2"
+							className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-[12px] hover:bg-surface-hi"
 						>
 							<Plus className="size-3.5" />
 							{t("New account")}
@@ -102,13 +102,13 @@ export function AccountsPanel({
 								name: made.name,
 							})}
 						</span>
-						<code className="readout rounded bg-surface-2 px-2 py-1 text-[12.5px] text-fg">
+						<code className="readout rounded bg-surface-hi px-2 py-1 text-[12.5px] text-fg">
 							{made.passphrase}
 						</code>
 						<button
 							type="button"
 							onClick={() => setMade(undefined)}
-							className="ml-auto rounded-md border border-border p-1 hover:bg-surface-2"
+							className="ml-auto rounded-md border border-border p-1 hover:bg-surface-hi"
 							aria-label={t("Dismiss")}
 						>
 							<X className="size-3.5" />
@@ -163,7 +163,7 @@ export function AccountsPanel({
 											onClick={() => setResetting(account.name)}
 											aria-label={t("Set a new passphrase")}
 											title={t("Set a new passphrase")}
-											className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg"
+											className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-hi hover:text-fg"
 										>
 											<KeyRound className="size-3.5" />
 										</button>
@@ -178,7 +178,7 @@ export function AccountsPanel({
 											}
 											aria-label={account.blocked ? t("Let back in") : t("Block")}
 											title={account.blocked ? t("Let back in") : t("Block")}
-											className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-2 hover:text-danger disabled:opacity-40"
+											className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-hi hover:text-danger disabled:opacity-40"
 										>
 											{account.blocked ? (
 												<Undo2 className="size-3.5" />
@@ -193,7 +193,7 @@ export function AccountsPanel({
 											onClick={() => act(account.name, () => api.dropAccount(account.name))}
 											aria-label={t("Remove")}
 											title={t("Remove")}
-											className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-2 hover:text-danger disabled:opacity-40"
+											className="rounded-md border border-border p-1.5 text-fg-muted hover:bg-surface-hi hover:text-danger disabled:opacity-40"
 										>
 											<Trash2 className="size-3.5" />
 										</button>
@@ -238,7 +238,7 @@ function Face({ account }: { account: { name: string; trip: string; avatar?: boo
 	}
 
 	return (
-		<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-2 text-fg-muted text-sm">
+		<span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-hi text-fg-muted text-sm">
 			{account.name.slice(0, 1).toUpperCase()}
 		</span>
 	);
@@ -287,7 +287,7 @@ function NewAccount({
 					required
 					// biome-ignore lint/a11y/noAutofocus: the form opened because it was asked for
 					autoFocus
-					className="rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					className="rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 				/>
 			</label>
 
@@ -301,14 +301,14 @@ function NewAccount({
 					onChange={(event) => setPassphrase(event.target.value)}
 					minLength={8}
 					required
-					className="readout rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					className="readout rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 				/>
 			</label>
 
 			<button
 				type="submit"
 				disabled={saving || !name.trim() || passphrase.length < 8}
-				className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+				className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-hi disabled:opacity-40"
 			>
 				{saving ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
 				{t("Create")}
@@ -317,7 +317,7 @@ function NewAccount({
 			<button
 				type="button"
 				onClick={onCancel}
-				className="rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2"
+				className="rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-hi"
 			>
 				{t("Cancel")}
 			</button>
@@ -348,13 +348,13 @@ function NewPassphrase({
 				minLength={8}
 				// biome-ignore lint/a11y/noAutofocus: the field appeared because it was asked for
 				autoFocus
-				className="readout min-w-48 flex-1 rounded-md border border-border bg-surface-2 px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+				className="readout min-w-48 flex-1 rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 			/>
 
 			<button
 				type="submit"
 				disabled={passphrase.length < 8}
-				className="rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2 disabled:opacity-40"
+				className="rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-hi disabled:opacity-40"
 			>
 				{t("Set it")}
 			</button>
@@ -362,7 +362,7 @@ function NewPassphrase({
 			<button
 				type="button"
 				onClick={onCancel}
-				className="rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-2"
+				className="rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-hi"
 			>
 				{t("Cancel")}
 			</button>

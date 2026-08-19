@@ -147,7 +147,7 @@ export function ServerList({
 					onClick={measure}
 					className={cn(
 						"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted",
-						"transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+						"transition-colors hover:bg-surface-hi hover:text-fg disabled:opacity-40",
 						"disabled:hover:bg-transparent disabled:hover:text-fg-muted",
 					)}
 				>
@@ -330,7 +330,7 @@ export function ServerPicker({
 				aria-expanded={open}
 				onClick={() => setOpen(!open)}
 				className={cn(
-					"group flex h-11 items-center gap-2 rounded-lg border bg-surface-2 pr-1.5 pl-3",
+					"group flex h-11 items-center gap-2 rounded-lg border bg-surface-hi pr-1.5 pl-3",
 					"text-left text-fg text-sm outline-none",
 					"transition-[background-color,border-color,box-shadow] duration-150",
 					"focus-visible:ring-2 focus-visible:ring-fg/40",
@@ -470,7 +470,7 @@ function Rows({
 					onClick={onMeasure}
 					className={cn(
 						"flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted",
-						"transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+						"transition-colors hover:bg-surface-hi hover:text-fg disabled:opacity-40",
 						"disabled:hover:bg-transparent disabled:hover:text-fg-muted",
 					)}
 				>

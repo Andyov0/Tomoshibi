@@ -1,6 +1,7 @@
 import { Flagged } from "@/components/room/Flag";
 import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
+import type { Phrase } from "@/live/i18n";
 import {
 	dissolve,
 	handOver,
@@ -77,8 +78,8 @@ export function HostPanel({
 
 		try {
 			await run();
-		} catch {
-			actionFailed(t("That could not be done. Try again."));
+		} catch (err) {
+			actionFailed(explain(err, t));
 		} finally {
 			setBusy(undefined);
 		}
@@ -100,7 +101,7 @@ export function HostPanel({
 					type="button"
 					onClick={onClose}
 					aria-label={t("Close")}
-					className="ml-auto rounded-md p-1 text-fg-muted hover:bg-surface-2 hover:text-fg"
+					className="ml-auto rounded-md p-1 text-fg-muted hover:bg-surface-hi hover:text-fg"
 				>
 					<X className="size-3.5" />
 				</button>
@@ -133,7 +134,7 @@ export function HostPanel({
 					}
 					className={cn(
 						"flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px]",
-						"transition-colors hover:bg-surface-2 disabled:opacity-40",
+						"transition-colors hover:bg-surface-hi disabled:opacity-40",
 					)}
 				>
 					{busy === "invite" ? (
@@ -148,7 +149,7 @@ export function HostPanel({
 
 				{link && (
 					<>
-						<p className="readout break-all rounded-md bg-surface-2 px-2 py-1.5 text-[10.5px] text-fg-muted">
+						<p className="readout break-all rounded-md bg-surface-hi px-2 py-1.5 text-[10.5px] text-fg-muted">
 							{link}
 						</p>
 
@@ -216,7 +217,7 @@ export function HostPanel({
 					{others.map((one) => (
 						<li
 							key={one.identity}
-							className="flex items-center gap-1 rounded-md px-1 py-1 hover:bg-surface-2"
+							className="flex items-center gap-1 rounded-md px-1 py-1 hover:bg-surface-hi"
 						>
 							<span className="min-w-0 flex-1 truncate text-[12.5px]">
 								{one.name || one.identity}
@@ -288,7 +289,7 @@ export function HostPanel({
 						<button
 							type="button"
 							onClick={() => setEnding(false)}
-							className="rounded-md border border-border px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-surface-2"
+							className="rounded-md border border-border px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-surface-hi"
 						>
 							{t("Cancel")}
 						</button>
@@ -392,7 +393,7 @@ function Elsewhere({
 				onClick={() => setOpen((was) => !was)}
 				className={cn(
 					"flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px]",
-					"transition-colors hover:bg-surface-2 disabled:opacity-40",
+					"transition-colors hover:bg-surface-hi disabled:opacity-40",
 				)}
 			>
 				{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Server className="size-3.5" />}
@@ -428,4 +429,35 @@ function Elsewhere({
 			)}
 		</div>
 	);
+}
+
+/**
+ * The server sends a code; this owns the sentence.
+ *
+ * Written out one code at a time rather than looked up, because each of these
+ * wants a different next move and a table would tempt somebody to give two of
+ * them the same words. The one that matters most is the unreachable relay: it
+ * is the failure this deployment actually has, it is not the host's fault, and
+ * "try again" — which is what every one of these used to say — is the one piece
+ * of advice that cannot help.
+ */
+function explain(err: unknown, t: (phrase: Phrase) => string): string {
+	const code = err instanceof Error ? err.message : "";
+
+	switch (code) {
+		case "media_unreachable":
+			return t("That server did not answer. The meeting has not been moved.");
+		case "no_such_relay":
+			return t("That server is no longer on this deployment.");
+		case "relay_not_allowed":
+			return t("That server is reserved, and this meeting may not be put on it.");
+		case "no_such_person":
+			return t("They have already left.");
+		case "not_yours":
+			return t("You no longer run this room.");
+		case "rate_limited":
+			return t("Too many attempts. Try again in a moment.");
+		default:
+			return t("That could not be done. Try again.");
+	}
 }

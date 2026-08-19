@@ -56,8 +56,15 @@ export function SaidOnTile({ said, compact }: { said: Said[]; compact?: boolean 
 export function SaidInCorner({ said }: { said: Said[] }) {
 	if (said.length === 0) return null;
 
+	// Above the controls while narrow, where the island is wide enough to reach
+	// this corner; back down beside them once the screen is not.
 	return (
-		<div className="pointer-events-none absolute right-3 bottom-3 z-20 flex flex-col items-end gap-1.5">
+		<div
+			className={cn(
+				"pointer-events-none absolute right-3 z-20 flex flex-col items-end gap-1.5",
+				"bottom-[calc(max(1.25rem,env(safe-area-inset-bottom)+0.5rem)+4rem)] sm:bottom-3",
+			)}
+		>
 			{said.map((one, index) => {
 				const run = index > 0 && said[index - 1]?.from === one.from;
 

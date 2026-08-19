@@ -50,6 +50,18 @@ export interface RoomProps {
 	onLeave: () => void;
 }
 
+/*
+ * How far above the bottom of the screen something has to sit to be clear of
+ * the controls.
+ *
+ * The island's own offset, plus its height, plus a gap — spelled out rather
+ * than rounded to a class, because the offset is a safe-area expression and a
+ * phone with a home indicator moves the whole island up by a third of an inch.
+ * plan.ts holds the same number as ISLAND for the picture grid; this is the
+ * same idea for the things drawn over it.
+ */
+const CLEAR_OF_CONTROLS = "bottom-[calc(max(1.25rem,env(safe-area-inset-bottom)+0.5rem)+4rem)]";
+
 export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	// One at a time, because both float over the same corner and the second
 	// would simply be drawn on top of the first.
@@ -375,9 +387,16 @@ function Stage({
 			)}
 
 			{/* Placed over the grid rather than instead of it, so the self view
-			    stays where it will be when somebody arrives. */}
+			    stays where it will be when somebody arrives.
+
+			    Clear of the controls, which it was not. This card was written
+			    when the controls were a footer the page laid out around; they
+			    became a floating island later and this was not moved, so for
+			    every release since, the one screen where somebody most needs the
+			    link — alone in a room, waiting — had its button covered whole and
+			    unpressable. It was never a phone problem; it was every screen. */}
 			{rest.length === 0 && !pinned && state === ConnectionState.Connected && (
-				<div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
+				<div className={`pointer-events-none absolute inset-x-0 flex justify-center ${CLEAR_OF_CONTROLS}`}>
 					<div className="pointer-events-auto">
 						<EmptyRoom />
 					</div>

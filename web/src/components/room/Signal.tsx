@@ -222,6 +222,34 @@ function Detail({
 				/>
 			)}
 
+			{/*
+			 * Why the picture is not what was asked for, from the encoder itself.
+			 *
+			 * A share that stutters is the complaint somebody can do least about,
+			 * and the two things that cause it want opposite answers: a machine
+			 * that cannot encode fast enough is fixed by asking for less, and a
+			 * path that cannot carry it is fixed by choosing a nearer server.
+			 * Identical on screen, and the browser has known which all along.
+			 *
+			 * Shown only while something is holding it back — the ordinary state
+			 * is a line that says nothing is wrong, which is a line read every
+			 * time to learn nothing.
+			 */}
+			{reading.share?.limited && (
+				<Figure
+					label={t("Held back by")}
+					value={
+						reading.share.limited === "cpu"
+							? t("this machine")
+							: reading.share.limited === "bandwidth"
+								? t("the connection")
+								: t("something the browser will not name")
+					}
+					warn
+					delay={195}
+				/>
+			)}
+
 			<Figure label={t("Sending")} value={rate(reading.upKbps)} delay={210} />
 			<Figure label={t("Receiving")} value={rate(reading.downKbps)} delay={240} />
 

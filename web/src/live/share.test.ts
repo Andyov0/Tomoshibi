@@ -123,15 +123,51 @@ describe("automatic", () => {
 		}
 	});
 
-	// Somebody who picked a size picked it. What gives, where something must, is
-	// the frame rate — never the picture they asked for.
-	it("never lets a chosen size be quietly reduced", () => {
+	/*
+	 * What gives, where something must, depends on what was asked for — and
+	 * getting it the same for both is how a share came to stutter.
+	 *
+	 * Holding the resolution and dropping frames was the rule for every chosen
+	 * size. That is right about a still picture, where every pixel matters and a
+	 * dropped frame costs nothing, and wrong about a moving one, where the frames
+	 * are the entire reason the rate was raised: it turned a busy encoder or a
+	 * moment of congestion into a stutter, which is both the first thing anybody
+	 * notices and the thing they can do least about.
+	 */
+	it("protects the pixels of a still picture and the frames of a moving one", () => {
 		for (const quality of named) {
 			for (const rate of ratesFor(quality)) {
-				expect(settingsForTest(rate, quality).degradationPreference).toBe(
-					"maintain-resolution",
-				);
+				const wanted = rate <= 30 ? "maintain-resolution" : "balanced";
+
+				expect(settingsForTest(rate, quality).degradationPreference).toBe(wanted);
 			}
 		}
+	});
+
+	/*
+	 * A rate costs far less than a size, and treating them the same is what put
+	 * the high settings out of reach.
+	 *
+	 * Multiplying by frames a second assumes every frame costs what the first one
+	 * did — true of a camera pointed at a room, emphatically false of a screen,
+	 * where one frame differs from the last by a moved cursor. Linear, 1440p at a
+	 * hundred and twenty asked for forty-four megabits a second; the estimator
+	 * finds out, clamps, and the encoder answers by dropping frames, which arrives
+	 * as a stutter while the throughput reading looks healthy.
+	 */
+	it("charges far less for frames than for pixels", () => {
+		const still = settingsForTest(30, "1440p").maxBitrate;
+		const moving = settingsForTest(120, "1440p").maxBitrate;
+
+		// Four times the frames, nothing like four times the bitrate.
+		expect(moving).toBeGreaterThan(still);
+		expect(moving).toBeLessThan(still * 2.5);
+
+		// And a bigger picture still costs more than a faster one, which is the
+		// ordering that was inverted before: 4K at sixty asked for less than 1080p
+		// at two hundred and forty.
+		expect(settingsForTest(60, "4k").maxBitrate).toBeGreaterThan(
+			settingsForTest(240, "1080p").maxBitrate,
+		);
 	});
 });

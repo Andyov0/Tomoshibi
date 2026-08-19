@@ -359,6 +359,10 @@ const en = {
 	"people": "people",
 	"asked for again": "asked for again",
 	"A point is the mean over its own bucket and the band behind the line is the highest single reading inside it, which is where a burst shows. Totals are since this process started. The trend outlives a restart: fine detail recently, coarser the further back it goes, out to six months.": "A point is the mean over its own bucket and the band behind the line is the highest single reading inside it, which is where a burst shows. Totals are since this process started. The trend outlives a restart: fine detail recently, coarser the further back it goes, out to six months.",
+	"Held back by": "Held back by",
+	"this machine": "this machine",
+	"the connection": "the connection",
+	"something the browser will not name": "something the browser will not name",
 } as const;
 
 export default en;

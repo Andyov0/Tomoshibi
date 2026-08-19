@@ -53,7 +53,13 @@ export interface Reading {
 	 *
 	 * Absent when nothing is being shared, so the row is not a permanent dash.
 	 */
-	share?: { width?: number; height?: number; fps?: number; sending: boolean };
+	share?: {
+		width?: number;
+		height?: number;
+		fps?: number;
+		sending: boolean;
+		limited?: "cpu" | "bandwidth" | "other";
+	};
 	/**
 	 * This browser's own address, as the relay sees it.
 	 *
@@ -267,7 +273,13 @@ interface Gathered {
 	rttMs?: number;
 	jitterMs?: number;
 	ownAddress?: string;
-	share?: { width?: number; height?: number; fps?: number; sending: boolean };
+	share?: {
+		width?: number;
+		height?: number;
+		fps?: number;
+		sending: boolean;
+		limited?: "cpu" | "bandwidth" | "other";
+	};
 	totals: {
 		bytesSent: number;
 		bytesReceived: number;
@@ -453,9 +465,34 @@ function readShare(
 			fps: numeric(entry.framesPerSecond),
 			width: numeric(entry.frameWidth),
 			height: numeric(entry.frameHeight),
-			...(out.share?.sending === sending ? {} : {}),
+			// Why the encoder is not doing what it was asked, straight from the
+			// encoder. Only the sending side has it — the receiving side is being
+			// told what somebody else's machine decided — and it is the one
+			// figure that turns "it keeps stuttering" into something anybody can
+			// act on: a shortfall in the network and a shortfall in the machine
+			// look identical on screen and want opposite answers.
+			limited: sending ? limitation(entry.qualityLimitationReason) : undefined,
 		};
 	});
+}
+
+/**
+ * Why the encoder is holding back, where it is holding back for a reason.
+ *
+ * "none" is the ordinary state and is dropped rather than reported: a line that
+ * says nothing is wrong is a line somebody reads every time to learn nothing.
+ * "other" is kept, because it is the browser saying it knows and will not say —
+ * which is worth seeing precisely once, when everything else looks fine.
+ */
+function limitation(value: unknown): "cpu" | "bandwidth" | "other" | undefined {
+	switch (value) {
+		case "cpu":
+		case "bandwidth":
+		case "other":
+			return value;
+		default:
+			return undefined;
+	}
 }
 
 /** A stats field, where it is a number and not something else. */

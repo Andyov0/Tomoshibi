@@ -326,6 +326,10 @@ const zhHant: Dictionary = {
 	"people": "人數",
 	"asked for again": "重傳請求",
 	"A point is the mean over its own bucket and the band behind the line is the highest single reading inside it, which is where a burst shows. Totals are since this process started. The trend outlives a restart: fine detail recently, coarser the further back it goes, out to six months.": "每個點是它那一格內的平均值,線條後面的色帶是格內單次讀數的最高值,突發流量就出現在那裡。累計量從本行程啟動算起。趨勢會在重啟後留存:近期精細,越往前越粗,最長六個月。",
+	"Held back by": "受限於",
+	"this machine": "這台機器",
+	"the connection": "網路連線",
+	"something the browser will not name": "瀏覽器沒有說明的原因",
 };
 
 export default zhHant;

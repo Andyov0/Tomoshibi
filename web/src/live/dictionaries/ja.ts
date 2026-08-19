@@ -326,6 +326,10 @@ const ja: Dictionary = {
 	"people": "人数",
 	"asked for again": "再送要求",
 	"A point is the mean over its own bucket and the band behind the line is the highest single reading inside it, which is where a burst shows. Totals are since this process started. The trend outlives a restart: fine detail recently, coarser the further back it goes, out to six months.": "各点はそのバケット内の平均で、線の背後の帯はバケット内の単一の読み取りの最大値です。バーストはそこに現れます。累計はこのプロセスの起動以降です。トレンドは再起動後も残ります。直近は細かく、さかのぼるほど粗くなり、最長で6か月です。",
+	"Held back by": "制限の原因",
+	"this machine": "このマシン",
+	"the connection": "ネットワーク",
+	"something the browser will not name": "ブラウザが明かさない理由",
 };
 
 export default ja;

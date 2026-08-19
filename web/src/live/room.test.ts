@@ -92,9 +92,11 @@ describe("share", () => {
 		expect(capture.contentHint).toBe("motion");
 		expect(["vp8", "h264"]).toContain(publish.videoCodec);
 
-		// The size, never the size. Somebody who picked one picked it, and what
-		// gives where something must is the frame rate.
-		expect(publish.degradationPreference).toBe("maintain-resolution");
+		// Above thirty frames the frames are the point, so a shortfall gives away
+		// a little size rather than gutting the rate. Holding the resolution here
+		// turned every busy moment into a stutter — the one thing somebody
+		// watching a share notices first and can do least about.
+		expect(publish.degradationPreference).toBe("balanced");
 	});
 
 	it("gives the busier picture the larger ceiling", async () => {

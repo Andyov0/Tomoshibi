@@ -326,6 +326,10 @@ const zhHans: Dictionary = {
 	"people": "人数",
 	"asked for again": "重传请求",
 	"A point is the mean over its own bucket and the band behind the line is the highest single reading inside it, which is where a burst shows. Totals are since this process started. The trend outlives a restart: fine detail recently, coarser the further back it goes, out to six months.": "每个点是它那一格内的平均值,线条后面的色带是格内单次读数的最高值,突发流量就出现在那里。累计量从本进程启动算起。趋势会在重启后留存:近期精细,越往前越粗,最长六个月。",
+	"Held back by": "受限于",
+	"this machine": "这台机器",
+	"the connection": "网络连接",
+	"something the browser will not name": "浏览器没有说明的原因",
 };
 
 export default zhHans;

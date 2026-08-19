@@ -105,8 +105,35 @@ const BITS_PER_PIXEL_PER_FRAME = 0.1;
 const BITRATE_CAP = 60_000_000;
 const BITRATE_FLOOR = 2_500_000;
 
+/**
+ * The frame rate the cost is measured against.
+ *
+ * Thirty, because that is what a screen share was before anybody offered more,
+ * and so it is the rate the pixels-per-frame figure was chosen to be right at.
+ */
+const BASE_RATE = 30;
+
+/**
+ * What to ask for, given a size and a rate.
+ *
+ * The rate counts for far less than the size, and the first version had them
+ * counting the same. Multiplying by frames a second assumes each frame costs
+ * what the first one did, which is true of a camera pointed at a room and
+ * emphatically false of a screen: at a hundred and twenty frames a second, one
+ * frame differs from the last by a moved cursor and a line of text, and a codec
+ * spends almost nothing on it.
+ *
+ * So the rate enters under a square root — doubling it costs about forty per
+ * cent more rather than twice as much, which is roughly what encoders actually
+ * do with this material. Linear, the high settings asked for forty-four and
+ * fifty megabits a second, which no ordinary path carries: the estimator finds
+ * out, clamps hard, and the encoder answers by dropping frames. That arrives as
+ * a share that stutters while the throughput reading looks entirely healthy,
+ * which is exactly the complaint this is here to answer.
+ */
 function bitrateFor(width: number, height: number, frameRate: number): number {
-	const wanted = width * height * frameRate * BITS_PER_PIXEL_PER_FRAME;
+	const perFrame = width * height * BITS_PER_PIXEL_PER_FRAME;
+	const wanted = perFrame * BASE_RATE * Math.sqrt(frameRate / BASE_RATE);
 
 	return Math.round(Math.min(BITRATE_CAP, Math.max(BITRATE_FLOOR, wanted)));
 }
@@ -165,10 +192,26 @@ function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
 		maxBitrate: bitrateFor(size.width, size.height, capped),
 		videoCodec: (still && size.height <= 1080 ? "vp8" : "h264") as VideoCodec,
 		contentHint: (still ? "text" : "motion") as "text" | "motion" | "detail",
-		// Never smaller than was asked for. Somebody who picked a size picked it,
-		// and quietly sending less is the complaint rather than the mitigation —
-		// so what gives, where something must, is the frame rate.
-		degradationPreference: "maintain-resolution" as RTCDegradationPreference,
+		/*
+		 * What gives, where something must, and it depends on what was asked for.
+		 *
+		 * Holding the resolution and dropping frames was the rule for every
+		 * chosen size, on the reasoning that somebody who picked a size picked it
+		 * and quietly sending less is the complaint rather than the mitigation.
+		 * That is right about a still picture and wrong about a moving one, and
+		 * it turned every shortfall — a busy encoder, a moment of congestion —
+		 * into a stutter, which is the thing somebody notices first and the thing
+		 * they cannot do anything about.
+		 *
+		 * At thirty frames and below, what is on the screen is text and diagrams:
+		 * every pixel matters and a dropped frame costs nothing, so nothing
+		 * changes. Above thirty, the frames are the reason the rate was raised at
+		 * all, and giving away a little size to keep them is what was actually
+		 * being asked for.
+		 */
+		degradationPreference: (still
+			? "maintain-resolution"
+			: "balanced") as RTCDegradationPreference,
 		adapts: false,
 	};
 }

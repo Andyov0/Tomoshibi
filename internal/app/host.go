@@ -10,6 +10,7 @@ import (
 	"github.com/livekit/protocol/auth"
 
 	"tomoshibi/internal/admin"
+	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
 )
 
@@ -109,10 +110,19 @@ func (a *App) mayHost(r *http.Request, name string) (bearer, bool) {
 
 	host := a.store.HostOf(name)
 
+	// The mark has to have been earned.
+	//
+	// An issued mark is drawn from nothing and, crucially, is not chosen by this
+	// server: a client sends back the identity it was given, and one carrying no
+	// passphrase matches whatever it likes. So anybody could send an identity
+	// bearing the host's mark and be the host — and the mark was on screen,
+	// beside the host's name, in every roster. Comparing an unearned mark
+	// authorises nothing at all, which is worse than not comparing.
+	//
 	// A room with no host answers to nobody. That is not the same as answering
 	// to everybody, and reading it that way would make the first person to ask
 	// the host of any room whose record predates this.
-	return who, host != "" && host == who.Mark.Trip
+	return who, who.Mark.Proven && host != "" && host == who.Mark.Trip
 }
 
 // administrating reports whether this request is an administrator's, by any of
@@ -130,16 +140,40 @@ func (a *App) mayHost(r *http.Request, name string) (bearer, bool) {
 // them answer it in the same place, which is precisely why one of them was
 // missed.
 func (a *App) administrating(r *http.Request, mark room.Signature) bool {
-	if a.isAdministrator(mark) {
+	if a.mayModerate(mark) {
 		return true
 	}
 
-	if _, ok := a.admin.SessionOf(r); ok {
-		return true
+	// A management session, and only one that may moderate.
+	//
+	// The management pages are careful about the difference: closing a room,
+	// removing somebody and muting a track are all behind `moderate` there. This
+	// door asked only whether somebody was signed in, so an administrator
+	// trusted to look and not to touch could close any meeting, take any room,
+	// and place one on a machine reserved for administrators — the whole
+	// capability split bypassed for anything room-shaped.
+	if session, ok := a.admin.SessionOf(r); ok {
+		return session.Allows(config.Moderate)
 	}
 
 	if account, ok := a.signedIn(r); ok {
-		return a.isAdministrator(room.Signature{Trip: account.Trip, Proven: true})
+		return a.mayModerate(room.Signature{Trip: account.Trip, Proven: true})
+	}
+
+	return false
+}
+
+// mayModerate reports whether a mark belongs to an administrator who may act
+// rather than only watch.
+func (a *App) mayModerate(mark room.Signature) bool {
+	if !mark.Proven {
+		return false
+	}
+
+	for _, one := range a.administrators() {
+		if one.Trip == mark.Trip {
+			return one.Allows(config.Moderate)
+		}
 	}
 
 	return false
@@ -174,12 +208,18 @@ func (a *App) whoseRoom(w http.ResponseWriter, r *http.Request) {
 	admin := a.administrating(r, who.Mark)
 
 	respond(w, map[string]any{
-		"host": host,
 		// Whether the person asking is it, worked out here rather than left to
 		// the client to compare: the client would have to be told the host's
 		// mark to make the comparison, and a mark is somebody's identity in
 		// every room on this deployment.
-		"yours": admin || (host != "" && host == who.Mark.Trip),
+		// The host's own mark is deliberately not among these.
+		//
+		// It was, and it is the thing an impostor needs: a mark is somebody's
+		// identity in every room on this deployment, and handing it to everybody
+		// in the call turned "be the host" into "send back the mark you were
+		// shown". What anybody needs to know is whether they may act, which is a
+		// yes or a no about themselves.
+		"yours": admin || (who.Mark.Proven && host != "" && host == who.Mark.Trip),
 		"admin": admin,
 	})
 }
@@ -203,7 +243,12 @@ func (a *App) handOver(w http.ResponseWriter, r *http.Request) {
 	// somebody is in every room here, and a page that listed them would be
 	// handing out the thing the whole scheme rests on.
 	mark, valid := room.SignatureOf(strings.TrimSpace(body.To))
-	if !valid {
+
+	// Handed only to somebody who can prove the name they are being handed it
+	// under. An issued mark belongs to a tab rather than to a person and can be
+	// worn by anybody who reads it, so a room parked on one answers to whoever
+	// asks — which is not a host, it is an unlocked door with a label on it.
+	if !valid || !mark.Proven {
 		fail(w, http.StatusBadRequest, reasonNoSuchPerson)
 		return
 	}
@@ -370,7 +415,7 @@ func (a *App) moveRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.store.HoldRoom(name, wanted.Name); err != nil {
+	if err := a.store.PlaceRoom(name, wanted.Name); err != nil {
 		slog.Error("failed to move a room", "room", name, "error", err)
 		fail(w, http.StatusInternalServerError, reasonServerError)
 		return
@@ -445,7 +490,13 @@ func (a *App) hostOnOpening(name string, grant room.Grant) {
 	}
 
 	mark, ok := room.SignatureOf(grant.Identity)
-	if !ok {
+
+	// Only a mark somebody can prove. A room opened by an anonymous visitor
+	// therefore answers to nobody, which is the honest outcome: their mark is
+	// drawn from nothing, changes with every tab, and can be worn by anybody who
+	// sees it, so recording it as the host would be recording that the room
+	// belongs to whoever asks.
+	if !ok || !mark.Proven {
 		return
 	}
 

@@ -169,6 +169,16 @@ func (a *App) sweep() {
 		slog.Info("swept expired sessions", "gone", gone)
 	}
 
+	// The third one, missed the same way as the first two: written beside the
+	// records it clears, and never called. Expired invites are refused when read,
+	// so this is growth rather than a fault — one row per link ever minted,
+	// forever.
+	if gone, err := a.store.SweepInvites(now); err != nil {
+		slog.Error("failed to sweep the invites", "error", err)
+	} else if gone > 0 {
+		slog.Info("swept expired invites", "gone", gone)
+	}
+
 	if gone, err := a.store.SweepArrivals(now); err != nil {
 		slog.Error("failed to sweep the arrivals", "error", err)
 	} else if gone > 0 {
@@ -513,7 +523,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// round meant for those people to arrive. So a room already held on that
 	// relay lets anybody with the link in — to that room, on that relay, and
 	// nowhere else.
-	if !isAdmin && a.relays.reserved(body.Relay) && a.store.HeldOn(name) != body.Relay {
+	if invited, _ := a.store.HeldOn(name); !isAdmin && a.relays.reserved(body.Relay) && invited != body.Relay {
 		fail(w, http.StatusForbidden, reasonRelayNotAllowed)
 		return
 	}
@@ -646,7 +656,27 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// be reached the note is believed, which is the old behaviour and the safe
 	// direction — keeping a live meeting together matters more than being right
 	// about a dead one.
-	if held := a.store.HeldOn(name); held != "" && held != entry.Name {
+	held, placed := a.store.HeldOn(name)
+
+	// An instruction is carried out; a guess is checked first.
+	//
+	// Moving a room ends the call that is being moved, so at the moment the note
+	// is read there is never a meeting to confirm it — which meant every move
+	// was undone by the first person to come back, and the note rewritten to
+	// wherever the measurement pointed. The difference is not what was written
+	// but who wrote it and why.
+	if held != "" && held != entry.Name && placed {
+		if there, ok := a.relays.named(held); ok {
+			holding = there
+
+			// Once. Left standing it would pin the name for good and every later
+			// choice about where to hold a meeting of that name would do nothing,
+			// with nothing on any screen to say why.
+			if err := a.store.Carried(name); err != nil {
+				slog.Error("failed to mark a move as carried out", "room", name, "error", err)
+			}
+		}
+	} else if held != "" && held != entry.Name {
 		if a.meeting(r, name) {
 			if there, ok := a.relays.named(held); ok {
 				holding = there
@@ -852,20 +882,16 @@ type relayEntry struct {
 // choose between. A client seeing an empty list measures nothing and joins as
 // it always did.
 func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
-	// A relay reserved for administrators is not on the list anybody else is
-	// shown. Whoever is signed into the management pages sees them, because
-	// they are the person the reservation is for and because hiding a machine
-	// from its own operator is a page that lies.
-	//
-	// This is the convenience half. What actually stops one being used is the
-	// check at the join, which reads the passphrase rather than a cookie —
-	// somebody joining a call is not signed into anything.
+	// Whether the person reading this is signed into the management pages,
+	// which decides how much of each relay they are told rather than which
+	// relays they are told about. Everybody is shown every machine (see
+	// offered); only an administrator is shown where it is.
 	admin := false
 	if a.admin != nil {
 		_, admin = a.admin.SessionOf(r)
 	}
 
-	list := a.relays.offered(admin)
+	list := a.relays.offered()
 
 	entries := make([]relayEntry, 0, len(list))
 	for _, relay := range list {
@@ -878,8 +904,13 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Where it is needed, which is an administrator or a relay that cannot
-		// be measured any other way.
-		if admin || relay.Probe == "" {
+		// be measured any other way — and never a reserved one to anybody else.
+		//
+		// That last clause was missing. A reserved machine with no probe handed
+		// its address to any stranger who asked for the list: not access, since
+		// the join refuses the relay by name, but the address of an internal
+		// machine given away by a page that does not know who is reading it.
+		if admin || (relay.Probe == "" && !relay.AdminOnly) {
 			entry.URL = relay.URL
 		}
 

@@ -112,15 +112,22 @@ func authorised(r *http.Request, key, secret string) bool {
 		return false
 	}
 
-	// Any grant this deployment signs will do: the token proves its holder has
-	// the secret, which is the whole of what is being checked here. Requiring a
-	// particular grant would mean minting a second kind of token for a caller
-	// that has already proved everything there is to prove.
-	if _, _, err := verifier.Verify(secret); err != nil {
+	_, grants, err := verifier.Verify(secret)
+	if err != nil || grants == nil || grants.Video == nil {
 		return false
 	}
 
-	return true
+	// A grant nobody joining a call is given.
+	//
+	// This used to accept any token this deployment signed, on the reasoning
+	// that holding one proves you hold the secret. That is true of the tokens
+	// this server mints for itself and false of the one it hands to every
+	// anonymous visitor at the door: a join token is signed with the same
+	// secret, so anybody who joined any room could read every relay's node
+	// identity, address, room and client counts, byte totals and processor load
+	// — which is exactly the shape of thing the comment above this handler says
+	// must not be readable by whoever finds the port.
+	return grants.Video.RoomList || grants.Video.RoomAdmin
 }
 
 // AskStats reads one relay's counters over the network.
@@ -130,7 +137,8 @@ func (c *Cluster) AskStats(ctx context.Context, relay string) (Stats, error) {
 	control := c.controlFor(relay)
 
 	// The same shape of token the management calls carry, minted per request
-	// and valid for a minute. Nothing here needs a particular grant — the token
+	// and valid for a minute. The grant matters: it is what the far end checks,
+	// and it is one nobody joining a call is given — the token
 	// proves its holder has this deployment's secret, which is the whole check.
 	token, err := auth.NewAccessToken(control.key, control.secret).
 		SetIdentity("tomoshibi").

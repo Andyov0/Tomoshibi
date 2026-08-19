@@ -301,7 +301,7 @@ func TestARelayOutOfServiceIsShownButNeverUsed(t *testing.T) {
 	}
 
 	shown := false
-	for _, relay := range r.offered(false) {
+	for _, relay := range r.offered() {
 		if relay.Name == "tokyo" {
 			shown = true
 
@@ -341,7 +341,7 @@ func TestTheListIsCachedAndDroppedOnChange(t *testing.T) {
 	r.forget()
 
 	found := false
-	for _, relay := range r.offered(false) {
+	for _, relay := range r.offered() {
 		if relay.Name == "tokyo" {
 			found = true
 		}
@@ -397,7 +397,7 @@ func TestEveryRelayIsShownToEverybody(t *testing.T) {
 	chosen := newRelays(conf, &listed{relays: []store.Relay{open, kept}})
 
 	for _, admin := range []bool{false, true} {
-		if got := len(chosen.offered(admin)); got != 2 {
+		if got := len(chosen.offered()); got != 2 {
 			t.Errorf("offered %d of 2 relays with admin=%v", got, admin)
 		}
 	}

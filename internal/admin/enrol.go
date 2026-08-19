@@ -174,6 +174,21 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 	// Constant time: this is the one comparison standing between a stranger and
 	// the credential every relay in this deployment signs with.
 	if subtle.ConstantTimeCompare([]byte(body.Secret), []byte(a.enrolment.Secret)) != 1 {
+		// Charged, which it was not.
+		//
+		// Asking the limiter costs nothing by design — it is a question, and only
+		// a failure spends anything. Both enrolment endpoints asked and neither
+		// ever paid, so the comment saying this is "rate limited by the same
+		// limiter the sign-in page uses" described a limiter being consulted
+		// rather than one being applied: five thousand wrong secrets from one
+		// address were five thousand refusals and no throttling at all.
+		//
+		// What a hit yields is the credential every token on this deployment is
+		// signed with, the redis password, and the TLS private key. This is the
+		// one unauthenticated door that hands over the whole thing, and the
+		// secret behind it is a phrase somebody typed into a configuration file.
+		a.sessions.limit.Failed(caller)
+
 		a.log.Record(Entry{
 			Action: "enrol", Trip: "-", Target: body.Prefix,
 			Failed: true, Reason: "wrong secret",
@@ -425,6 +440,11 @@ func (a *API) taken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if subtle.ConstantTimeCompare([]byte(body.Secret), []byte(a.enrolment.Secret)) != 1 {
+		// Charged here too. This endpoint only says whether a name is taken, but
+		// it takes the same secret, so an unlimited door beside a limited one is
+		// one unlimited door.
+		a.sessions.limit.Failed(caller)
+
 		refuse(w, http.StatusForbidden, "wrong_secret")
 		return
 	}

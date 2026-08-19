@@ -167,25 +167,24 @@ func (r *relays) byName(list []store.Relay, name string) (store.Relay, bool) {
 	return store.Relay{}, false
 }
 
-// offered is the list a client is given to measure, addresses included.
+// offered is the list a client is shown, which is every relay this deployment
+// has: reserved ones, and ones taken out of service.
 //
-// The addresses are public by construction: every one of them is handed to
-// somebody the moment they join. What is not here is anything about the shape
-// of the deployment — no counts, no health, no load — because this endpoint
-// answers to anybody who asks.
-// offered is the list a client is given: all of them, in service or not, and
-// reserved or not.
+// That is a decision rather than an oversight. A machine that simply vanished
+// would look deleted to whoever used it yesterday, and one reserved for
+// administrators that vanished would leave an operator wondering where their
+// own machine went on the page they run it from. The picker greys out what
+// somebody may not take rather than pretending it is not there.
 //
-// Everything is shown to everybody, and what a relay is is said rather than
-// hidden. One taken down for maintenance that simply vanished would look
-// deleted to whoever used it yesterday, and one reserved for administrators
-// that vanished would leave an operator wondering where their machine went on
-// the page they run it from.
+// The list protects nothing, and it should not be asked to. What keeps a
+// reserved machine reserved is the refusal at the join, which reads the
+// passphrase rather than a cookie and therefore works whether or not somebody
+// read the name off a colleague's screen. What is withheld here is the address
+// (see relayList), which is a different thing from the name.
 //
-// Nothing is protected by the list. What keeps a reserved relay reserved is the
-// refusal at the join, which is where somebody actually asks to come in — and
-// which works whether or not they read the name off a colleague's screen.
-func (r *relays) offered(_ bool) []store.Relay {
+// The argument this used to take is gone, because it never did anything, and a
+// parameter that is ignored is a claim the next reader has to disprove.
+func (r *relays) offered() []store.Relay {
 	return r.reach.keep(r.all())
 }
 

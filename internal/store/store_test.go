@@ -516,7 +516,7 @@ func TestWhereARoomIsHeldIsForgottenOnceItGoesQuiet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := st.HeldOn("standup"); got != "shanghai" {
+	if got, _ := st.HeldOn("standup"); got != "shanghai" {
 		t.Fatalf("a room joined a moment ago is held on %q, wanted shanghai", got)
 	}
 
@@ -529,7 +529,7 @@ func TestWhereARoomIsHeldIsForgottenOnceItGoesQuiet(t *testing.T) {
 			return err
 		}
 
-		tally.Seen = time.Now().Add(-heldFor - time.Minute)
+		tally.HeldAt = time.Now().Add(-heldFor - time.Minute)
 
 		encoded, err := json.Marshal(tally)
 		if err != nil {
@@ -541,7 +541,7 @@ func TestWhereARoomIsHeldIsForgottenOnceItGoesQuiet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := st.HeldOn("standup"); got != "" {
+	if got, _ := st.HeldOn("standup"); got != "" {
 		t.Errorf("a room nobody has joined for hours is still held on %q; choosing a "+
 			"server would never mean anything again", got)
 	}

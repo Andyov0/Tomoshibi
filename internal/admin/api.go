@@ -63,7 +63,7 @@ type Names interface {
 	// signalling socket from a relay — so the machine it names is the machine
 	// that answered, and the address it holds is the relay's. This server chose
 	// the machine and saw the address, once, at the join.
-	HeldOn(room string) string
+	HeldOn(room string) (string, bool)
 	Arrivals(room string) map[string]store.Arrival
 }
 
@@ -735,7 +735,7 @@ func (a *API) wherever() func(string) string {
 	}
 
 	return func(name string) string {
-		held := a.store.HeldOn(name)
+		held, _ := a.store.HeldOn(name)
 		if held == "" {
 			return ""
 		}

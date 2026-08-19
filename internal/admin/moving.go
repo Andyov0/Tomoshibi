@@ -34,7 +34,8 @@ being removed with a reason. Said plainly rather than dressed up.
 // Placing is where a room should be held.
 type Placing interface {
 	HoldRoom(room, relay string) error
-	HeldOn(room string) string
+	HeldOn(room string) (string, bool)
+	PlaceRoom(room, relay string) error
 	PinEntry(room, identity, relay string) error
 }
 
@@ -69,7 +70,7 @@ func (a *API) placeRoom(session Session, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := a.placing.HoldRoom(name, relay); err != nil {
+	if err := a.placing.PlaceRoom(name, relay); err != nil {
 		a.record(session, "place room", name, relay, err)
 		refuse(w, http.StatusInternalServerError, "store_unavailable")
 		return

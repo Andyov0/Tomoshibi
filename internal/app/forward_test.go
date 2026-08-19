@@ -577,7 +577,7 @@ func TestANameReusedAfterAMeetingEndsIsPickedAfresh(t *testing.T) {
 	// The note is still there — this is not the expiry being tested — and there
 	// is no media server behind these tests, so nothing can confirm a meeting is
 	// running under that name.
-	if got := st.HeldOn("standup"); got != "guangzhou" {
+	if got, _ := st.HeldOn("standup"); got != "guangzhou" {
 		t.Fatalf("the room was noted on %q, wanted guangzhou", got)
 	}
 
@@ -594,7 +594,7 @@ func TestANameReusedAfterAMeetingEndsIsPickedAfresh(t *testing.T) {
 	}
 
 	// And the note is gone, so the next join does not ask the same question.
-	if got := st.HeldOn("standup"); got == "guangzhou" {
+	if got, _ := st.HeldOn("standup"); got == "guangzhou" {
 		t.Error("a note about a meeting that has ended was left in place; every join for " +
 			"the next two hours asks the media server the same question and gets the " +
 			"same answer")

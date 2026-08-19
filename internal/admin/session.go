@@ -176,7 +176,16 @@ func (s *Sessions) Of(r *http.Request) (Session, bool) {
 	// where they were written down instead, and put back in memory so the next
 	// request does not read it again.
 	if !held && s.kept != nil {
-		if stored, ok := s.kept.Session(cookie.Value); ok {
+		if stored, ok := s.kept.Session(cookie.Value); ok && stored.Kind == managementKind {
+			// The kind is the whole of the separation, and it was checked in one
+			// of the two places that read this bucket.
+			//
+			// Both kinds are kept here, keyed by the hash of their token. The
+			// account door checked; this one did not, and did not write the field
+			// either — so anybody holding an account session could copy their own
+			// cookie under the management name and be admitted. Not a forged
+			// credential: their own, read through a door that never asked what it
+			// was for.
 			session = fromStored(stored)
 			s.open[cookie.Value] = session
 			held = true
@@ -221,9 +230,17 @@ func (s *Sessions) Of(r *http.Request) (Session, bool) {
 	return session, true
 }
 
+// What a management session is written down as.
+//
+// Named on the record rather than inferred from which bucket it is in, because
+// there is one bucket: an account's session and this one are the same shape with
+// the same expiry and the same sweeping, and the only thing that must never
+// happen is one being accepted by the other's door.
+const managementKind = "admin"
+
 func (s Session) stored() store.Session {
 	return store.Session{
-		Trip: s.Trip, Name: s.Name, Can: s.Can,
+		Trip: s.Trip, Name: s.Name, Can: s.Can, Kind: managementKind,
 		Opened: s.Opened, Expires: s.Expires,
 	}
 }

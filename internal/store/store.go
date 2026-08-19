@@ -62,6 +62,24 @@ var ErrNotOpen = errors.New("that room has not been opened")
 // no record is a name nobody may use. Which is why Seen is not only a figure on
 // a management page — it is how long the room has left. See Forget.
 type Room struct {
+	// HeldAt is when the relay above was noted.
+	//
+	// Its own field rather than Seen, which is what made the expiry below dead
+	// code: a join refreshes Seen before it reads the note, so the note was
+	// always a moment old and never aged out. Nothing said so — the timer simply
+	// never fired, and the store's own test aged Seen by hand and passed.
+	HeldAt time.Time `json:"heldAt,omitempty"`
+
+	// Placed marks a note somebody made on purpose.
+	//
+	// A note left by a join is a guess about where the next person should go and
+	// is worth nothing once the meeting has ended. A note left by an operator
+	// moving a room is an instruction, and is worth exactly as much when there
+	// is no meeting — which is the moment it is read, because moving a room ends
+	// the call it is moving. Read as a guess, an instruction was thrown away
+	// each time and every move silently undone.
+	Placed bool `json:"placed,omitempty"`
+
 	// Host is the mark of whoever the room answers to.
 	//
 	// Set to whoever first spoke the name, because somebody has to be able to
@@ -415,6 +433,10 @@ func (s *Store) Rooms() ([]Named, error) {
 // later join tidier, and a call should not be refused because a note could not
 // be kept.
 func (s *Store) HoldRoom(name, relay string) error {
+	return s.hold(name, relay, false)
+}
+
+func (s *Store) hold(name, relay string, placed bool) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(rooms)
 		if bucket == nil {
@@ -431,11 +453,13 @@ func (s *Store) HoldRoom(name, relay string) error {
 			return nil
 		}
 
-		if tally.Relay == relay {
+		if tally.Relay == relay && tally.Placed == placed {
 			return nil
 		}
 
 		tally.Relay = relay
+		tally.Placed = placed
+		tally.HeldAt = time.Now().UTC()
 
 		encoded, err := json.Marshal(tally)
 		if err != nil {
@@ -465,10 +489,16 @@ func (s *Store) HoldRoom(name, relay string) error {
 // second time a name was used.
 const heldFor = 2 * time.Hour
 
-// HeldOn says which relay a room is being held on, while that is still worth
-// believing.
-func (s *Store) HeldOn(name string) string {
+// HeldOn says which relay a room is being held on, and whether somebody chose
+// it rather than a join leaving it behind.
+//
+// The second half is what the caller needs to know before deciding whether to
+// check it against the media server: a guess about a meeting that has ended is
+// worth nothing, and an instruction is worth the same whether a meeting is
+// running or not.
+func (s *Store) HeldOn(name string) (string, bool) {
 	var relay string
+	var placed bool
 
 	_ = s.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(rooms)
@@ -486,16 +516,65 @@ func (s *Store) HeldOn(name string) string {
 			return nil
 		}
 
-		if time.Since(tally.Seen) > heldFor {
+		// An instruction does not age out. It is read once, by the join that
+		// carries it out, and cleared there.
+		if !tally.Placed && time.Since(tally.HeldAt) > heldFor {
 			return nil
 		}
 
-		relay = tally.Relay
+		relay, placed = tally.Relay, tally.Placed
 
 		return nil
 	})
 
-	return relay
+	return relay, placed
+}
+
+// PlaceRoom says where a room is to be held, on purpose.
+//
+// Distinct from HoldRoom, which is what a join leaves behind. The difference is
+// not the value written but how long it is believed: a guess is checked against
+// whether the meeting is still running, and an instruction is carried out.
+func (s *Store) PlaceRoom(name, relay string) error {
+	return s.hold(name, relay, true)
+}
+
+// Carried marks an instruction as carried out, so it moves a room once.
+//
+// Left in place it would pin the name for good, and every later choice anybody
+// made about where to hold a meeting of that name would do nothing, with nothing
+// on any screen to say why.
+func (s *Store) Carried(name string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		raw := bucket.Get([]byte(name))
+		if raw == nil {
+			return nil
+		}
+
+		var tally Room
+		if err := json.Unmarshal(raw, &tally); err != nil {
+			return nil
+		}
+
+		if !tally.Placed {
+			return nil
+		}
+
+		tally.Placed = false
+		tally.HeldAt = time.Now().UTC()
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(name), encoded)
+	})
 }
 
 // ReleaseRoom forgets where a room was being held.

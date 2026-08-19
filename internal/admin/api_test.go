@@ -360,7 +360,7 @@ func (unwritten) SetOpening(room.Opening) error { return errors.New("no store") 
 // are decorations on a page, and a management surface that returned an error
 // because it could not decorate one would be unusable on the machine that most
 // needs it.
-func (unwritten) HeldOn(string) string { return "" }
+func (unwritten) HeldOn(string) (string, bool) { return "", false }
 
 func (unwritten) Arrivals(string) map[string]store.Arrival { return nil }
 

@@ -195,6 +195,18 @@ func (a *App) signedIn(r *http.Request) (store.Account, bool) {
 	}
 
 	account, held := a.whoever(session.Name, session.Trip)
+
+	// Blocked is checked here and not only at the door.
+	//
+	// Signing in refuses a blocked account and the join refuses one, but the
+	// session somebody already held went on working: for up to a month they kept
+	// their page, could change their own passphrase and picture, and could go on
+	// asking which room names are in use. Blocking somebody has to end what they
+	// have, not only stop them getting more.
+	if held && account.Blocked {
+		held = false
+	}
+
 	if !held {
 		// The account was removed, renamed, or had its passphrase changed by
 		// somebody else. The session names something that is no longer there,

@@ -402,7 +402,7 @@ func TestAHostMayNotMoveARoomOntoAReservedRelay(t *testing.T) {
 			"%d; the reservation is decoration if only the list enforces it", refused.Code)
 	}
 
-	if got := st.HeldOn("standup"); got == "reserved" {
+	if got, _ := st.HeldOn("standup"); got == "reserved" {
 		t.Error("and it was written down anyway")
 	}
 
@@ -417,7 +417,7 @@ func TestAHostMayNotMoveARoomOntoAReservedRelay(t *testing.T) {
 		t.Error("a host was refused an ordinary relay")
 	}
 
-	if got := st.HeldOn("standup"); got != "open" {
+	if got, _ := st.HeldOn("standup"); got != "open" {
 		t.Errorf("the room was noted on %q, wanted open", got)
 	}
 }
@@ -485,5 +485,92 @@ func TestAHostCannotSilenceOrRemoveAnAdministrator(t *testing.T) {
 
 	if onOrdinary.Code == http.StatusForbidden {
 		t.Error("a host was refused an ordinary participant; the room answers to nobody")
+	}
+}
+
+/*
+Three ways somebody became more than they were, all found in one audit and all
+of the same shape: a check that looked at the right value in the wrong way.
+
+They are worth testing together because each of them passed every test that
+existed. Nothing crashed, nothing was logged, and the pages all worked.
+*/
+
+// An issued mark is chosen by the client, so comparing one authorises nothing.
+//
+// A client sends back the identity it was given, and the server keeps it when it
+// matches the passphrase — which for no passphrase means it matches anything. So
+// anybody could send an identity bearing the host's mark and be the host. The
+// mark was not even secret: it printed beside the host's name in every roster,
+// and the host endpoint handed it out as well.
+func TestAnIssuedMarkCannotBeWornToBecomeTheHost(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid", Region: "CN-East"},
+	)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// A host who can prove their name.
+	_, real := tokenFor(t, "standup", "the host's own passphrase")
+	mark, _ := room.SignatureOf(real)
+
+	if err := st.SetHost("standup", mark.Trip); err != nil {
+		t.Fatal(err)
+	}
+
+	// Somebody who read that mark and sent it back inside an issued identity.
+	worn := "g" + mark.Trip + "-" + strings.Repeat("ab", 16)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/rooms/standup/join",
+		strings.NewReader(`{"name":"impostor","identity":"`+worn+`"}`))
+	request.Header.Set("Content-Type", "application/json")
+
+	var got struct {
+		Identity string `json:"identity"`
+		Token    string `json:"token"`
+	}
+	if err := json.Unmarshal(ask(mux, request).Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Identity != worn {
+		t.Skipf("the server no longer keeps a chosen issued identity (%q), which closes "+
+			"this from the other end", got.Identity)
+	}
+
+	if code := ask(mux, asking(http.MethodPost, "/api/rooms/standup/invites", got.Token, "")).Code; code != http.StatusForbidden {
+		t.Errorf("somebody wearing the host's issued mark ran the room, with %d: they can "+
+			"mute anybody, remove anybody, end the meeting, take it permanently, and mint "+
+			"links to it", code)
+	}
+}
+
+// And the mark is no longer handed to everybody, which is what made the above
+// a two-request attack rather than a guess.
+func TestTheHostsOwnMarkIsNotPublishedToTheRoom(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid", Region: "CN-East"},
+	)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	_, real := tokenFor(t, "standup", "the host's own passphrase")
+	mark, _ := room.SignatureOf(real)
+
+	if err := st.SetHost("standup", mark.Trip); err != nil {
+		t.Fatal(err)
+	}
+
+	guest, _ := tokenFor(t, "standup", "")
+
+	body := ask(mux, asking(http.MethodGet, "/api/rooms/standup/host", guest, "")).Body.String()
+
+	if strings.Contains(body, mark.Trip) {
+		t.Errorf("the host's mark was handed to a guest: %s\n"+
+			"a mark is somebody's identity in every room on this deployment", body)
 	}
 }

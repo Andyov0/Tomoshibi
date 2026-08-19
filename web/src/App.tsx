@@ -1,11 +1,12 @@
 import { type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
+import { leftRoom, wasIn } from "@/live/api";
 import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { connect, create } from "@/live/room";
 import { useT } from "@/hooks/useT";
 import { joinFailed } from "@/live/notices";
 import { Lobby, SignIn } from "@/routes/Lobby";
-import { type Choices, PreJoin, remembered } from "@/routes/PreJoin";
+import { type Choices, PreJoin, remembered, rememberedName } from "@/routes/PreJoin";
 import { Room } from "@/routes/Room";
 import { RoomEvent, type Room as LiveRoom } from "livekit-client";
 import type { ReactNode } from "react";
@@ -129,6 +130,31 @@ export function App() {
 				// a name that was already there. What lands instead is the screen
 				// one press from rejoining, rather than a rejoin nobody asked for:
 				// a refresh should not put somebody back on a live microphone.
+				// Back into the call this tab was in, whoever they are.
+				//
+				// The guard is that this tab was in this room, not that somebody
+				// is signed in. Signed in was the wrong test twice over: it walked
+				// somebody who had merely pasted a room link straight into the
+				// call without a look at their own camera, and it left everybody
+				// who arrived on an invitation — who has no account by design —
+				// pressing Join again after every refresh.
+				if (initialRoom() && wasIn() === initialRoom()) {
+					setFront(
+						account
+							? { at: "ready", me: account, relay: lastRelay() }
+							: { at: "invited", room: initialRoom() },
+					);
+
+					void onJoin({
+						name: account?.name ?? rememberedName(),
+						passphrase: "",
+						relay: lastRelay(),
+						...remembered(),
+					});
+
+					return;
+				}
+
 				if (account && initialRoom()) {
 					// Back into the call rather than to the screen in front of it.
 					//
@@ -239,6 +265,10 @@ export function App() {
 		current.current = undefined;
 		setLive(undefined);
 
+		// Forgotten, or leaving and then reloading would be rejoining — which is
+		// the one case where walking somebody back into a call is exactly wrong.
+		leftRoom();
+
 		// A guest has nowhere to be sent back to.
 		//
 		// Everybody else came from a lobby or from a page they can use again, and
@@ -273,7 +303,44 @@ export function App() {
 	useEffect(() => {
 		if (!live) return;
 
+		/*
+		 * A room being moved, said before it happens.
+		 *
+		 * The media server disconnects everybody the same way whether a meeting
+		 * is over or is being put up on another machine, and the two want
+		 * opposite answers. So the server says which, and this remembers it for
+		 * the two seconds between the message and the disconnection.
+		 *
+		 * A flag rather than state: nothing on screen depends on it, and a
+		 * re-render between the warning and the disconnection would be a chance
+		 * for the two to disagree.
+		 */
+		const moving = { soon: false };
+
+		const told = (_payload: Uint8Array, _who: unknown, _kind: unknown, topic?: string) => {
+			if (topic === "moving") moving.soon = true;
+		};
+
+		live.on(RoomEvent.DataReceived, told);
+
 		const ended = (reason?: number) => {
+			// Moved rather than ended: straight back in, to the machine the room
+			// has been put on. The address still names the room and this tab is
+			// still the tab that was in it, so the ordinary rejoin does the rest.
+			if (moving.soon && reason === DISCONNECT_ROOM_CLOSED) {
+				setLive(undefined);
+				current.current = undefined;
+
+				void onJoin({
+					name: front.at === "lobby" || front.at === "ready" ? front.me.name : rememberedName(),
+					passphrase: "",
+					relay: "",
+					...remembered(),
+				});
+
+				return;
+			}
+
 			if (reason === DISCONNECT_ROOM_CLOSED) {
 				joinFailed(t("The host closed this room."));
 			} else if (reason === DISCONNECT_REMOVED) {
@@ -285,8 +352,9 @@ export function App() {
 
 		return () => {
 			live.off(RoomEvent.Disconnected, ended);
+			live.off(RoomEvent.DataReceived, told);
 		};
-	}, [live, t, onLeave]);
+	}, [live, t, onLeave, onJoin, front]);
 
 
 	/*

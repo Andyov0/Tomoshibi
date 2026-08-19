@@ -697,3 +697,5 @@ func TestAPinnedEntryOverridesTheBrowserAndThenGoesAway(t *testing.T) {
 			"to say why", third.URL)
 	}
 }
+
+func (quiet) Announce(context.Context, string, string, []byte) error { return nil }

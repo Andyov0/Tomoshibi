@@ -82,12 +82,30 @@ func (a *API) placeRoom(session Session, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Ending it is what moves it. Everybody's client goes back to the front and
-	// rejoins, and the note written a moment ago is what sends them to the new
-	// machine — so the order matters, and it is the order above.
+	// Ending it is what moves it, and saying so first is what makes it a move
+	// rather than an ending.
+	//
+	// A client cannot tell the two apart: the media server disconnects everybody
+	// the same way whether a meeting is over or is being put up somewhere else,
+	// and the right answer is opposite in each case. So they are told, and then
+	// it happens — in that order, because the message has to reach a room that
+	// still exists.
+	//
+	// Told rather than guaranteed. The message is lossy on purpose: a reliable
+	// one would be retried into a room that is about to stop existing, and the
+	// retry would outlive the thing it is about. Somebody it does not reach is
+	// left exactly where everybody was before this existed, which is one press
+	// from being back.
 	if !a.attached() {
 		a.detached(w)
 		return
+	}
+
+	if err := a.control.Announce(r.Context(), name, "moving", []byte(relay)); err != nil {
+		// Not fatal. A move nobody was warned about is still a move, and
+		// refusing here would leave the room where it is for the sake of a
+		// courtesy.
+		a.record(session, "announce move", name, relay, err)
 	}
 
 	if err := a.control.Close(r.Context(), name); err != nil {

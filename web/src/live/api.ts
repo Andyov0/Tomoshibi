@@ -10,6 +10,7 @@ import { preferred } from "./relays";
  * and back in English on the morning after a deployment.
  */
 const IDENTITY_KEY = "meet-live.identity";
+const WAS_IN_KEY = "meet-live.was-in";
 
 /**
  * Who may use a name nobody has used before.
@@ -187,6 +188,16 @@ export async function join(
 	const result = (await response.json()) as Join;
 	sessionStorage.setItem(IDENTITY_KEY, result.identity);
 
+	// Which room this tab was in, so a reload can tell "I was just in a call" from
+	// "somebody pasted a link". They look identical in the address bar and want
+	// opposite answers: one should put you straight back, and the other should
+	// let you look at your camera first.
+	//
+	// Session storage rather than local: it is about this tab. A second window
+	// on the same machine is a second person as far as any of this is concerned,
+	// and one of them reloading must not drag the other into a call.
+	sessionStorage.setItem(WAS_IN_KEY, room);
+
 	return result;
 }
 
@@ -228,4 +239,21 @@ function explain(reason: string | undefined, room: string): string {
 		default:
 			return t("Could not join {room}.", { room });
 	}
+}
+
+
+/**
+ * The room this tab was in when it was last in one.
+ *
+ * The signal a reload needs and the address bar cannot give: a URL naming a room
+ * is equally what somebody was just in and what somebody has just been sent, and
+ * only one of those should be walked straight into.
+ */
+export function wasIn(): string {
+	return sessionStorage.getItem(WAS_IN_KEY) ?? "";
+}
+
+/** Forgotten on a deliberate leave, so leaving and reloading is not rejoining. */
+export function leftRoom(): void {
+	sessionStorage.removeItem(WAS_IN_KEY);
 }

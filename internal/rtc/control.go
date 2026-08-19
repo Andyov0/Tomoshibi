@@ -113,6 +113,27 @@ func (c *Control) Close(ctx context.Context, room string) error {
 		&livekit.DeleteRoomResponse{})
 }
 
+// Announce sends one message to everybody in a room.
+//
+// Used to say that a room is about to be taken down and put up somewhere else,
+// which is a thing a client cannot work out for itself: being disconnected
+// because the meeting is over and being disconnected because it is moving look
+// identical from the far end, and they want opposite answers — go back to the
+// front, or come straight back in.
+//
+// Lossy, and told to be. A reliable message would be retried into a room that is
+// about to stop existing, and the retry would outlive the thing it is about. One
+// that does not arrive costs somebody a press on a button, which is what the
+// whole fleet did before this existed.
+func (c *Control) Announce(ctx context.Context, room, topic string, data []byte) error {
+	return c.call(ctx, "SendData",
+		&auth.VideoGrant{RoomAdmin: true, Room: room},
+		&livekit.SendDataRequest{
+			Room: room, Data: data, Kind: livekit.DataPacket_LOSSY, Topic: &topic,
+		},
+		&livekit.SendDataResponse{})
+}
+
 // call spends one token on one request.
 //
 // Minted per call and valid for a minute. A long-lived administrative token

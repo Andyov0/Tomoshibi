@@ -580,6 +580,17 @@ function Unavailable({ reason }: { reason: string }) {
  * with. Exported for that: somebody rejoining after a refresh has already made
  * these two decisions and should not be asked again.
  */
+/**
+ * The name last joined under, for a reload that is going straight back in.
+ *
+ * Whatever was typed, including anything after a hash: the passphrase half is
+ * dropped on the way out, because a rejoin carries the identity it already has
+ * and does not need to prove the name again.
+ */
+export function rememberedName(): string {
+	return parseName(localStorage.getItem(NAME_KEY) ?? "").name;
+}
+
 export function remembered(): { camera: boolean; microphone: boolean } {
 	const fallback = { camera: false, microphone: true };
 

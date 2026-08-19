@@ -335,6 +335,15 @@ func (c *Cluster) Mute(ctx context.Context, room, identity, track string) error 
 	return c.ask(ctx, func(control *Control) error { return control.Mute(ctx, room, identity, track) })
 }
 
+// Announce says something to everybody in a room, through whichever relay
+// answers. Any node reaches the whole cluster, so the first answer is the
+// answer.
+func (c *Cluster) Announce(ctx context.Context, room, topic string, data []byte) error {
+	return c.ask(ctx, func(control *Control) error {
+		return control.Announce(ctx, room, topic, data)
+	})
+}
+
 func (c *Cluster) Close(ctx context.Context, room string) error {
 	return c.ask(ctx, func(control *Control) error { return control.Close(ctx, room) })
 }

@@ -604,3 +604,5 @@ func TestARelayThatWillNotAnswerDoesNotEmptyTheReading(t *testing.T) {
 			"empty moment and keep its clock", got)
 	}
 }
+
+func (absent) Announce(context.Context, string, string, []byte) error { return nil }

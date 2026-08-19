@@ -363,6 +363,8 @@ const en = {
 	"this machine": "this machine",
 	"the connection": "the connection",
 	"something the browser will not name": "something the browser will not name",
+	"Hold this call somewhere else": "Hold this call somewhere else",
+	"Everybody is reconnected. Nobody has to do anything.": "Everybody is reconnected. Nobody has to do anything.",
 } as const;
 
 export default en;

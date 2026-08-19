@@ -1080,6 +1080,8 @@ const (
 	// A person named in a request who is not somebody this can act on: not in
 	// the room, not a valid identity, or the caller themselves.
 	reasonNoSuchPerson = "no_such_person"
+	// A relay named in a request that this deployment does not have.
+	reasonNoSuchRelay = "no_such_relay"
 	// The media server did not answer, so nothing was done. Distinct from a
 	// refusal: nothing about the request was wrong.
 	reasonMediaUnreachable = "media_unreachable"

@@ -1,9 +1,11 @@
+import { Flagged } from "@/components/room/Flag";
 import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
 import {
 	dissolve,
 	handOver,
 	invite,
+	moveRoom,
 	revoke,
 	silence,
 	turnOut,
@@ -20,11 +22,13 @@ import {
 	Link2,
 	Link2Off,
 	Loader2,
+	Server,
 	MicOff,
 	UserMinus,
 	X,
 } from "lucide-react";
-import { useState } from "react";
+import { type Relay, relays } from "@/live/relays";
+import { useEffect, useState } from "react";
 
 /**
  * The small console for whoever is running the meeting.
@@ -189,6 +193,22 @@ export function HostPanel({
 
 			<div className="h-px bg-border" />
 
+			{/*
+			 * Where the meeting is held, changed without ending it.
+			 *
+			 * Reserved machines are offered only to somebody who may use one. The
+			 * server refuses the rest regardless — a name travels in a request
+			 * anybody can write — so this is about not showing a host a door that
+			 * will not open, rather than about keeping anything from them.
+			 */}
+			<Elsewhere
+				admin={standing.admin}
+				busy={busy === "move"}
+				onMove={(relay) => act("move", () => moveRoom(room, relay))}
+			/>
+
+			<div className="h-px bg-border" />
+
 			{others.length === 0 ? (
 				<p className="px-0.5 py-1 text-[11.5px] text-fg-muted">{t("Nobody else is here.")}</p>
 			) : (
@@ -330,6 +350,80 @@ export function Hosting({ room, standing }: { room: Room; standing: Standing }) 
 			{mounted && (
 				<div className={leaving ? "animate-depart" : undefined}>
 					<HostPanel room={room} standing={standing} onClose={() => setOpen(false)} />
+				</div>
+			)}
+		</div>
+	);
+}
+
+
+/** Choosing where the meeting is held, from inside it. */
+function Elsewhere({
+	admin,
+	busy,
+	onMove,
+}: {
+	admin: boolean;
+	busy: boolean;
+	onMove: (relay: string) => void;
+}) {
+	const t = useT();
+	const [servers, setServers] = useState<Relay[]>([]);
+	const [open, setOpen] = useState(false);
+	const { mounted, leaving } = useLingering(open, 160);
+
+	useEffect(() => {
+		void relays().then((offered) => setServers(offered.relays));
+	}, []);
+
+	// Reserved machines only where they can be used. Everywhere else this list
+	// shows them greyed, because hiding a machine somebody used yesterday makes
+	// it look deleted — here it is a choice rather than a description, and a
+	// choice nobody may take is a choice that should not be offered.
+	const usable = servers.filter((relay) => !relay.maintenance && (admin || !relay.adminOnly));
+
+	if (usable.length < 2) return null;
+
+	return (
+		<div className="flex flex-col gap-1.5">
+			<button
+				type="button"
+				disabled={busy}
+				onClick={() => setOpen((was) => !was)}
+				className={cn(
+					"flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px]",
+					"transition-colors hover:bg-surface-2 disabled:opacity-40",
+				)}
+			>
+				{busy ? <Loader2 className="size-3.5 animate-spin" /> : <Server className="size-3.5" />}
+				{t("Hold this call somewhere else")}
+			</button>
+
+			{mounted && (
+				<div
+					className={cn(
+						"flex max-h-48 flex-col gap-0.5 overflow-y-auto rounded-lg border border-border p-1",
+						"origin-top bg-surface",
+						leaving ? "animate-depart" : "animate-arrive",
+					)}
+				>
+					<p className="px-2 py-1 text-[10.5px] text-fg-muted leading-snug">
+						{t("Everybody is reconnected. Nobody has to do anything.")}
+					</p>
+
+					{usable.map((relay) => (
+						<button
+							key={relay.name}
+							type="button"
+							onClick={() => {
+								onMove(relay.name);
+								setOpen(false);
+							}}
+							className="rounded px-2 py-1 text-left text-[12px] transition-colors hover:bg-surface-hi"
+						>
+							<Flagged text={relay.label || relay.name} />
+						</button>
+					))}
 				</div>
 			)}
 		</div>

@@ -330,6 +330,8 @@ const zhHant: Dictionary = {
 	"this machine": "這台機器",
 	"the connection": "網路連線",
 	"something the browser will not name": "瀏覽器沒有說明的原因",
+	"Hold this call somewhere else": "換一台伺服器",
+	"Everybody is reconnected. Nobody has to do anything.": "所有人會自動重連,不需要任何操作。",
 };
 
 export default zhHant;

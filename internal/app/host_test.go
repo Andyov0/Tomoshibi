@@ -289,3 +289,201 @@ func TestOneInviteAdmitsEverybodyItReaches(t *testing.T) {
 		}
 	}
 }
+
+/*
+Being an administrator, in the three places somebody can be one.
+
+The mark on an identity was the whole test, and it is the one that fails in the
+case that matters. A mark says only what the identity was minted from: somebody
+who followed an invitation is a guest by design and carries a mark drawn from
+nothing, and somebody who joined without typing their passphrase carries nothing
+either. Both can be sitting in the management pages in the next tab, and both
+were told that a room they administer was not theirs.
+*/
+
+func TestAnAdministratorRunsAnyRoomHoweverTheyJoinedIt(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid", Region: "CN-East"},
+	)
+
+	const passphrase = "the administrator's own passphrase"
+
+	if err := st.AddAdmin(store.Admin{
+		Trip: room.Trip(tripKey, passphrase), Name: "andy", Can: []string{"moderate"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Somebody else's room, and they are its host.
+	_, theirs := tokenFor(t, "standup", "somebody else's passphrase")
+	mark, _ := room.SignatureOf(theirs)
+
+	if err := st.SetHost("standup", mark.Trip); err != nil {
+		t.Fatal(err)
+	}
+
+	// The administrator, joined as a guest: no passphrase, so nothing about the
+	// identity says who they are.
+	guest, _ := tokenFor(t, "standup", "")
+
+	asGuest := ask(mux, asking(http.MethodPost, "/api/rooms/standup/invites", guest, ""))
+	if asGuest.Code != http.StatusForbidden {
+		t.Fatalf("a guest with no session ran somebody else's room: %d", asGuest.Code)
+	}
+
+	// The same join, from a browser holding an account session for the
+	// administrator. Nothing about the call changed; what changed is that there
+	// is now something that says who is asking.
+	account := store.Account{Name: "andy-account", Trip: room.Trip(tripKey, passphrase)}
+	if err := st.AddAccount(account); err != nil {
+		// The signature belongs to an administrator, which the ledger refuses on
+		// purpose. Signing in as the administrator is the path that matters.
+		t.Log("account refused, as it should be:", err)
+	}
+
+	token := "a-session-token-for-this-test"
+	now := time.Now().UTC()
+
+	if err := st.KeepSession(token, store.Session{
+		Trip: room.Trip(tripKey, passphrase), Name: "andy", Kind: "account",
+		Opened: now, Expires: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	signed := asking(http.MethodPost, "/api/rooms/standup/invites", guest, "")
+	signed.AddCookie(&http.Cookie{Name: "meet-live.account", Value: token})
+
+	if got := ask(mux, signed).Code; got != http.StatusOK {
+		t.Errorf("an administrator signed in at the front of the site was refused their own "+
+			"deployment's room with %d, because the call they happened to join was joined "+
+			"as a guest", got)
+	}
+}
+
+/*
+A host may move a meeting, and may not move it somewhere reserved.
+
+Enforced here rather than by leaving the machine off a list. A list is a
+courtesy: the name travels in a request anybody can write, and somebody who read
+it off a colleague's screen would otherwise have found the reservation to be
+decoration.
+*/
+
+func TestAHostMayNotMoveARoomOntoAReservedRelay(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "open", URL: "wss://open.example.invalid", Region: "CN-East"},
+		store.Relay{
+			Name: "reserved", URL: "wss://priv.example.invalid", Region: "CN-East",
+			AdminOnly: true,
+		},
+	)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	token, identity := tokenFor(t, "standup", "the host's passphrase")
+	mark, _ := room.SignatureOf(identity)
+
+	if err := st.SetHost("standup", mark.Trip); err != nil {
+		t.Fatal(err)
+	}
+
+	refused := ask(mux, asking(http.MethodPut, "/api/rooms/standup/relay", token,
+		`{"relay":"reserved"}`))
+
+	if refused.Code != http.StatusForbidden {
+		t.Errorf("a host moved their room onto a relay reserved for administrators, with "+
+			"%d; the reservation is decoration if only the list enforces it", refused.Code)
+	}
+
+	if got := st.HeldOn("standup"); got == "reserved" {
+		t.Error("and it was written down anyway")
+	}
+
+	// And an ordinary machine is allowed — or the test above would pass on a
+	// server that refuses every move.
+	allowed := ask(mux, asking(http.MethodPut, "/api/rooms/standup/relay", token,
+		`{"relay":"open"}`))
+
+	// No media server behind these tests, so the close at the end cannot happen;
+	// what matters is that it got that far rather than being refused.
+	if allowed.Code == http.StatusForbidden {
+		t.Error("a host was refused an ordinary relay")
+	}
+
+	if got := st.HeldOn("standup"); got != "open" {
+		t.Errorf("the room was noted on %q, wanted open", got)
+	}
+}
+
+/*
+A host runs their meeting; an administrator runs the deployment it is happening
+on. The second outranks the first, and it did not.
+
+A host could quiet an administrator or put them out of a room they administer,
+which inverts the whole arrangement at the one moment it matters — the moment
+somebody is misbehaving in a room they happen to have opened first. Nothing about
+it looked wrong: every check asked whether the caller was allowed to act, and
+none asked who they were acting on.
+*/
+
+func TestAHostCannotSilenceOrRemoveAnAdministrator(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid", Region: "CN-East"},
+	)
+
+	const passphrase = "the administrator's own passphrase"
+
+	if err := st.AddAdmin(store.Admin{
+		Trip: room.Trip(tripKey, passphrase), Name: "andy", Can: []string{"moderate"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	host, hostIdentity := tokenFor(t, "standup", "the host's own passphrase")
+	mark, _ := room.SignatureOf(hostIdentity)
+
+	if err := st.SetHost("standup", mark.Trip); err != nil {
+		t.Fatal(err)
+	}
+
+	// The administrator, in the call under their own passphrase, so the identity
+	// says who they are.
+	_, adminIdentity := tokenFor(t, "standup", passphrase)
+
+	muted := ask(mux, asking(http.MethodPost, "/api/rooms/standup/mute", host,
+		`{"identity":"`+adminIdentity+`","track":"TR_x"}`))
+
+	if muted.Code != http.StatusForbidden {
+		t.Errorf("a host silenced an administrator, with %d", muted.Code)
+	}
+
+	removed := ask(mux, asking(http.MethodDelete,
+		"/api/rooms/standup/people/"+adminIdentity, host, ""))
+
+	if removed.Code != http.StatusForbidden {
+		t.Errorf("a host removed an administrator from a room the administrator runs, "+
+			"with %d", removed.Code)
+	}
+
+	// And an ordinary participant is still theirs to act on, or the guard above
+	// would pass on a host who can do nothing at all.
+	_, ordinary := tokenFor(t, "standup", "")
+
+	onOrdinary := ask(mux, asking(http.MethodPost, "/api/rooms/standup/mute", host,
+		`{"identity":"`+ordinary+`","track":"TR_x"}`))
+
+	if onOrdinary.Code == http.StatusForbidden {
+		t.Error("a host was refused an ordinary participant; the room answers to nobody")
+	}
+}

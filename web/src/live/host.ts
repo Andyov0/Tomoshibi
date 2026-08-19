@@ -124,6 +124,25 @@ export async function dissolve(room: Room): Promise<void> {
 	if (!response.ok) throw new Error("close_failed");
 }
 
+/**
+ * Put the meeting on another machine, without ending it.
+ *
+ * Everybody is told the room is moving and then it is taken down; their clients
+ * hear the first, treat the second as a move rather than an ending, and come
+ * straight back to the machine chosen here.
+ *
+ * A relay reserved for administrators is refused by the server, not merely left
+ * off the list offered here. A list is a courtesy and a check is a rule.
+ */
+export async function moveRoom(room: Room, relay: string): Promise<void> {
+	const response = await ask(room, "/relay", {
+		method: "PUT",
+		body: JSON.stringify({ relay }),
+	});
+
+	if (!response.ok) throw new Error("move_failed");
+}
+
 /** Hand the room to somebody else. */
 export async function handOver(room: Room, person: Participant): Promise<void> {
 	const response = await ask(room, "/host", {

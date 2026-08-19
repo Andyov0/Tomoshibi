@@ -330,6 +330,8 @@ const ja: Dictionary = {
 	"this machine": "このマシン",
 	"the connection": "ネットワーク",
 	"something the browser will not name": "ブラウザが明かさない理由",
+	"Hold this call somewhere else": "別のサーバーに移す",
+	"Everybody is reconnected. Nobody has to do anything.": "全員が自動的に再接続します。操作は不要です。",
 };
 
 export default ja;

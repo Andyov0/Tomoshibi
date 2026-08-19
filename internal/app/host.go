@@ -51,6 +51,7 @@ func (a *App) mountHost(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/rooms/{room}/mute", a.quieten)
 	mux.HandleFunc("DELETE /api/rooms/{room}/people/{identity}", a.turnOut)
 	mux.HandleFunc("POST /api/rooms/{room}/close", a.dissolve)
+	mux.HandleFunc("PUT /api/rooms/{room}/relay", a.moveRoom)
 }
 
 // bearer is who a request proves it is, from the token it carries.
@@ -102,7 +103,7 @@ func (a *App) mayHost(r *http.Request, name string) (bearer, bool) {
 		return bearer{}, false
 	}
 
-	if a.isAdministrator(who.Mark) {
+	if a.administrating(r, who.Mark) {
 		return who, true
 	}
 
@@ -112,6 +113,36 @@ func (a *App) mayHost(r *http.Request, name string) (bearer, bool) {
 	// to everybody, and reading it that way would make the first person to ask
 	// the host of any room whose record predates this.
 	return who, host != "" && host == who.Mark.Trip
+}
+
+// administrating reports whether this request is an administrator's, by any of
+// the three ways somebody can be one.
+//
+// The mark alone was the whole test, and it is the one that fails in the case
+// that matters. It only says what the identity was minted from: somebody who
+// followed an invitation is a guest by design and carries a mark drawn from
+// nothing, and somebody who joined without typing their passphrase carries
+// nothing either. Both of them can be sitting in the management pages in the
+// next tab, and both were told a room they administer was not theirs.
+//
+// So a session counts as well — the management one, and an account's where that
+// account is an administrator. All three answer the same question and no two of
+// them answer it in the same place, which is precisely why one of them was
+// missed.
+func (a *App) administrating(r *http.Request, mark room.Signature) bool {
+	if a.isAdministrator(mark) {
+		return true
+	}
+
+	if _, ok := a.admin.SessionOf(r); ok {
+		return true
+	}
+
+	if account, ok := a.signedIn(r); ok {
+		return a.isAdministrator(room.Signature{Trip: account.Trip, Proven: true})
+	}
+
+	return false
 }
 
 // isAdministrator reports whether a mark is one, without a management session.
@@ -140,14 +171,16 @@ func (a *App) whoseRoom(w http.ResponseWriter, r *http.Request) {
 
 	host := a.store.HostOf(name)
 
+	admin := a.administrating(r, who.Mark)
+
 	respond(w, map[string]any{
 		"host": host,
 		// Whether the person asking is it, worked out here rather than left to
 		// the client to compare: the client would have to be told the host's
 		// mark to make the comparison, and a mark is somebody's identity in
 		// every room on this deployment.
-		"yours": a.isAdministrator(who.Mark) || (host != "" && host == who.Mark.Trip),
-		"admin": a.isAdministrator(who.Mark),
+		"yours": admin || (host != "" && host == who.Mark.Trip),
+		"admin": admin,
 	})
 }
 
@@ -189,7 +222,8 @@ func (a *App) handOver(w http.ResponseWriter, r *http.Request) {
 func (a *App) quieten(w http.ResponseWriter, r *http.Request) {
 	name := strings.ToLower(r.PathValue("room"))
 
-	if _, ok := a.mayHost(r, name); !ok {
+	who, ok := a.mayHost(r, name)
+	if !ok {
 		fail(w, http.StatusForbidden, reasonNotYours)
 		return
 	}
@@ -199,6 +233,11 @@ func (a *App) quieten(w http.ResponseWriter, r *http.Request) {
 		Track    string `json:"track"`
 	}
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
+
+	if a.beyond(r, who.Mark, body.Identity) {
+		fail(w, http.StatusForbidden, reasonNotYours)
+		return
+	}
 
 	if err := a.acting(r, func(control admin.Control) error {
 		return control.Mute(r.Context(), name, body.Identity, body.Track)
@@ -226,6 +265,11 @@ func (a *App) turnOut(w http.ResponseWriter, r *http.Request) {
 	// in it and nobody able to take over.
 	if identity == who.Identity {
 		fail(w, http.StatusBadRequest, reasonNoSuchPerson)
+		return
+	}
+
+	if a.beyond(r, who.Mark, identity) {
+		fail(w, http.StatusForbidden, reasonNotYours)
 		return
 	}
 
@@ -286,6 +330,93 @@ func (a *App) dissolve(w http.ResponseWriter, r *http.Request) {
 	slog.Info("room closed", "room", name, "by", who.Mark.Trip)
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// moveRoom puts the meeting on another machine, without ending it.
+//
+// The host's own version of what the management pages can do, and it is
+// deliberately narrower in one place: a relay reserved for administrators is not
+// one a host may send a room to. That is enforced here rather than by leaving it
+// off the list, because a list is a courtesy and a check is a rule — the name
+// travels in a request anybody can write, and somebody who read it off a
+// colleague's screen would otherwise have found the reservation to be decoration.
+//
+// The meeting does not stop. Everybody is told the room is moving, and then it
+// is taken down: their clients hear the first, treat the second as a move rather
+// than an ending, and come straight back to the machine written down a moment
+// earlier.
+func (a *App) moveRoom(w http.ResponseWriter, r *http.Request) {
+	name := strings.ToLower(r.PathValue("room"))
+
+	who, ok := a.mayHost(r, name)
+	if !ok {
+		fail(w, http.StatusForbidden, reasonNotYours)
+		return
+	}
+
+	var body struct {
+		Relay string `json:"relay"`
+	}
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
+
+	wanted, found := a.relays.named(strings.TrimSpace(body.Relay))
+	if !found {
+		fail(w, http.StatusBadRequest, reasonNoSuchRelay)
+		return
+	}
+
+	if wanted.AdminOnly && !a.administrating(r, who.Mark) {
+		fail(w, http.StatusForbidden, reasonRelayNotAllowed)
+		return
+	}
+
+	if err := a.store.HoldRoom(name, wanted.Name); err != nil {
+		slog.Error("failed to move a room", "room", name, "error", err)
+		fail(w, http.StatusInternalServerError, reasonServerError)
+		return
+	}
+
+	// Said before it happens, and to a room that still exists. A client cannot
+	// tell a meeting that is over from one being put up elsewhere — the media
+	// server ends both the same way — and the two want opposite answers.
+	if err := a.acting(r, func(control admin.Control) error {
+		return control.Announce(r.Context(), name, "moving", []byte(wanted.Name))
+	}); err != nil {
+		slog.Error("failed to announce a move", "room", name, "error", err)
+	}
+
+	if err := a.acting(r, func(control admin.Control) error {
+		return control.Close(r.Context(), name)
+	}); err != nil {
+		fail(w, http.StatusBadGateway, reasonMediaUnreachable)
+		return
+	}
+
+	slog.Info("room moved", "room", name, "to", wanted.Name, "by", who.Mark.Trip)
+
+	respond(w, map[string]any{"relay": wanted.Shown()})
+}
+
+// beyond reports whether somebody is out of this caller's reach.
+//
+// A host runs their meeting and an administrator runs the deployment the meeting
+// is happening on, so the second outranks the first — and it did not: a host
+// could quiet an administrator, or put them out of a room they administer, which
+// inverts the whole arrangement at the one moment it matters.
+//
+// Read from the identity, which is signed into the token and is the only thing
+// about a participant that neither they nor anybody else can change. An
+// administrator joined as a guest carries no mark and is not protected here,
+// which is honest rather than a gap: nothing in that call says who they are, and
+// a rule that guessed would be worse than one that does not.
+func (a *App) beyond(r *http.Request, caller room.Signature, identity string) bool {
+	if a.administrating(r, caller) {
+		return false
+	}
+
+	mark, ok := room.SignatureOf(identity)
+
+	return ok && a.isAdministrator(mark)
 }
 
 // acting runs something against whichever media server is holding the rooms.

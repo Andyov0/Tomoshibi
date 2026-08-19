@@ -330,6 +330,8 @@ const zhHans: Dictionary = {
 	"this machine": "这台机器",
 	"the connection": "网络连接",
 	"something the browser will not name": "浏览器没有说明的原因",
+	"Hold this call somewhere else": "换一台服务器",
+	"Everybody is reconnected. Nobody has to do anything.": "所有人会自动重连,不需要任何操作。",
 };
 
 export default zhHans;

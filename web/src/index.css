@@ -174,15 +174,6 @@
 		}
 	}
 
-	.animate-arrive {
-		animation: arrive 320ms var(--ease-settle) backwards;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.animate-arrive {
-			animation-duration: 1ms;
-		}
-	}
 
 	/*
 	 * How something on an otherwise empty screen arrives.
@@ -314,16 +305,6 @@
 		}
 	}
 
-	.animate-depart {
-		animation: depart 180ms var(--ease-settle) both;
-		pointer-events: none;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.animate-depart {
-			animation-duration: 1ms;
-		}
-	}
 
 	/*
 	 * The tally. A line along the bottom edge of a picture rather than a halo
@@ -348,5 +329,37 @@
 
 	.tally-line.is-live::after {
 		opacity: 1;
+	}
+}
+
+/*
+ * Arriving and leaving, declared as utilities rather than written as rules.
+ *
+ * They read the same in a stylesheet and they are not the same thing. A variant
+ * — data-[state=open]:, sm:, hover: — is built by Tailwind from a utility it
+ * has been told about, and @utility is how it is told; CSS written by hand into
+ * @layer utilities is passed through unchanged and no variant of it is ever
+ * generated. The menus here are opened and closed by Radix through a data-state
+ * attribute, so every animation they have is a variant, and while these were
+ * plain rules those animations compiled to nothing. The stylesheet contained
+ * animate-arrive and the menus asked for data-[state=open]:animate-arrive, and
+ * nothing in the source says those are different.
+ *
+ * The keyframes stay where they are, beside the argument for what they do.
+ */
+@utility animate-arrive {
+	animation: arrive 320ms var(--ease-settle) backwards;
+
+	@media (prefers-reduced-motion: reduce) {
+		animation-duration: 1ms;
+	}
+}
+
+@utility animate-depart {
+	animation: depart 180ms var(--ease-settle) both;
+	pointer-events: none;
+
+	@media (prefers-reduced-motion: reduce) {
+		animation-duration: 1ms;
 	}
 }

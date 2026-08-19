@@ -190,7 +190,14 @@ function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
 		...size,
 		frameRate: capped,
 		maxBitrate: bitrateFor(size.width, size.height, capped),
-		videoCodec: (still && size.height <= 1080 ? "vp8" : "h264") as VideoCodec,
+		// H.264 throughout, including the still picture that used to take VP8.
+		//
+		// VP8 renders text a little more crisply — it has no chroma subsampling
+		// to soften coloured letters — and it is software on essentially every
+		// machine, both to encode and to decode. A share is the one track in a
+		// call that everybody is looking at, so that softness is paid for by one
+		// person's processor and the sharpness is spent on everybody else's.
+		videoCodec: "h264" as VideoCodec,
 		contentHint: (still ? "text" : "motion") as "text" | "motion" | "detail",
 		/*
 		 * What gives, where something must, and it depends on what was asked for.
@@ -214,6 +221,21 @@ function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
 			: "balanced") as RTCDegradationPreference,
 		adapts: false,
 	};
+}
+
+/**
+ * Whether this is a device that runs on a battery and draws its pictures small.
+ *
+ * Asked of the pointer rather than of the user agent string. What matters is
+ * whether there is a mouse — a machine somebody points at with a finger is a
+ * machine with a small screen, a modest encoder and a battery, and all three
+ * want the same answer. The user agent would name the operating system, which is
+ * a different question with a well-known history of wrong answers.
+ */
+function handheld(): boolean {
+	return (
+		typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches
+	);
 }
 
 /**
@@ -249,19 +271,35 @@ export function create(): Room {
 		adaptiveStream: { pixelDensity: "screen" },
 		dynacast: true,
 		videoCaptureDefaults: {
-			resolution: VideoPresets.h720.resolution,
+			// Smaller on a hand-held, and not as a concession to the network.
+			//
+			// A phone in a nine-up grid is drawn at a couple of hundred points
+			// however large it was captured, so the pixels above that are encoded,
+			// sent and thrown away — on the one device paying for all three out of
+			// a battery. The camera on the front of a phone is also rarely worth
+			// 720 lines of anybody's attention.
+			resolution: handheld() ? VideoPresets.h360.resolution : VideoPresets.h720.resolution,
 		},
 		publishDefaults: {
-			// Layered, so a tile in a nine-up grid can be served something sized
-			// for a nine-up grid rather than a full-size picture scaled down at
-			// the receiver.
-			//
-			// The layering is SVC rather than simulcast, which the SDK arranges on
-			// its own for VP9: it publishes one stream carrying three spatial and
-			// three temporal layers instead of three separate encodes. Setting
-			// `simulcast` here would read as a choice and change nothing, since
-			// the two are alternatives and the codec has already picked.
-			videoCodec: "vp9",
+			/*
+			 * H.264, which is the one codec every machine encodes and decodes in
+			 * hardware.
+			 *
+			 * This was VP9, for its layering: one stream carrying three spatial
+			 * and three temporal layers, so a tile in a nine-up grid is served
+			 * something sized for a nine-up grid. That is the better shape and it
+			 * is paid for in silicon nobody has — VP9 encode is software almost
+			 * everywhere, and VP9 decode is software on a great many phones. In a
+			 * call of six, every participant was software-decoding five streams.
+			 *
+			 * Simulcast gets the same result the older way: three encodes instead
+			 * of one layered stream, each of them on hardware. More upstream
+			 * bandwidth from whoever is publishing, and far less work everywhere —
+			 * which is the trade worth making on the devices that struggle, and
+			 * they are the only ones where any of this is noticeable.
+			 */
+			videoCodec: "h264",
+			simulcast: true,
 		},
 		// Speaking is worked out by the media server and pushed to everybody, so
 		// no client has to run an analyser of its own.
@@ -385,15 +423,31 @@ export async function share(
 		wanted,
 		{
 			audio: true,
+			/*
+			 * The size is a ceiling and the rate is a target.
+			 *
+			 * Both used to be targets, which the browser reads as "aim for this"
+			 * — so somebody on a 1080p display who chose 1440p had their screen
+			 * scaled up before it was encoded: eighty-five per cent more pixels,
+			 * carrying not one pixel more of anything, encoded and sent and
+			 * scaled back down at the far end. As a ceiling, a smaller display is
+			 * captured at its own size and a larger one is reduced to what was
+			 * asked for, which is what choosing a size meant all along.
+			 *
+			 * The rate stays a target because it genuinely is one: a screen
+			 * produces frames when it changes, and asking for a hundred and
+			 * twenty is asking to be given them when they exist.
+			 *
+			 * The clamped rate, not what was asked for — a rate remembered from a
+			 * size that allowed it would otherwise be requested from a capture
+			 * that cannot do it, and the browser answers by giving whatever it
+			 * likes rather than by saying no.
+			 */
 			resolution: {
-				width: profile.width,
-				height: profile.height,
-				// The clamped rate, not what was asked for: a rate remembered
-				// from a size that allowed it would otherwise be requested from a
-				// capture that cannot do it, and the browser answers by giving
-				// whatever it likes rather than by saying no.
+				width: { max: profile.width },
+				height: { max: profile.height },
 				frameRate: profile.frameRate,
-			},
+			} as unknown as { width: number; height: number; frameRate: number },
 			// The picker should not offer this tab, which would be a mirror tunnel.
 			selfBrowserSurface: "exclude",
 			surfaceSwitching: "include",

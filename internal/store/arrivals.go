@@ -53,6 +53,14 @@ type Arrival struct {
 	Holding string `json:"holding,omitempty"`
 	// Forwarded says their media is being carried through Relay to Holding.
 	Forwarded bool `json:"forwarded,omitempty"`
+	// Pinned is a relay an operator has said this person should come in
+	// through next time, and is cleared the moment it is used.
+	//
+	// Once rather than for good: moving somebody out of a bad path is about the
+	// call they are in, and a pin that outlived it would quietly overrule every
+	// choice they made afterwards without appearing anywhere they could see.
+	Pinned string `json:"pinned,omitempty"`
+
 	// At is when they arrived, and is what ages the row out.
 	At time.Time `json:"at"`
 }

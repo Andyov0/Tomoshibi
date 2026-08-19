@@ -1,6 +1,7 @@
 import { Flagged } from "@/components/room/Flag";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useLingering } from "@/hooks/useLingering";
 import {
 	ArrowRight,
 	ChevronLeft,
@@ -8,11 +9,12 @@ import {
 	DoorClosed,
 	LogIn,
 	MicOff,
+	Move,
 	Server,
 	UserMinus,
 } from "lucide-react";
 import { useCallback, useState } from "react";
-import { type Participant, type Track, api } from "./api";
+import { type Participant, type Relay, type Track, api } from "./api";
 import { actionFailed } from "@/live/notices";
 import { OpeningCard } from "./OpeningCard";
 import { usePoll } from "./poll";
@@ -38,6 +40,12 @@ export function RoomsPanel({
 }) {
 	const [selected, setSelected] = useState<string>();
 	const [acting, setActing] = useState(false);
+
+	// The machines a room can be moved to. Read once here rather than inside the
+	// detail beside it, so opening a room does not fetch a list that has not
+	// changed since the page was drawn.
+	const { value: fleet } = usePoll(api.relays, { every: 30_000, onSignedOut });
+	const relays = fleet?.relays ?? [];
 
 	const { value, error, refresh } = usePoll(api.rooms, { onSignedOut });
 
@@ -153,8 +161,19 @@ export function RoomsPanel({
 					onBack={() => setSelected(undefined)}
 					canModerate={canModerate}
 					acting={acting}
+					relays={relays}
 					onSignedOut={onSignedOut}
 					onClose={() => act(() => api.closeRoom(open))}
+					onPlace={(relay, now) => {
+						void act(async () => {
+							await api.placeRoom(open, relay, now);
+						});
+					}}
+					onPlacePerson={(identity, relay) => {
+						void act(async () => {
+							await api.placePerson(open, identity, relay);
+						});
+					}}
 					onRemove={(identity) => act(() => api.remove(open, identity))}
 					onMute={(identity, track) => act(() => api.mute(open, identity, track))}
 				/>
@@ -172,8 +191,11 @@ function People({
 	onBack,
 	canModerate,
 	acting,
+	relays,
 	onSignedOut,
 	onClose,
+	onPlace,
+	onPlacePerson,
 	onRemove,
 	onMute,
 }: {
@@ -181,8 +203,11 @@ function People({
 	onBack: () => void;
 	canModerate: boolean;
 	acting: boolean;
+	relays: Relay[];
 	onSignedOut: () => void;
 	onClose: () => void;
+	onPlace: (relay: string, now: boolean) => void;
+	onPlacePerson: (identity: string, relay: string) => void;
 	onRemove: (identity: string) => void;
 	onMute: (identity: string, track: string) => void;
 }) {
@@ -238,6 +263,25 @@ function People({
 						<Server className="size-3" />
 						<Flagged text={held} />
 					</span>
+				)}
+
+				{/*
+				 * Where the next call under this name is held, and — separately —
+				 * moving the one in progress.
+				 *
+				 * A meeting lives on one machine and the media server has no way
+				 * to hand it to another while it runs, so those are two different
+				 * actions rather than one with a caveat. Choosing a relay sets
+				 * where the next one goes; moving it now ends this call so
+				 * everybody comes back to the machine that was chosen, and says so
+				 * before it does.
+				 */}
+				{canModerate && relays.length > 0 && (
+					<Moving
+						relays={relays}
+						acting={acting}
+						onPlace={(relay, now) => onPlace(relay, now)}
+					/>
 				)}
 
 				{started && (
@@ -302,6 +346,8 @@ function People({
 					{people.map((one) => (
 						<Person
 							key={one.sid}
+							relays={relays}
+							onPlace={(relay) => onPlacePerson(one.identity, relay)}
 							person={one}
 							canModerate={canModerate}
 							acting={acting}
@@ -319,12 +365,16 @@ function Person({
 	person,
 	canModerate,
 	acting,
+	relays,
+	onPlace,
 	onRemove,
 	onMute,
 }: {
 	person: Participant;
 	canModerate: boolean;
 	acting: boolean;
+	relays: Relay[];
+	onPlace: (relay: string) => void;
 	onRemove: () => void;
 	onMute: (track: string) => void;
 }) {
@@ -351,6 +401,10 @@ function Person({
 				<span className="ml-auto text-fg-muted text-xs tabular-nums">
 					{since(person.joinedAt)}
 				</span>
+
+				{canModerate && relays.length > 0 && (
+					<Sending relays={relays} acting={acting} onPlace={onPlace} />
+				)}
 
 				{canModerate && (
 					// An icon with a name on it, matching every other row on these
@@ -513,4 +567,171 @@ function source(name: string): string {
 		default:
 			return name.toLowerCase().replace(/_/g, " ");
 	}
+}
+
+
+/**
+ * Moving a meeting to a different machine.
+ *
+ * Two presses, and the second one names what it does. A meeting lives on one
+ * machine and the media server cannot hand it to another while it runs, so the
+ * choice and the disruption are separate: picking a relay settles where the next
+ * call under this name goes, and moving it now ends the one in progress so
+ * everybody comes back to the machine that was picked.
+ *
+ * Said in the button rather than in a warning beside it. A control that ends a
+ * call must not be pressed by somebody who thought it would not, and the place
+ * they are certainly reading is the thing they are about to press.
+ */
+function Moving({
+	relays,
+	acting,
+	onPlace,
+}: {
+	relays: Relay[];
+	acting: boolean;
+	onPlace: (relay: string, now: boolean) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const [wanted, setWanted] = useState("");
+	const { mounted, leaving } = useLingering(open, 160);
+
+	return (
+		<span className="relative">
+			<button
+				type="button"
+				onClick={() => setOpen((was) => !was)}
+				className={cn(
+					"flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px]",
+					"text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg",
+				)}
+			>
+				<Move className="size-3" />
+				Move
+			</button>
+
+			{mounted && (
+				<div
+					className={cn(
+						"absolute top-full left-0 z-20 mt-1.5 flex w-64 flex-col gap-1.5",
+						"rounded-xl border border-border bg-surface-hi p-2 shadow-2xl ring-1 ring-black/40",
+						"origin-top",
+						leaving ? "animate-depart" : "animate-arrive",
+					)}
+				>
+					<select
+						value={wanted}
+						onChange={(event) => setWanted(event.target.value)}
+						className="rounded-md border border-border bg-surface-2 px-2 py-1.5 text-[12px] outline-none"
+					>
+						<option value="">Choose a machine</option>
+						{relays.map((relay) => (
+							<option key={relay.name} value={relay.name}>
+								{relay.label || relay.name}
+							</option>
+						))}
+					</select>
+
+					<button
+						type="button"
+						disabled={!wanted || acting}
+						onClick={() => {
+							onPlace(wanted, false);
+							setOpen(false);
+						}}
+						className={cn(
+							"rounded-md border border-border px-2 py-1.5 text-left text-[11.5px]",
+							"transition-colors hover:bg-surface-2 disabled:opacity-40",
+						)}
+					>
+						Hold the next call here
+					</button>
+
+					<button
+						type="button"
+						disabled={!wanted || acting}
+						onClick={() => {
+							onPlace(wanted, true);
+							setOpen(false);
+						}}
+						className={cn(
+							"rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-left text-[11.5px]",
+							"transition-colors hover:bg-danger/20 disabled:opacity-40",
+						)}
+					>
+						Move now, ending this call
+					</button>
+				</div>
+			)}
+		</span>
+	);
+}
+
+/**
+ * Sending one person in through a different relay.
+ *
+ * Where somebody enters is theirs — their browser measures and picks — and this
+ * takes it over for one join, which is the whole of what an operator can
+ * honestly do: a browser holds its connection to the machine it dialled, and
+ * nothing in the protocol asks it to move. So they are let go of, and the door
+ * they come back through is the one chosen here.
+ */
+function Sending({
+	relays,
+	acting,
+	onPlace,
+}: {
+	relays: Relay[];
+	acting: boolean;
+	onPlace: (relay: string) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	const { mounted, leaving } = useLingering(open, 160);
+
+	return (
+		<span className="relative">
+			<button
+				type="button"
+				disabled={acting}
+				onClick={() => setOpen((was) => !was)}
+				aria-label="Send in through another relay"
+				title="Send in through another relay"
+				className={cn(
+					"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
+					"hover:bg-surface-2 hover:text-fg disabled:opacity-40",
+				)}
+			>
+				<Move className="size-3.5" />
+			</button>
+
+			{mounted && (
+				<div
+					className={cn(
+						"absolute top-full right-0 z-20 mt-1.5 flex w-56 flex-col gap-1.5",
+						"rounded-xl border border-border bg-surface-hi p-2 shadow-2xl ring-1 ring-black/40",
+						"origin-top",
+						leaving ? "animate-depart" : "animate-arrive",
+					)}
+				>
+					<p className="px-0.5 text-[10.5px] text-fg-muted leading-snug">
+						They are dropped from the call and come back in through this one.
+					</p>
+
+					{relays.map((relay) => (
+						<button
+							key={relay.name}
+							type="button"
+							onClick={() => {
+								onPlace(relay.name);
+								setOpen(false);
+							}}
+							className="rounded-md px-2 py-1 text-left text-[12px] transition-colors hover:bg-surface-2"
+						>
+							<Flagged text={relay.label || relay.name} />
+						</button>
+					))}
+				</div>
+			)}
+		</span>
+	);
 }

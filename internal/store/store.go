@@ -591,3 +591,79 @@ func (s *Store) HostOf(name string) string {
 
 	return mark
 }
+
+// PinEntry records which relay somebody should come in through next time.
+//
+// Against the room and the identity together, because that is what it is about:
+// where a person enters is theirs, separately from where the room is held, and
+// the same person in two meetings may want two different doors.
+//
+// Written onto the arrival, which already holds what was seen of them at the
+// last one. It is read at the next join and cleared there, so it moves somebody
+// once rather than pinning them for good — an operator moving a person out of a
+// bad path means this call, and a pin that outlived it would quietly overrule
+// every choice they made afterwards.
+func (s *Store) PinEntry(room, identity, relay string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(arrivals)
+		if err != nil {
+			return err
+		}
+
+		key := arrivalKey(room, identity)
+
+		var arrival Arrival
+		if raw := bucket.Get(key); raw != nil {
+			_ = json.Unmarshal(raw, &arrival)
+		}
+
+		arrival.Pinned = relay
+
+		if arrival.At.IsZero() {
+			arrival.At = time.Now().UTC()
+		}
+
+		encoded, err := json.Marshal(arrival)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(key, encoded)
+	})
+}
+
+// TakePin reads a pinned entry and clears it, so it moves somebody once.
+func (s *Store) TakePin(room, identity string) string {
+	var relay string
+
+	_ = s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(arrivals)
+		if bucket == nil {
+			return nil
+		}
+
+		key := arrivalKey(room, identity)
+
+		raw := bucket.Get(key)
+		if raw == nil {
+			return nil
+		}
+
+		var arrival Arrival
+		if err := json.Unmarshal(raw, &arrival); err != nil || arrival.Pinned == "" {
+			return nil
+		}
+
+		relay = arrival.Pinned
+		arrival.Pinned = ""
+
+		encoded, err := json.Marshal(arrival)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(key, encoded)
+	})
+
+	return relay
+}

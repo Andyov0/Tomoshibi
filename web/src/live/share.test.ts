@@ -84,17 +84,22 @@ describe("what is sent", () => {
 		);
 	});
 
-	// Software encoding is affordable for a still 1080p picture and for nothing
-	// else. Above either bound the failure is not a softer picture but an
-	// encoder falling behind.
-	it("only asks software encoding for a still 1080p picture", () => {
-		expect(settingsForTest(15, "1080p").videoCodec).toBe("vp8");
-		expect(settingsForTest(30, "1080p").videoCodec).toBe("vp8");
-
-		expect(settingsForTest(60, "1080p").videoCodec).toBe("h264");
-		expect(settingsForTest(30, "1440p").videoCodec).toBe("h264");
-		expect(settingsForTest(15, "4k").videoCodec).toBe("h264");
-		expect(settingsForTest(60, "4k").videoCodec).toBe("h264");
+	/*
+	 * Never software, at any size or rate.
+	 *
+	 * A still 1080p picture used to take VP8, which draws text a little more
+	 * crisply — it has no chroma subsampling to soften coloured letters. What
+	 * that cost was hidden by which side pays it: VP8 is software essentially
+	 * everywhere, to encode and to decode, and a share is the one track in a call
+	 * that everybody is looking at. One person's processor bought the sharpness
+	 * and everybody else's paid for it, phones included.
+	 */
+	it("never asks for a codec the machine has to do in software", () => {
+		for (const quality of SHARE_QUALITIES) {
+			for (const rate of SHARE_FRAME_RATES) {
+				expect(settingsForTest(rate as ShareFrameRate, quality).videoCodec).toBe("h264");
+			}
+		}
 	});
 
 	it("never publishes a share with an SVC codec", () => {

@@ -617,3 +617,83 @@ func (quiet) Participants(context.Context, string) ([]*livekit.ParticipantInfo, 
 func (quiet) Remove(context.Context, string, string) error       { return nil }
 func (quiet) Mute(context.Context, string, string, string) error { return nil }
 func (quiet) Close(context.Context, string) error                { return nil }
+
+/*
+An operator moving one person to a different way in.
+
+Where somebody enters is theirs — their browser measures the relays and picks —
+and that is right until it is not: a path that is bad in a way nothing here can
+measure, on the one call they are in now. So an operator can say which door, and
+the join takes that over what the browser sent.
+
+Once, and this is the part worth pinning down. It is about the call somebody is
+being moved out of. Left in place it would silently overrule every choice they
+made afterwards, in every meeting, from a page they cannot see — and the symptom
+would be a picker that appears to do nothing, months later, for one person.
+*/
+
+func TestAPinnedEntryOverridesTheBrowserAndThenGoesAway(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		forwarder("shanghai", "wss://sh.example.invalid", "sh.example.invalid:39219"),
+		forwarder("guangzhou", "wss://gz.example.invalid", "gz.example.invalid:39219"),
+	)
+
+	// Joined once, so there is an identity to pin against and a record to hold
+	// it — which is how an operator reaches somebody: by name in a room.
+	first := joinVia(t, mux, "standup", "shanghai")
+
+	var identity struct {
+		Identity string `json:"identity"`
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/rooms/standup/join",
+		strings.NewReader(`{"name":"somebody","relay":"shanghai"}`))
+	request.Header.Set("Content-Type", "application/json")
+
+	if err := json.Unmarshal(ask(mux, request).Body.Bytes(), &identity); err != nil {
+		t.Fatal(err)
+	}
+
+	if first.URL != "wss://sh.example.invalid" {
+		t.Fatalf("the first join went to %s, wanted shanghai", first.URL)
+	}
+
+	if err := st.PinEntry("standup", identity.Identity, "guangzhou"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The same person asking for the same relay their browser measured.
+	again := httptest.NewRequest(http.MethodPost, "/api/rooms/standup/join",
+		strings.NewReader(`{"name":"somebody","identity":"`+identity.Identity+`","relay":"shanghai"}`))
+	again.Header.Set("Content-Type", "application/json")
+
+	var moved struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(ask(mux, again).Body.Bytes(), &moved); err != nil {
+		t.Fatal(err)
+	}
+
+	if moved.URL != "wss://gz.example.invalid" {
+		t.Errorf("came back to %s despite being moved to guangzhou; an operator moving "+
+			"somebody out of a bad path did nothing at all", moved.URL)
+	}
+
+	// And once. The next join is theirs again.
+	back := httptest.NewRequest(http.MethodPost, "/api/rooms/standup/join",
+		strings.NewReader(`{"name":"somebody","identity":"`+identity.Identity+`","relay":"shanghai"}`))
+	back.Header.Set("Content-Type", "application/json")
+
+	var third struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(ask(mux, back).Body.Bytes(), &third); err != nil {
+		t.Fatal(err)
+	}
+
+	if third.URL != "wss://sh.example.invalid" {
+		t.Errorf("came back to %s a second time; the pin outlived the call it was for, "+
+			"and now overrules every choice this person makes with nothing on screen "+
+			"to say why", third.URL)
+	}
+}

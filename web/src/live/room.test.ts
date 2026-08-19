@@ -60,13 +60,28 @@ describe("share", () => {
 		expect(publish.screenShareEncoding.maxFramerate).toBe(rate);
 	});
 
-	it("shares the whole screen at either rate", async () => {
+	/*
+	 * The size asked of the capture is a ceiling, and that is the difference
+	 * between reducing a big display and inflating a small one.
+	 *
+	 * Both used to be plain numbers, which a browser reads as "aim for this" — so
+	 * a 1080p display asked to give 1440p had its screen scaled up before
+	 * encoding: eighty-five per cent more pixels carrying not one pixel more of
+	 * anything, encoded, sent, and scaled back down at the far end. Nothing
+	 * anywhere said so, because the picture looked exactly as it should.
+	 */
+	it("asks for a size as a ceiling rather than a target", async () => {
 		const { started } = watchShare();
 
 		for (const rate of SHARE_FRAME_RATES) {
 			const { capture } = await started(rate);
-			expect(capture.resolution.width).toBe(1920);
-			expect(capture.resolution.height).toBe(1080);
+
+			expect(capture.resolution.width).toEqual({ max: 1920 });
+			expect(capture.resolution.height).toEqual({ max: 1080 });
+
+			// The rate stays a target: a screen produces frames when it changes,
+			// and asking for a rate is asking to be given them when they exist.
+			expect(typeof capture.resolution.frameRate).toBe("number");
 		}
 	});
 

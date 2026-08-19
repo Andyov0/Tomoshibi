@@ -619,7 +619,17 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// mean nothing for everybody but the first arrival, and left relays bought
 	// for the routes into them carrying no calls at all. Now the choice is kept
 	// and the media is forwarded through it instead.
-	entry := a.relays.pick(name, body.Relay, r, a.conf.Meet.TrustProxy, isAdmin)
+	// An operator may have said where this person should come in, which beats
+	// what their browser measured. Taken rather than read: it moves somebody
+	// once, for the call they are being moved out of, and a pin that outlived
+	// that would overrule every choice they made afterwards without appearing
+	// anywhere they could see it.
+	wanted := body.Relay
+	if pinned := a.store.TakePin(name, body.Identity); pinned != "" {
+		wanted = pinned
+	}
+
+	entry := a.relays.pick(name, wanted, r, a.conf.Meet.TrustProxy, isAdmin)
 	holding := entry
 
 	// Where the meeting already is, if there still is one.

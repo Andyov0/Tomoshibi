@@ -88,7 +88,11 @@ type API struct {
 	roster   Roster
 	ledger   Ledger
 	relays   Relays
-	probe    Reachable
+	// placing is where a room is held and where one person comes in. Nil where
+	// there is no store, which is a relay: it decides nothing about where
+	// anything goes.
+	placing Placing
+	probe   Reachable
 	// fleet reads the counters of the relays this node does not run. Nil on a
 	// full deployment, which reads its own.
 	fleet Fleet
@@ -141,6 +145,7 @@ func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte
 		api.relays = st
 		api.roster = st
 		api.ledger = st
+		api.placing = st
 
 		// So that restarting the process does not sign everybody out. It used
 		// to, and during an afternoon of deployments that reads as the sign-in
@@ -426,6 +431,8 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}/participants/{identity}", a.moderate(a.removeOne))
 	mux.HandleFunc("POST /api/admin/rooms/{room}/participants/{identity}/mute", a.moderate(a.muteOne))
+	mux.HandleFunc("PUT /api/admin/rooms/{room}/relay", a.moderate(a.placeRoom))
+	mux.HandleFunc("PUT /api/admin/rooms/{room}/participants/{identity}/relay", a.moderate(a.placePerson))
 }
 
 // MountEnrolment registers the endpoint a new relay claims its configuration

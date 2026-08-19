@@ -393,6 +393,34 @@ export const api = {
 	audit: () => call<Entry[]>("/audit"),
 	policy: () => call<Policy>("/policy"),
 
+	/**
+	 * Where a room is held.
+	 *
+	 * A meeting lives on one machine and the media server has no migration, so
+	 * `now` is the difference between two genuinely different actions: without
+	 * it the change waits for the next call under that name, and with it the
+	 * call in progress is ended so everybody comes back to the new machine.
+	 */
+	placeRoom: (room: string, relay: string, now: boolean) =>
+		call<{ room: string; relay: string; moved: boolean }>(
+			`/rooms/${encodeURIComponent(room)}/relay`,
+			{ method: "PUT", body: JSON.stringify({ relay, now }) },
+		),
+
+	/**
+	 * Which relay one person comes in through.
+	 *
+	 * Takes effect on their next join and then goes away, so it moves somebody
+	 * once rather than overruling their own choice for ever. They are removed
+	 * from the call as part of it, because a browser holds its connection to the
+	 * machine it dialled and nothing in the protocol asks it to move.
+	 */
+	placePerson: (room: string, identity: string, relay: string) =>
+		call<{ relay: string }>(
+			`/rooms/${encodeURIComponent(room)}/participants/${encodeURIComponent(identity)}/relay`,
+			{ method: "PUT", body: JSON.stringify({ relay }) },
+		),
+
 	setPolicy: (openedBy: Opening) =>
 		call<Policy>("/policy", { method: "PUT", body: JSON.stringify({ openedBy }) }),
 

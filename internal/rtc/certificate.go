@@ -98,14 +98,21 @@ func CertificateHandler(certPath, keyPath, key, secret string) http.Handler {
 			return
 		}
 
-		if held, err := expiryOf(certPath); err == nil && !expires.After(held) {
-			// Not an error. The control node pushes to everybody and does not
-			// track who has what, so being told about a certificate already
-			// held is the ordinary case rather than a fault.
-			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(map[string]any{"kept": true, "expires": held})
+		// What is served here now, if anything, and whether the offer is an
+		// improvement on it.
+		held, err := leafOfFile(certPath)
+		if err == nil {
+			if kept, why := keeping(held, sent); kept {
+				// Not an error. The control node pushes to everybody and does
+				// not track who has what, so being told about a certificate
+				// already held is the ordinary case rather than a fault.
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"kept": true, "expires": held.NotAfter, "why": why,
+				})
 
-			return
+				return
+			}
 		}
 
 		if err := writeBeside(certPath, []byte(sent.Cert), 0o644); err != nil {
@@ -137,21 +144,62 @@ func CertificateHandler(certPath, keyPath, key, secret string) http.Handler {
 	})
 }
 
-// expiryOf reads when the certificate on disk stops being good.
-func expiryOf(path string) (time.Time, error) {
+// leafOfFile reads the certificate being served.
+//
+// Only the certificate, which is all that carries a date or a name. Reading the
+// key as well would make this fail whenever the two are mid-replacement.
+func leafOfFile(path string) (*x509.Certificate, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return time.Time{}, err
+		return nil, err
 	}
 
-	// Only the certificate, which is all that carries a date. Reading the key
-	// as well would make this fail whenever the two are mid-replacement.
-	leaf, err := leafOf(raw)
+	return leafOf(raw)
+}
+
+// keeping says whether what is served stays, and why.
+//
+// Two rules, and the second exists because the first one alone did real damage.
+//
+// A renewal never moves the expiry backwards, which is what stops somebody
+// replaying an old certificate to choose the hour a relay goes quiet, and what
+// makes an hourly push to everybody safe when most of them already hold it.
+//
+// And a renewal never narrows what the certificate is for. That was missing,
+// and the control node's wildcard duly replaced the short-lived certificate two
+// relays hold for their own bare addresses — issued by those machines
+// themselves, renewed by their own cron, and expiring sooner than a ninety-day
+// wildcard precisely because it is short-lived. The rule "later expiry wins"
+// read that as a renewal. Both machines went on answering, with a certificate
+// naming a domain nobody dials them by, and every client that checks the name
+// against the address it dialled stopped being able to reach them.
+//
+// So a certificate that does not cover everything the current one covers is
+// refused, whatever its date. There is no case where a relay wants to be able
+// to answer to fewer addresses than it does now.
+func keeping(held *x509.Certificate, offered Certificate) (bool, string) {
+	fresh, err := leafOf([]byte(offered.Cert))
 	if err != nil {
-		return time.Time{}, err
+		return true, "the offer could not be read"
 	}
 
-	return leaf.NotAfter, nil
+	for _, name := range held.DNSNames {
+		if fresh.VerifyHostname(name) != nil {
+			return true, "the offer does not answer to " + name
+		}
+	}
+
+	for _, ip := range held.IPAddresses {
+		if fresh.VerifyHostname(ip.String()) != nil {
+			return true, "the offer does not answer to " + ip.String()
+		}
+	}
+
+	if !fresh.NotAfter.After(held.NotAfter) {
+		return true, "the offer expires no later than what is held"
+	}
+
+	return false, ""
 }
 
 // leafOf parses the first certificate out of a PEM chain.

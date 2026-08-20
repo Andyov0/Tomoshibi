@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -40,17 +41,30 @@ const (
 func issued(t *testing.T, dir string, expires time.Time) (string, string, Certificate) {
 	t.Helper()
 
+	return issuedFor(t, dir, expires, "relay.example.invalid", nil)
+}
+
+// issuedFor writes a certificate for a name, an address, or both.
+func issuedFor(t *testing.T, dir string, expires time.Time, host string, ip net.IP) (string, string, Certificate) {
+	t.Helper()
+
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	template := x509.Certificate{
-		SerialNumber: big.NewInt(expires.Unix()),
-		Subject:      pkix.Name{CommonName: "relay.example.invalid"},
+		SerialNumber: big.NewInt(expires.UnixNano()),
+		Subject:      pkix.Name{CommonName: host},
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     expires,
-		DNSNames:     []string{"relay.example.invalid"},
+	}
+
+	if host != "" {
+		template.DNSNames = []string{host}
+	}
+	if ip != nil {
+		template.IPAddresses = []net.IP{ip}
 	}
 
 	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
@@ -201,5 +215,77 @@ func TestSomethingThatIsNotAKeypairIsRefused(t *testing.T) {
 	if on, _ := os.ReadFile(certPath); string(on) != current.Cert {
 		t.Error("a certificate that does not match its key was written, which is a relay that " +
 			"comes back from its next restart refusing every handshake")
+	}
+}
+
+/*
+The certificate two relays hold for their own bare address, and the wildcard
+that ate it.
+
+Those two are dialled by address rather than by name, because the name they used
+to answer to is filtered on this path and the address is not. So each of them
+issues its own certificate for that address — short-lived, six days, renewed
+four times a day by its own cron — and that is the certificate they must serve.
+
+The rule here used to be "a later expiry is a renewal", which is true of every
+relay but those two and catastrophic for them: a ninety-day wildcard expires
+later than a six-day address certificate by definition, so the fleet-wide push
+replaced it. Both machines went on answering, and every client that checks the
+name it dialled against the certificate it was given stopped being able to reach
+them — which does not look like a certificate problem from the outside. It looks
+like two relays that went quiet.
+*/
+func TestAWildcardDoesNotReplaceACertificateForTheAddress(t *testing.T) {
+	dir := t.TempDir()
+
+	// What one of those relays serves: its own address, expiring in six days.
+	certPath, keyPath, _ := issuedFor(t, dir, time.Now().Add(6*24*time.Hour), "", net.ParseIP("198.51.100.9"))
+
+	handler := CertificateHandler(certPath, keyPath, testKey, testSecret)
+
+	// What the control node has, and pushes to everybody: a wildcard for a
+	// domain, expiring in ninety days.
+	_, _, wildcard := issuedFor(t, t.TempDir(), time.Now().Add(90*24*time.Hour), "relay.example.invalid", nil)
+
+	if code := pushing(t, handler, wildcard, true).Code; code != http.StatusOK {
+		t.Fatalf("answered %d; being offered something it will not take is not an error", code)
+	}
+
+	on, err := os.ReadFile(certPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	leaf, err := leafOf(on)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(leaf.IPAddresses) == 0 {
+		t.Fatal("the certificate for this relay's own address was replaced by one that does " +
+			"not name it. The relay still answers, and nothing that checks the address it " +
+			"dialled can reach it")
+	}
+
+	if leaf.VerifyHostname("198.51.100.9") != nil {
+		t.Error("what is served no longer answers to the address it is dialled by")
+	}
+}
+
+// And the ordinary case still works: same names, later date, taken.
+func TestARenewalOfTheSameCertificateIsStillTaken(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath, _ := issued(t, dir, time.Now().Add(30*24*time.Hour))
+
+	handler := CertificateHandler(certPath, keyPath, testKey, testSecret)
+
+	_, _, renewed := issued(t, t.TempDir(), time.Now().Add(90*24*time.Hour))
+
+	if code := pushing(t, handler, renewed, true).Code; code != http.StatusOK {
+		t.Fatalf("answered %d", code)
+	}
+
+	if on, _ := os.ReadFile(certPath); string(on) != renewed.Cert {
+		t.Error("a plain renewal was refused, which would leave the fleet expiring on schedule")
 	}
 }

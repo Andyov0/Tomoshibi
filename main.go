@@ -302,6 +302,17 @@ func serve(args []string) error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// Read before anything is opened, so a missing file or a key that does not
+	// match its certificate is a sentence at startup rather than a listener
+	// that comes up and refuses every handshake.
+	var pair *keypair
+	if conf.Meet.TLSCert != "" {
+		pair, err = newKeypair(conf.Meet.TLSCert, conf.Meet.TLSKey)
+		if err != nil {
+			return err
+		}
+	}
+
 	listener, err := net.Listen("tcp", conf.Meet.Listen)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", conf.Meet.Listen, err)
@@ -320,7 +331,13 @@ func serve(args []string) error {
 		// up plaintext on a deployment that believed otherwise.
 		var err error
 		if conf.Meet.TLSCert != "" {
-			err = server.ServeTLS(listener, conf.Meet.TLSCert, conf.Meet.TLSKey)
+			// Through a callback rather than by handing ServeTLS the paths,
+			// so that a renewal is a file copy rather than a restart. See
+			// certs.go: a restart here drops every call on the machine, and
+			// the fleet renews four times a year.
+			server.TLSConfig = &tls.Config{GetCertificate: pair.certificate}
+
+			err = server.ServeTLS(listener, "", "")
 		} else {
 			err = server.Serve(listener)
 		}

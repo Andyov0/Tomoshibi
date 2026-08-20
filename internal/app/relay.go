@@ -432,6 +432,12 @@ func (a *App) RelayURLs() []string {
 func (a *App) UseCluster(cluster *rtc.Cluster) {
 	a.admin.UseCluster(cluster)
 
+	// And the certificate, which travels the same way for the same reason: this
+	// is the connection that already reaches every relay, and the relays hold
+	// nothing that says where to reach back.
+	a.cluster = cluster
+	go a.carrying()
+
 	// And the host's own actions, which reach the same relays through the same
 	// client. Set here rather than fetched from the management API when needed,
 	// so there is one assignment to read and no way for the two to be pointed at

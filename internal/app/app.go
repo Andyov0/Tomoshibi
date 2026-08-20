@@ -42,6 +42,9 @@ type App struct {
 	// one and two ways to reach it is how they come to disagree. Nil where this
 	// deployment holds no media at all.
 	control admin.Control
+	// The same object as control, kept typed for the one thing that needs more
+	// than the Control interface: handing every relay a renewed certificate.
+	cluster *rtc.Cluster
 	// relays is where a control node sends clients. Empty everywhere else.
 	relays *relays
 	// enrolment is set where a relay may bring itself up from a script.
@@ -278,6 +281,7 @@ func (a *App) Handler() http.Handler {
 			// to a media server that does not serve it.
 			mux.Handle("GET "+rtc.StatsPath,
 				rtc.StatsHandler(a.media, a.conf.Key, a.conf.Secret, admin.Started))
+			a.takesCertificates(mux)
 
 			return silence(mux)
 		}
@@ -302,6 +306,7 @@ func (a *App) Handler() http.Handler {
 		// should not be readable by whoever finds the port.
 		mux.Handle("GET "+rtc.StatsPath,
 			rtc.StatsHandler(a.media, a.conf.Key, a.conf.Secret, admin.Started))
+		a.takesCertificates(mux)
 
 		return mux
 	}
@@ -1155,4 +1160,18 @@ func fail(w http.ResponseWriter, status int, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": reason})
+}
+
+// takesCertificates lets the control node hand this relay a renewed certificate.
+//
+// Only where one is served from a file this process owns. A relay behind a
+// proxy that terminates TLS has no certificate to replace, and writing one
+// would put a file on disk that nothing reads and that expires unwatched.
+func (a *App) takesCertificates(mux *http.ServeMux) {
+	if a.conf.Meet.TLSCert == "" || a.conf.Meet.TLSKey == "" {
+		return
+	}
+
+	mux.Handle("PUT "+rtc.CertificatePath, rtc.CertificateHandler(
+		a.conf.Meet.TLSCert, a.conf.Meet.TLSKey, a.conf.Key, a.conf.Secret))
 }

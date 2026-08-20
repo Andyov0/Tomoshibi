@@ -1,9 +1,11 @@
 package rtc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -170,4 +172,50 @@ func (c *Cluster) AskStats(ctx context.Context, relay string) (Stats, error) {
 	}
 
 	return stats, nil
+}
+
+// SendCertificate hands one relay a renewed certificate.
+//
+// Answers without error when the relay kept what it already had, which is the
+// ordinary case: this is sent to everybody whenever the file on the control
+// node changes, and no record is kept of who has what. Keeping that record
+// would be a second thing to go stale, and the far end can answer the question
+// from the file it is serving.
+func (c *Cluster) SendCertificate(ctx context.Context, relay string, cert Certificate) error {
+	control := c.controlFor(relay)
+
+	token, err := auth.NewAccessToken(control.key, control.secret).
+		SetIdentity("tomoshibi").
+		SetVideoGrant(&auth.VideoGrant{RoomList: true}).
+		SetValidFor(time.Minute).
+		ToJWT()
+	if err != nil {
+		return fmt.Errorf("mint a token for the certificate push: %w", err)
+	}
+
+	body, err := json.Marshal(cert)
+	if err != nil {
+		return err
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodPut,
+		control.upstream+CertificatePath, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("Content-Type", "application/json")
+
+	response, err := c.client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("relay %s answered %d", relay, response.StatusCode)
+	}
+
+	return nil
 }

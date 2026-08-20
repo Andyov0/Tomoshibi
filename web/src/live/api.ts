@@ -11,6 +11,7 @@ import { preferred } from "./relays";
  */
 const IDENTITY_KEY = "meet-live.identity";
 const WAS_IN_KEY = "meet-live.was-in";
+const RELAY_KEY = "meet-live.relay";
 
 /**
  * Who may use a name nobody has used before.
@@ -256,4 +257,35 @@ export function wasIn(): string {
 /** Forgotten on a deliberate leave, so leaving and reloading is not rejoining. */
 export function leftRoom(): void {
 	sessionStorage.removeItem(WAS_IN_KEY);
+}
+
+/**
+ * Which relay somebody last chose, and where that is written down.
+ *
+ * Here rather than in the page that first set it, because two screens choose a
+ * relay and only one of them was remembering. Somebody would pick a machine in
+ * the lobby, arrive at the device screen to find the picker showing "whichever
+ * is fastest" instead of what they had just chosen, change it back, and lose
+ * that too on the next reload — which is the shape of asking a person the same
+ * question twice and ignoring both answers.
+ *
+ * Session storage rather than local: a choice of machine belongs to the sitting
+ * somebody is in. Next week is a different network and the fastest machine is
+ * probably a different one.
+ */
+export function chosenRelay(): string {
+	return sessionStorage.getItem(RELAY_KEY) ?? "";
+}
+
+export function rememberRelay(relay: string): void {
+	if (relay) {
+		sessionStorage.setItem(RELAY_KEY, relay);
+
+		return;
+	}
+
+	// Empty is a choice too — it means whichever measures fastest — and it has
+	// to be able to replace a name, or a machine picked once could never be
+	// unpicked.
+	sessionStorage.removeItem(RELAY_KEY);
 }

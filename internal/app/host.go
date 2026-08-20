@@ -485,10 +485,6 @@ func (a *App) acting(_ *http.Request, do func(admin.Control) error) error {
 // by walking in is the fault this guards against, and it would be invisible
 // until somebody used it.
 func (a *App) hostOnOpening(name string, grant room.Grant) {
-	if a.store.HostOf(name) != "" {
-		return
-	}
-
 	mark, ok := room.SignatureOf(grant.Identity)
 
 	// Only a mark somebody can prove. A room opened by an anonymous visitor
@@ -500,7 +496,10 @@ func (a *App) hostOnOpening(name string, grant room.Grant) {
 		return
 	}
 
-	if err := a.store.SetHost(name, mark.Trip); err != nil {
+	// Claimed rather than checked and then set. The check used to be a separate
+	// read, which left a gap two people opening the same name at once both fit
+	// through — and the room answered to whichever of them the store wrote last.
+	if _, err := a.store.ClaimHost(name, mark.Trip); err != nil {
 		slog.Error("failed to record who opened a room", "room", name, "error", err)
 	}
 }

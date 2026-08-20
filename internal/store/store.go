@@ -645,6 +645,62 @@ func (s *Store) SetHost(name, mark string) error {
 	})
 }
 
+// ClaimHost records who a room answers to, but only where nobody holds it yet.
+//
+// One transaction, because the alternative is two: reading whether a room has a
+// host and then setting one is a pair of statements with a gap between them, and
+// two people opening the same name at the same moment both find it empty and
+// both write. The room then answers to whichever write landed second, which is
+// not the person who opened it and is not anybody's idea of the rule.
+//
+// The window is small and the room is a name anybody may use, so this is not
+// somebody stealing a room — it is the room quietly belonging to the wrong one
+// of two people who arrived together, which is exactly the kind of thing that is
+// never reproduced and never believed.
+//
+// Says whether it took, so the caller can tell being first from being second.
+func (s *Store) ClaimHost(name, mark string) (bool, error) {
+	var claimed bool
+
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		raw := bucket.Get([]byte(name))
+		if raw == nil {
+			return nil
+		}
+
+		var tally Room
+		if err := json.Unmarshal(raw, &tally); err != nil {
+			return nil
+		}
+
+		if tally.Host != "" {
+			return nil
+		}
+
+		tally.Host = mark
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		if err := bucket.Put([]byte(name), encoded); err != nil {
+			return err
+		}
+
+		claimed = true
+
+		return nil
+	})
+
+	return claimed, err
+}
+
 // HostOf says which mark a room answers to, or "" where it answers to nobody.
 func (s *Store) HostOf(name string) string {
 	var mark string

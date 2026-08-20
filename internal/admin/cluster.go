@@ -94,6 +94,8 @@ func readFleet(ctx context.Context, fleet Fleet, named map[string]string) fleetR
 		return reading.Nodes[i].URL < reading.Nodes[j].URL
 	})
 
+	var weighted float64
+
 	for _, node := range reading.Nodes {
 		if !node.Reachable {
 			continue
@@ -112,7 +114,18 @@ func readFleet(ctx context.Context, fleet Fleet, named map[string]string) fleetR
 		reading.Totals.NackTotal += node.NackTotal
 		reading.Totals.NackPerSec += node.NackPerSec
 		reading.Totals.CPUs += node.CPUs
-		reading.Totals.Load += node.Load
+
+		// Weighted by cores rather than added.
+		//
+		// A node's load is already a fraction of that node, so eleven machines
+		// each half busy summed to 5.5 — a number that reads as a percentage,
+		// is rendered as one wherever a load is, and would have said the fleet
+		// was at five hundred and fifty per cent. Nothing shows this total
+		// today, which is the only reason it never did.
+		//
+		// Weighted because the machines are not the same size: a four-core
+		// relay at full load and a sixteen-core one idle is not a fleet at half.
+		weighted += float64(node.Load) * float64(node.CPUs)
 
 		// The widest window of any relay, not the sum. Rates measured over
 		// different windows cannot be added into a rate over their total; the
@@ -121,6 +134,10 @@ func readFleet(ctx context.Context, fleet Fleet, named map[string]string) fleetR
 		if node.Window > reading.Totals.Window {
 			reading.Totals.Window = node.Window
 		}
+	}
+
+	if reading.Totals.CPUs > 0 {
+		reading.Totals.Load = float32(weighted / float64(reading.Totals.CPUs))
 	}
 
 	return reading

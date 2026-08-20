@@ -4,7 +4,7 @@ import { RoomTitle } from "@/components/room/RoomTitle";
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
-import { deployment } from "@/live/api";
+import { chosenRelay, deployment, rememberRelay } from "@/live/api";
 import { devicesAvailable, insecureReason } from "@/live/context";
 import { ServerPicker } from "@/components/room/ServerPicker";
 import { parseName } from "@/live/name";
@@ -239,8 +239,11 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 	const [joining, setJoining] = useState(false);
 
 	// Empty means whichever measures fastest, which is what nearly everybody
-	// wants and what nobody should have to choose.
-	const [relay, setRelay] = useState("");
+	// wants and what nobody should have to choose. What is not empty is what
+	// somebody already chose — in the lobby, a screen ago — and this used to
+	// start blank regardless, so a machine picked deliberately came back as
+	// "whichever is fastest" on the very next page.
+	const [relay, setRelay] = useState(() => as?.relay ?? chosenRelay());
 	const [servers, setServers] = useState<OfferedRelay[]>([]);
 	const [offerChoice, setOfferChoice] = useState(false);
 
@@ -542,7 +545,19 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 					    should have to. Absent entirely where there is nothing to
 					    choose between. */}
 					{offerChoice && !as && (
-						<ServerPicker relays={servers} value={relay} onChange={setRelay} />
+						<ServerPicker
+							relays={servers}
+							value={relay}
+							onChange={(chosen) => {
+								setRelay(chosen);
+
+								// Written down here as well as in the lobby.
+								// Only the lobby was remembering, so a change
+								// made on this screen survived exactly until
+								// the page was reloaded.
+								rememberRelay(chosen);
+							}}
+						/>
 					)}
 
 					<Button type="submit" variant="primary" size="lg" className="w-full" disabled={!display || joining}>

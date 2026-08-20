@@ -1,5 +1,5 @@
 import { type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
-import { leftRoom, wasIn } from "@/live/api";
+import { chosenRelay, leftRoom, rememberRelay, wasIn } from "@/live/api";
 import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { connect, create } from "@/live/room";
@@ -44,11 +44,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * and a browser that remembered it for a month would send somebody to a relay
  * they picked once, in another country, for a different call.
  */
-const RELAY_KEY = "meet-live.relay";
 
-function lastRelay(): string {
-	return sessionStorage.getItem(RELAY_KEY) ?? "";
-}
 
 function initialRoom(): string {
 	const raw = normaliseRoomName(window.location.hash.replace(/^#\/?/, ""));
@@ -163,14 +159,14 @@ export function App() {
 				if (initialRoom() && wasIn() === initialRoom()) {
 					setFront(
 						account
-							? { at: "ready", me: account, relay: lastRelay() }
+							? { at: "ready", me: account, relay: chosenRelay() }
 							: { at: "invited", room: initialRoom() },
 					);
 
 					void onJoin({
 						name: account?.name ?? rememberedName(),
 						passphrase: "",
-						relay: lastRelay(),
+						relay: chosenRelay(),
 						...remembered(),
 					});
 
@@ -191,12 +187,12 @@ export function App() {
 					//
 					// With the devices exactly as they were, so nothing is turned
 					// on that was off.
-					setFront({ at: "ready", me: account, relay: lastRelay() });
+					setFront({ at: "ready", me: account, relay: chosenRelay() });
 
 					void onJoin({
 						name: account.name,
 						passphrase: "",
-						relay: lastRelay(),
+						relay: chosenRelay(),
 						...remembered(),
 					});
 
@@ -460,7 +456,7 @@ export function App() {
 				me={front.me}
 				onOpen={(wanted, relay) => {
 					setRoom(wanted);
-					sessionStorage.setItem(RELAY_KEY, relay);
+					rememberRelay(relay);
 					setFront({ at: "ready", me: front.me, relay });
 				}}
 				onSignedOut={() => setFront({ at: "sign in" })}

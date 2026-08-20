@@ -472,8 +472,73 @@ func (s *Store) RenameRelay(from, to string) error {
 			return err
 		}
 
-		return bucket.Delete([]byte(from))
+		if err := bucket.Delete([]byte(from)); err != nil {
+			return err
+		}
+
+		// And everywhere else the old name is written down.
+		//
+		// A relay is referred to by name from other relays' Apart lists, and a
+		// name that no longer matches anything is not an error — apart() asks
+		// whether a list contains a name, and a list naming a machine that has
+		// been renamed simply answers no. So renaming a relay used to switch off
+		// every rule keeping it away from another one, silently, with the rules
+		// still on the page and the calls they were written to prevent now
+		// allowed. On this deployment those rules are what stop Hong Kong being
+		// asked to carry for Shanghai Telecom over a path that does not exist.
+		//
+		// In the same transaction as the rename, so there is no moment at which
+		// the relay has its new name and the rules still hold the old one.
+		return eachRelay(bucket, func(other Relay) (Relay, bool) {
+			var touched bool
+
+			for i, name := range other.Apart {
+				if strings.EqualFold(strings.TrimSpace(name), from) {
+					other.Apart[i], touched = to, true
+				}
+			}
+
+			return other, touched
+		})
 	})
+}
+
+// eachRelay rewrites the relays a change says to rewrite.
+//
+// Bolt forbids modifying a bucket while its cursor is open, so the reads are
+// finished before the writes begin.
+func eachRelay(bucket *bolt.Bucket, change func(Relay) (Relay, bool)) error {
+	var changed []Relay
+
+	if err := bucket.ForEach(func(_, raw []byte) error {
+		var relay Relay
+		if err := json.Unmarshal(raw, &relay); err != nil {
+			// One unreadable record is not a reason to abandon the rest, and a
+			// record nothing can read is not one this can repair.
+			return nil
+		}
+
+		if updated, touched := change(relay); touched {
+			changed = append(changed, updated)
+		}
+
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	for _, relay := range changed {
+		encoded, err := json.Marshal(relay)
+		if err != nil {
+			return err
+		}
+
+		if err := bucket.Put([]byte(relay.Name), encoded); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // RemoveRelay forgets one.
@@ -492,7 +557,33 @@ func (s *Store) RemoveRelay(name string) error {
 			return ErrNoSuchRelay
 		}
 
-		return bucket.Delete([]byte(name))
+		if err := bucket.Delete([]byte(name)); err != nil {
+			return err
+		}
+
+		// And the rules that named it, for the same reason a rename rewrites
+		// them: a rule naming a machine that is not there is not an error, it
+		// is a rule that quietly stops applying. Left behind it is also a
+		// trap — enrol a machine under the removed name later and every one of
+		// those rules comes back to life at once, against a relay nobody
+		// wrote them about.
+		return eachRelay(bucket, func(other Relay) (Relay, bool) {
+			kept := other.Apart[:0]
+
+			for _, named := range other.Apart {
+				if !strings.EqualFold(strings.TrimSpace(named), name) {
+					kept = append(kept, named)
+				}
+			}
+
+			if len(kept) == len(other.Apart) {
+				return other, false
+			}
+
+			other.Apart = kept
+
+			return other, true
+		})
 	})
 }
 

@@ -2,55 +2,55 @@ package admin
 
 import (
 	"log/slog"
-	"sync"
-	"time"
 )
 
-// How many entries are kept to show on the page.
-//
-// A few hundred, held in memory. This is the tail of the log rather than the
-// log: every entry also goes to the process log, which is where anybody asking
-// a serious question about last Tuesday should be looking. What this holds is
-// the answer to "what just happened", which is the question somebody standing
-// at the page actually has.
-const kept = 500
+/*
+What an administrator did, and where it is written down.
+
+For a long time this held two records of the same thing: five hundred entries in
+memory for a page to show, and a line in the process log. The page was removed,
+and what it was showing turns out to be the half that mattered less. A buffer in
+the process being audited is readable exactly when that process is answering
+requests — which is to say, never at the moment somebody most wants it, and the
+management pages that displayed it are behind the same door as everything else.
+The process log survives a restart, can be read over ssh with the service down,
+and can be shipped somewhere the holder of this server cannot reach.
+
+So there is one record now, and it is the durable one.
+*/
 
 // An Entry is one thing an administrator did.
 type Entry struct {
-	At time.Time `json:"at"`
-	// Who did it, by the signature that authorised them. A name can be
-	// changed in a configuration file; the signature is what was proved.
-	Trip string `json:"trip"`
-	Name string `json:"name,omitempty"`
+	// Who did it, by the signature that authorised them. A name can be changed
+	// in a configuration file; the signature is what was proved.
+	Trip string
+	Name string
 	// What they did, and to what.
-	Action string `json:"action"`
-	Room   string `json:"room,omitempty"`
-	Target string `json:"target,omitempty"`
-	// Whether it worked. A refusal is worth as much as a success here: a run
-	// of them is the only sign anybody has that somebody is trying doors.
-	Failed bool   `json:"failed,omitempty"`
-	Reason string `json:"reason,omitempty"`
+	Action string
+	Room   string
+	Target string
+	// Whether it worked. A refusal is worth as much as a success here: a run of
+	// them is the only sign anybody has that somebody is trying doors.
+	Failed bool
+	Reason string
 }
 
-// Log is the recent history of the management pages.
+// Log writes the administrative record.
 type Log struct {
-	mu      sync.Mutex
-	entries []Entry
+	// Where the record goes, or the default logger when nothing was said.
+	//
+	// A field rather than a call to slog directly, so a test can read what was
+	// actually written instead of reading a copy kept for its benefit. The
+	// copy is what used to be tested, and a copy is not the record.
+	to *slog.Logger
 }
 
-func NewLog() *Log {
-	return &Log{entries: make([]Entry, 0, kept)}
-}
+func NewLog() *Log { return &Log{} }
 
-// Record notes something, both here and in the process log.
-//
-// Both, because the two are read at different times by different people. The
-// page answers what happened a moment ago; the process log survives a restart
-// and can be shipped somewhere that an attacker with this server cannot reach.
+// Record notes something in the process log.
 func (l *Log) Record(entry Entry) {
-	entry.At = time.Now()
-
 	attrs := []any{"action", entry.Action, "trip", entry.Trip}
+
 	if entry.Name != "" {
 		attrs = append(attrs, "name", entry.Name)
 	}
@@ -61,33 +61,20 @@ func (l *Log) Record(entry Entry) {
 		attrs = append(attrs, "target", entry.Target)
 	}
 
+	to := l.to
+	if to == nil {
+		to = slog.Default()
+	}
+
+	// Warn rather than Info for a refusal, so that the one query worth having
+	// standing — anything above Info from this service — surfaces somebody
+	// trying doors without also surfacing every ordinary day.
 	if entry.Failed {
 		attrs = append(attrs, "reason", entry.Reason)
-		slog.Warn("an administrative action was refused", attrs...)
-	} else {
-		slog.Info("an administrative action was taken", attrs...)
+		to.Warn("an administrative action was refused", attrs...)
+
+		return
 	}
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	l.entries = append(l.entries, entry)
-	if len(l.entries) > kept {
-		// Copied down rather than resliced, so the underlying array does not
-		// hold the entries that were dropped.
-		l.entries = append(l.entries[:0], l.entries[len(l.entries)-kept:]...)
-	}
-}
-
-// Recent returns what is held, newest first.
-func (l *Log) Recent() []Entry {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	out := make([]Entry, len(l.entries))
-	for i, entry := range l.entries {
-		out[len(l.entries)-1-i] = entry
-	}
-
-	return out
+	to.Info("an administrative action was taken", attrs...)
 }

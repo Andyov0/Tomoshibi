@@ -206,17 +206,6 @@ export interface Account {
 	note?: string;
 }
 
-export interface Entry {
-	at: string;
-	trip: string;
-	name?: string;
-	action: string;
-	room?: string;
-	target?: string;
-	failed?: boolean;
-	reason?: string;
-}
-
 /** Who may use a name nobody has used before. */
 export type Opening = "anyone" | "signed" | "admins";
 
@@ -390,7 +379,6 @@ export const api = {
 	participants: (room: string) =>
 		call<Participant[]>(`/rooms/${encodeURIComponent(room)}/participants`),
 	runtime: () => call<Runtime>("/runtime"),
-	audit: () => call<Entry[]>("/audit"),
 	policy: () => call<Policy>("/policy"),
 
 	/**

@@ -390,7 +390,6 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/rooms", a.observe(a.rooms))
 	mux.HandleFunc("GET /api/admin/rooms/{room}/participants", a.observe(a.participants))
 	mux.HandleFunc("GET /api/admin/runtime", a.observe(a.runtime))
-	mux.HandleFunc("GET /api/admin/audit", a.observe(a.audit))
 	mux.HandleFunc("GET /api/admin/policy", a.observe(a.readPolicy))
 	mux.HandleFunc("GET /api/admin/relays", a.observe(a.listRelays))
 	// One row's own measurement. A reading and not a change, so it asks for no
@@ -907,10 +906,6 @@ func codecNames(conf *config.Config) []string {
 	}
 
 	return out
-}
-
-func (a *API) audit(_ Session, w http.ResponseWriter, _ *http.Request) {
-	respond(w, a.log.Recent())
 }
 
 // Who may open a room, in the three forms worth telling apart.

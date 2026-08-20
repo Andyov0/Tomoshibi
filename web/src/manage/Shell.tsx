@@ -1,13 +1,17 @@
 import { Flagged } from "@/components/room/Flag";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Activity, Clock, LayoutGrid, ScrollText, Server, Users, UsersRound } from "lucide-react";
+import { Activity, LayoutGrid, ScrollText, Server, Users, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Who } from "./api";
 import { rate } from "./units";
 
 /** The panels, in the order somebody works through them. */
-export const PANELS = ["Now", "Rooms", "Accounts", "Relays", "Admins", "Runtime", "Audit"] as const;
+// Six, not seven. The audit panel was removed rather than fixed: everything it
+// showed goes to the process log, which survives a restart and is readable with
+// the service down — and a page behind the management sign-in is readable only
+// when the thing it reports on is already answering.
+export const PANELS = ["Now", "Rooms", "Accounts", "Relays", "Admins", "Runtime"] as const;
 export type Panel = (typeof PANELS)[number];
 
 const ICONS: Record<Panel, typeof Activity> = {
@@ -17,7 +21,6 @@ const ICONS: Record<Panel, typeof Activity> = {
 	Relays: Server,
 	Admins: Users,
 	Runtime: ScrollText,
-	Audit: Clock,
 };
 
 /**

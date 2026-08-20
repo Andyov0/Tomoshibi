@@ -669,6 +669,48 @@ func announceRole(conf *config.Config) {
 	default:
 		slog.Info("serving the client, the joins and the media from this one process")
 	}
+
+	announceSettings(conf)
+}
+
+// announceSettings writes the configuration this process is actually running
+// with, once, at startup.
+//
+// It duplicates the management pages' runtime panel, and that is the point. The
+// panel answers "is this process using what I edited", which is a good question
+// and one that can only be asked of a process that is answering requests — so
+// the answer is available exactly when nobody needs it and gone when they do.
+// Written here it survives a restart, is readable over ssh with the service
+// stopped, and is the first thing in the log above whatever went wrong next.
+//
+// The key is said and the secret is not, which is the same rule the panel keeps
+// and for the same reason: the key identifies a deployment and the secret is the
+// deployment. Anybody who can read this log can already read the file it came
+// from, but a log is the thing that gets pasted into a chat window.
+func announceSettings(conf *config.Config) {
+	slog.Info("settings: this deployment",
+		"listen", conf.Meet.Listen,
+		"public url", conf.Meet.PublicURL,
+		"token ttl", conf.Meet.TokenTTL.String(),
+		"join rate", conf.Meet.JoinRate,
+		"join burst", conf.Meet.JoinBurst,
+		"trust proxy", conf.Meet.TrustProxy,
+		"database", conf.Meet.Database,
+		"api key", conf.Key)
+
+	codecs := make([]string, 0, len(conf.LiveKit.Room.EnabledCodecs))
+	for _, codec := range conf.LiveKit.Room.EnabledCodecs {
+		codecs = append(codecs, codec.Mime)
+	}
+
+	slog.Info("settings: what clients are told to dial",
+		"node ip", conf.LiveKit.RTC.NodeIP.V4,
+		"use external ip", conf.LiveKit.RTC.UseExternalIP,
+		"udp", conf.LiveKit.RTC.UDPPort.Start,
+		"tcp", conf.LiveKit.RTC.TCPPort,
+		"bind", conf.LiveKit.BindAddresses,
+		"http", conf.LiveKit.Port,
+		"codecs", codecs)
 }
 
 func announce(addr net.Addr, secure bool) {

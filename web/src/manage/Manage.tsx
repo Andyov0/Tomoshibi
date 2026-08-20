@@ -3,7 +3,6 @@ import { type Who, api } from "./api";
 import { usePoll } from "./poll";
 import { AdminsPanel } from "./AdminsPanel";
 import { AccountsPanel } from "./AccountsPanel";
-import { AuditPanel } from "./AuditPanel";
 import { NowPanel } from "./NowPanel";
 import { RelaysPanel } from "./RelaysPanel";
 import { RoomsPanel } from "./RoomsPanel";
@@ -92,7 +91,6 @@ export function Manage() {
 				<AdminsPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
 			)}
 			{panel === "Runtime" && <RuntimePanel onSignedOut={signedOut} />}
-			{panel === "Audit" && <AuditPanel onSignedOut={signedOut} />}
 		</Shell>
 	);
 }

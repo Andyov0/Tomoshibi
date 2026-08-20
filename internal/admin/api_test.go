@@ -73,12 +73,23 @@ func (absent) Close(context.Context, string) error { return errors.New("no media
 func mount(t *testing.T, admins []config.Admin) (*API, http.Handler) {
 	t.Helper()
 
+	api, mux, _ := mountAudited(t, admins)
+
+	return api, mux
+}
+
+// mountAudited is mount, and also what the audit log wrote.
+func mountAudited(t *testing.T, admins []config.Admin) (*API, http.Handler, *kept) {
+	t.Helper()
+
+	audit, written := auditing()
+
 	api := &API{
 		conf:     &config.Config{Meet: config.Meet{Admins: admins}, LiveKit: livekitDefaults()},
 		sessions: NewSessions(func() []config.Admin { return admins }, key),
 		media:    absent{},
 		control:  absent{},
-		log:      NewLog(),
+		log:      audit,
 		store:    unwritten{},
 		history:  NewHistory(nil),
 		stop:     make(chan struct{}),
@@ -87,7 +98,7 @@ func mount(t *testing.T, admins []config.Admin) (*API, http.Handler) {
 	mux := http.NewServeMux()
 	api.Mount(mux)
 
-	return api, mux
+	return api, mux, written
 }
 
 /** Everything the management surface answers, and which capability it wants. */
@@ -101,7 +112,6 @@ var endpoints = []struct {
 	{http.MethodGet, "/api/admin/rooms", config.Observe},
 	{http.MethodGet, "/api/admin/rooms/x/participants", config.Observe},
 	{http.MethodGet, "/api/admin/runtime", config.Observe},
-	{http.MethodGet, "/api/admin/audit", config.Observe},
 	{http.MethodGet, "/api/admin/relays/x/check", config.Observe},
 	{http.MethodDelete, "/api/admin/rooms/x", config.Moderate},
 	{http.MethodDelete, "/api/admin/rooms/x/participants/y", config.Moderate},
@@ -241,7 +251,7 @@ func TestSigningInAndOut(t *testing.T) {
 }
 
 func TestTheWrongPassphraseSaysNothingUseful(t *testing.T) {
-	api, mux := mount(t, []config.Admin{{Trip: room.Trip(key, "correct"), Name: "adam"}})
+	_, mux, written := mountAudited(t, []config.Admin{{Trip: room.Trip(key, "correct"), Name: "adam"}})
 
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, sign(`{"passphrase":"wrong"}`))
@@ -256,7 +266,7 @@ func TestTheWrongPassphraseSaysNothingUseful(t *testing.T) {
 
 	// A rejected passphrase is still a passphrase, and one of these logs is
 	// going to be read by somebody it does not belong to.
-	for _, entry := range api.log.Recent() {
+	for _, entry := range written.recorded() {
 		if strings.Contains(entry.Reason, "wrong") || strings.Contains(entry.Trip, "wrong") {
 			t.Errorf("the audit log holds what was typed: %+v", entry)
 		}
@@ -309,7 +319,7 @@ func TestWithNoAdministratorsThereIsNoSurface(t *testing.T) {
 
 func TestActionsAreRecordedAgainstWhoTookThem(t *testing.T) {
 	trip := room.Trip(key, "moderator")
-	api, mux := mount(t, []config.Admin{{Trip: trip, Name: "adam", Can: []string{config.Moderate}}})
+	api, mux, written := mountAudited(t, []config.Admin{{Trip: trip, Name: "adam", Can: []string{config.Moderate}}})
 
 	_, token, _ := api.sessions.Open("", "moderator")
 
@@ -320,7 +330,7 @@ func TestActionsAreRecordedAgainstWhoTookThem(t *testing.T) {
 	mux.ServeHTTP(httptest.NewRecorder(), request)
 
 	var found bool
-	for _, entry := range api.log.Recent() {
+	for _, entry := range written.recorded() {
 		if entry.Action == "close room" && entry.Room == "somewhere" {
 			found = true
 			if entry.Trip != trip {
@@ -405,7 +415,7 @@ func TestAModeratorMayChangeWhoOpensRooms(t *testing.T) {
 	moderator := config.Admin{
 		Trip: room.Trip(key, "moderator"), Name: "adam", Can: []string{config.Moderate},
 	}
-	api, mux := mount(t, []config.Admin{moderator})
+	api, mux, written := mountAudited(t, []config.Admin{moderator})
 
 	names := &remembers{opening: room.ByAnyone}
 	api.store = names
@@ -441,7 +451,7 @@ func TestAModeratorMayChangeWhoOpensRooms(t *testing.T) {
 	// A change to who may open a room outlives whoever made it, so it belongs
 	// in the record beside the rooms they closed.
 	var found bool
-	for _, entry := range api.log.Recent() {
+	for _, entry := range written.recorded() {
 		if entry.Action == "set who may open a room" && entry.Target == string(room.ByAdmins) {
 			found = true
 			if entry.Trip != moderator.Trip {

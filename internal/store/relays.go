@@ -110,14 +110,35 @@ type Relay struct {
 
 	// Lat and Lon are where the machine is, in degrees.
 	//
-	// For the globe on the join screen, and for nothing else — nothing routes on
-	// them and nothing measures with them. A relay without them is simply not
-	// drawn, which is the honest thing to do with a machine nobody has said the
-	// location of: guessing from a region name would put a box in the middle of
-	// a country it is not in and look exactly as authoritative as the ones that
-	// are right.
+	// For the globe on the join screen, and — since the media servers were told
+	// to place rooms by distance — for the region list every one of them is
+	// given. Nothing measures with them; they say where a machine is, and both
+	// readers want that for their own reasons.
+	//
+	// A relay without them is simply not drawn, which is the honest thing to do
+	// with a machine nobody has said the location of: guessing from a region
+	// name would put a box in the middle of a country it is not in and look
+	// exactly as authoritative as the ones that are right. It is also left out
+	// of the region list, where a guess would be worse still — it would place
+	// calls.
 	Lat float64 `json:"lat,omitempty"`
 	Lon float64 `json:"lon,omitempty"`
+
+	// Node is what the media server on this machine calls the place it is in.
+	//
+	// Not Region, which is this deployment's own grouping and is shown to
+	// people; this is an identifier the media servers compare against each
+	// other, and the two want different things. "Oversea/Asia" groups four
+	// machines usefully on a page and would collapse them into one place for
+	// routing, which is the opposite of what the routing is for.
+	//
+	// It exists because the machines already had one and nothing here knew it.
+	// Every relay was given a region and a list of regions by hand, after
+	// enrolment, and the enrolment went on writing neither — so a relay brought
+	// up by the script fell back to the selector that picks a node at random,
+	// which is the fault that put people in rooms held on machines they could
+	// not reach. Recorded here, the enrolment can write both.
+	Node string `json:"node,omitempty"`
 
 	// Label is what a person is shown instead of the name.
 	//

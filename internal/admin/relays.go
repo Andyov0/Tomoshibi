@@ -261,6 +261,7 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 		Probe     *string   `json:"probe"`
 		Name      *string   `json:"name"`
 		URL       string    `json:"url"`
+		Node      *string   `json:"node"`
 		Region    *string   `json:"region"`
 		Label     *string   `json:"label"`
 		Turn      *string   `json:"turn"`
@@ -302,6 +303,9 @@ func (a *API) editRelay(session Session, w http.ResponseWriter, r *http.Request)
 	// have to send back the two it did not touch.
 	if strings.TrimSpace(body.URL) != "" {
 		found.URL = strings.TrimSpace(body.URL)
+	}
+	if body.Node != nil {
+		found.Node = strings.TrimSpace(*body.Node)
 	}
 	if body.Region != nil {
 		found.Region = strings.TrimSpace(*body.Region)

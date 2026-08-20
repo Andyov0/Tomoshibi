@@ -605,3 +605,118 @@ func post(mux http.Handler, request *http.Request) int {
 
 	return recorder.Code
 }
+
+/*
+What a relay is told about where everything is.
+
+An enrolment used to write neither a region nor a region list, which left the
+media server on a new machine falling back to the selector that picks a node at
+random. That is not a degraded choice — it is the fault that put somebody who
+joined through Shanghai into a room held in Hong Kong, on a path that does not
+carry between those two. It was found once, fixed by hand on every machine then
+running, and left untouched in the script that brings new ones up, so it was
+waiting for the next relay rather than fixed.
+*/
+
+func TestAnEnrolledRelayIsToldWhereEverythingIs(t *testing.T) {
+	_, relays, _, mux := enrolling(t)
+
+	// A fleet with locations, which is what makes a region list mean anything.
+	for _, existing := range []store.Relay{
+		{Name: "HK Gomami", Region: "hk", URL: "wss://hk.invalid", Enabled: true, Lat: 22.32, Lon: 114.17},
+		{Name: "SG Misaka", Region: "sg", URL: "wss://sg.invalid", Enabled: true, Lat: 1.35, Lon: 103.82},
+	} {
+		if err := relays.AddRelay(existing); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The machine being brought up, already known and located — which is the
+	// case a replacing enrolment is.
+	if err := relays.AddRelay(store.Relay{
+		Name: "tokyo", Region: "jp", URL: "wss://tokyo.invalid", Enabled: true,
+		Lat: 35.68, Lon: 139.69,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, enrolRequest(
+		`{"secret":"`+enrolSecret+`","prefix":"tokyo","region":"jp",`+
+			`"address":"198.51.100.9","replace":true}`))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("enrolment answered %d: %s", recorder.Code, recorder.Body)
+	}
+
+	var got enrolPackage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Node == "" {
+		t.Fatal("the package does not say what this machine should call the place it is in, " +
+			"so its media server has no region and chooses nodes at random")
+	}
+
+	if got.Selector == "" {
+		t.Fatal("the package carries no region list, so the media server falls back to the " +
+			"selector that picks a node at random")
+	}
+
+	// The one thing about that list that must hold: it names the machine
+	// reading it. A media server given a list its own region is missing from
+	// does not degrade — it refuses to start.
+	if !strings.Contains(got.Selector, "name: "+got.Node) {
+		t.Errorf("the region list does not name this machine's own region %q, which is a "+
+			"relay that will not come up:\n%s", got.Node, got.Selector)
+	}
+
+	if !strings.Contains(got.Selector, "kind: regionaware") {
+		t.Errorf("the block does not ask for the region-aware selector:\n%s", got.Selector)
+	}
+
+	for _, elsewhere := range []string{"hk-gomami", "sg-misaka"} {
+		if !strings.Contains(got.Selector, "name: "+elsewhere) {
+			t.Errorf("the list leaves out %s, so this machine can never place a call there "+
+				"and can never overflow onto it:\n%s", elsewhere, got.Selector)
+		}
+	}
+}
+
+// A relay whose position nobody recorded is given no block at all.
+//
+// The alternative is worse than useless: a list built without it does not name
+// its region, and a media server whose own region is missing from its list
+// refuses to start — so the install would finish, the certificate would be
+// written, the name would be pointed, and the service would not come up.
+func TestARelayWithNoPositionIsNotGivenAListThatWouldStopItStarting(t *testing.T) {
+	_, relays, _, mux := enrolling(t)
+
+	for _, existing := range []store.Relay{
+		{Name: "HK Gomami", Region: "hk", URL: "wss://hk.invalid", Enabled: true, Lat: 22.32, Lon: 114.17},
+		{Name: "SG Misaka", Region: "sg", URL: "wss://sg.invalid", Enabled: true, Lat: 1.35, Lon: 103.82},
+	} {
+		if err := relays.AddRelay(existing); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, enrolRequest(
+		`{"secret":"`+enrolSecret+`","prefix":"nowhere","region":"jp","address":"198.51.100.9"}`))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("enrolment answered %d: %s", recorder.Code, recorder.Body)
+	}
+
+	var got enrolPackage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Selector != "" {
+		t.Errorf("a relay with no recorded position was handed a region list it is not in, "+
+			"which is a media server that refuses to start:\n%s", got.Selector)
+	}
+}

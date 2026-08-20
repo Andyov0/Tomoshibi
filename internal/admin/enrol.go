@@ -115,6 +115,23 @@ type enrolPackage struct {
 	URL    string `json:"url"`
 	Region string `json:"region,omitempty"`
 
+	// Node is what this machine's media server should call the place it is in,
+	// and Regions is where every machine in the fleet is.
+	//
+	// Both are written into the relay's configuration by the install script.
+	// Without them the media server falls back to choosing a node at random,
+	// which is how somebody joining through Shanghai ended up in a room held in
+	// Hong Kong that they could not reach — a fault that was found once, fixed
+	// by hand on every machine then running, and left in the script that brings
+	// new ones up.
+	// Rendered here rather than sent as an array, because the install script
+	// reads this package with sed — a machine being brought up may have neither
+	// jq nor python, and installing one to read a list is a dependency for the
+	// sake of elegance. Newlines arrive escaped and are turned back the same way
+	// the certificate's are.
+	Node     string `json:"node,omitempty"`
+	Selector string `json:"selector,omitempty"`
+
 	APIKey    string `json:"apiKey"`
 	APISecret string `json:"apiSecret"`
 
@@ -326,6 +343,7 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 
 	respond(w, enrolPackage{
 		Name: relay.Name, Host: host, URL: relay.URL, Region: relay.Region,
+		Node: placeOf(relay), Selector: a.selectorFor(relay),
 		APIKey: a.conf.Key, APISecret: a.conf.Secret,
 		RedisAddr: a.enrolment.RedisAddr, RedisPassword: a.enrolment.RedisPassword,
 		Cert: string(cert), Key: string(key),
@@ -512,4 +530,102 @@ func (a *API) merged(fresh store.Relay) (store.Relay, error) {
 	}
 
 	return fresh, nil
+}
+
+// nodeRegion is one place, as the media servers compare places.
+type nodeRegion struct {
+	Name string  `json:"name"`
+	Lat  float64 `json:"lat"`
+	Lon  float64 `json:"lon"`
+}
+
+// placeOf is the identifier a relay's media server uses for itself.
+//
+// Recorded on the relay where somebody has said it, and otherwise made from the
+// name, which is what the machines standing today were given by hand. Made
+// rather than refused because a relay with no identifier is a relay whose media
+// server picks nodes at random, and a name always exists.
+func placeOf(relay store.Relay) string {
+	if relay.Node != "" {
+		return relay.Node
+	}
+
+	slug := strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		case r == ' ' || r == '_' || r == '-':
+			return '-'
+		default:
+			return -1
+		}
+	}, relay.Name)
+
+	return strings.Trim(slug, "-")
+}
+
+// selectorFor renders the node_selector block a relay is configured with.
+//
+// Empty when fewer than two relays have a location, because a region list that
+// does not include the machine reading it makes the media server refuse to
+// start — and one holding only that machine decides nothing. In both cases the
+// relay is better off with the block absent.
+func (a *API) selectorFor(relay store.Relay) string {
+	regions := a.fleetRegions()
+	if len(regions) < 2 {
+		return ""
+	}
+
+	here := placeOf(relay)
+
+	var found bool
+	for _, region := range regions {
+		if region.Name == here {
+			found = true
+			break
+		}
+	}
+
+	// The machine being enrolled has no location recorded yet, so it is not in
+	// the list it would be given — and a media server whose own region is
+	// unknown to its own list refuses to start. Better no block, which means the
+	// default selector, than a relay that will not come up.
+	if !found {
+		return ""
+	}
+
+	block := "\nnode_selector:\n  kind: regionaware\n  sysload_limit: 0.9\n  regions:\n"
+	for _, region := range regions {
+		block += fmt.Sprintf("    - name: %s\n      lat: %g\n      lon: %g\n",
+			region.Name, region.Lat, region.Lon)
+	}
+
+	return block
+}
+
+// fleetRegions is where every relay is, for the list each media server is given.
+//
+// Only the ones whose location somebody has recorded. A relay left out cannot be
+// chosen by distance and cannot be overflowed onto, which is a smaller fault
+// than the alternative: a guessed position places real calls on a machine
+// somebody picked for being near a place it is not near.
+func (a *API) fleetRegions() []nodeRegion {
+	list, err := a.relays.Relays()
+	if err != nil {
+		return nil
+	}
+
+	out := make([]nodeRegion, 0, len(list))
+
+	for _, relay := range list {
+		if relay.Lat == 0 && relay.Lon == 0 {
+			continue
+		}
+
+		out = append(out, nodeRegion{Name: placeOf(relay), Lat: relay.Lat, Lon: relay.Lon})
+	}
+
+	return out
 }

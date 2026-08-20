@@ -236,6 +236,13 @@ api_secret=$(value apiSecret)
 redis_addr=$(value redisAddr)
 redis_pass=$(value redisPassword)
 named=$(printf '%%s' "$package" | sed -n 's/.*"named":\([a-z]*\).*/\1/p')
+node=$(value node)
+
+# Where every relay is, rendered by the control node. Without it the media
+# server here falls back to choosing a node at random, and somebody joining
+# through this machine can be put into a room held on one they cannot reach.
+selector=$(printf '%%s' "$package" | sed -n 's/.*"selector":"\([^"]*\)".*/\1/p' | sed 's/\\n/\
+/g')
 
 printf '  name  %%s\n  host  %%s\n' "$prefix" "$host"
 
@@ -291,6 +298,13 @@ say "Writing the configuration"
     printf '\nredis:\n  address: "%%s"\n' "$redis_addr"
     [ -n "$redis_pass" ] && printf '  password: "%%s"\n' "$redis_pass"
     printf '\nlogging:\n  level: info\n'
+    # What this machine calls the place it is in, and where the others are.
+    # Both or neither: a region with no list is not compared against anything,
+    # and a list not naming this machine's own region stops it starting.
+    if [ -n "$node" ] && [ -n "$selector" ]; then
+        printf '\nregion: %%s\n' "$node"
+        printf '%%s\n' "$selector"
+    fi
     printf '\nmeet:\n  role: relay\n'
     printf '  listen: ":%%s"\n' "$LISTEN_PORT"
     printf '  tls_cert: /etc/tomoshibi/certs/relay.fullchain.pem\n'

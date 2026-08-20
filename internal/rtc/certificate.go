@@ -115,7 +115,14 @@ func CertificateHandler(certPath, keyPath, key, secret string) http.Handler {
 			return
 		}
 
-		if err := writeBeside(keyPath, []byte(sent.Key), 0o600); err != nil {
+		// Group-readable, which is not a relaxation. A relay runs under
+		// DynamicUser, so the account it runs as is a different one every
+		// start, and a key written 0600 by one of them is a key the next
+		// cannot read — a relay that takes a certificate happily and then
+		// refuses to come back from its next restart. What stays constant is
+		// the group the unit names, and the directory carries setgid so a file
+		// written here joins it.
+		if err := writeBeside(keyPath, []byte(sent.Key), 0o640); err != nil {
 			slog.Error("failed to write a renewed key", "path", keyPath, "error", err)
 			http.Error(w, "unwritable", http.StatusInternalServerError)
 
@@ -177,6 +184,9 @@ func writeBeside(path string, content []byte, mode os.FileMode) error {
 	}
 	defer os.Remove(temporary.Name())
 
+	// Chmod rather than a mode on creation, because CreateTemp makes the file
+	// 0600 and the group bit is the part that matters here. The group itself is
+	// inherited from the directory, which is setgid for that reason.
 	if err := temporary.Chmod(mode); err != nil {
 		temporary.Close()
 		return err

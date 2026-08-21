@@ -5,6 +5,13 @@
 /meet-live
 /dist/
 
+# And anything built out of dev/, which is where the small tools live. One of
+# them was committed as a forty-one megabyte binary in the root, beside the rule
+# saying not to, because `go build` in a directory writes the binary where you
+# are rather than where the source is.
+/turncheck
+/snicheck
+
 # Built client. The marker file is tracked on purpose: the embed directive needs
 # this directory to exist at compile time, so without it a fresh clone cannot
 # build the server at all. What to serve when nothing has been built lives in

@@ -11,6 +11,7 @@
 # are rather than where the source is.
 /turncheck
 /snicheck
+/udpcheck
 
 # Built client. The marker file is tracked on purpose: the embed directive needs
 # this directory to exist at compile time, so without it a fresh clone cannot

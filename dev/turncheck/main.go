@@ -18,12 +18,30 @@ import (
 )
 
 func main() {
+	if len(os.Args) < 4 {
+		fmt.Println("usage: turncheck host:port key secret [peer:port | -self]")
+		fmt.Println("  no fourth argument: whether an allocation is granted at all")
+		fmt.Println("  -self:              whether anything sent to the allocation arrives,")
+		fmt.Println("                      answered without needing a second machine")
+		fmt.Println("  peer:port:          the same, waiting for that peer to send")
+		os.Exit(2)
+	}
+
 	address, key, secret := os.Args[1], os.Args[2], os.Args[3]
 
 	// Four arguments means the harder question: not whether an allocation is
 	// granted, but whether anything sent to it comes out the other side.
 	if len(os.Args) > 4 {
+		if os.Args[4] == "-self" {
+			// Sends to its own allocation, so silence means the range is not
+			// carrying rather than that nobody spoke. The other form cannot
+			// tell those apart and has been read as if it could.
+			through(address, key, secret, 40000)
+			return
+		}
+
 		relayThrough(address, key, secret, os.Args[4])
+
 		return
 	}
 

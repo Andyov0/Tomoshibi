@@ -10,11 +10,11 @@
 // Run it from more than one place, and expect the answers to differ. That is
 // not noise; it is the measurement. This deployment has a relay whose UDP
 // answers four times out of four from Singapore and zero times out of twelve
-// from the control node — same port, same relay, same minute — because the
-// control node sits on a residential line in Tokyo and that one path drops it.
-// A fleet-wide conclusion drawn from one vantage point would have called that
-// relay broken, and it is not: everybody who actually calls through it reaches
-// it.
+// from the control node — same port, same relay, same minute. The control node
+// reaches the world through a NAT it shares with other machines, and that one
+// path drops it. A fleet-wide conclusion drawn from one vantage point would
+// have called that relay broken, and it is not: everybody who actually calls
+// through it reaches it.
 //
 //	go run ./dev/udpcheck shct.example:39218 hk.example:39218
 package main

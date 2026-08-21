@@ -147,9 +147,9 @@ func names(list []store.Relay) []string {
 /*
 What a total blackout means, and what it does not.
 
-This deployment's control node sits on a residential line in Tokyo. Over one
-week it lost the network thirty-two times, for twenty to forty seconds each, and
-every time it did the reachability sweep marked all eleven relays unreachable —
+This deployment's control node lost the network thirty-two times in one week,
+for twenty to forty seconds each, and every time it did the reachability sweep
+marked all eleven relays unreachable —
 machines in mainland China, Hong Kong, Singapore, Japan and Los Angeles, which
 share no path with each other but the last one into this house. The relays were
 fine. The list every client is offered went empty anyway, so a twenty-second

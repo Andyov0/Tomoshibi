@@ -120,6 +120,51 @@ tomoshibi /etc/tomoshibi/control.yaml
 Put it behind TLS. Cameras and secure WebSockets both need a secure page, and
 browsers exempt only localhost.
 
+## A relay reached by address rather than by name
+
+Some paths refuse a relay by the name in the TLS handshake and by nothing else.
+It is worth being precise about that claim, because it is easy to make loosely,
+and easy to check: dial the same address on the same port and change only the
+name offered in the handshake. `dev/snicheck` does that.
+
+Measured from Singapore, six rounds per name, against one of these machines:
+
+| name offered            | handshakes finished |
+| ----------------------- | ------------------- |
+| (none)                  | 6/6                 |
+| a name it once answered to | 2/6              |
+| another it once answered to | 0/6             |
+| a name never used       | 6/6                 |
+
+So the filtering follows the name, it is intermittent — a single attempt would
+have found any of those answers and reported it as the whole truth — and a name
+that has not been used yet is clean until it has been.
+
+A relay in that position is configured with a bare address in its URL, which
+costs three things and is worth them:
+
+- **The address is visible.** It is in the join response and in any browser's
+  network panel. There is no version of not sending a name that also hides where
+  the machine is.
+- **The certificate is its own.** A wildcard for a domain cannot answer for an
+  address, so the machine issues one for its own address — short-lived, six
+  days, renewed by an acme client on the machine itself. The fleet-wide
+  certificate push refuses to overwrite it: a renewal never narrows what a
+  certificate answers to, whatever its expiry says.
+- **Nothing else can renew it.** The control node reads back what each relay is
+  serving and says so every round, and warns when one is under two days out.
+  That is the whole of watching it, and the message names the machine.
+
+Set the acme client's reload command to fix the file's group and mode and
+nothing else. Restarting the relay drops every call on it, and the server
+re-reads its certificate on the next handshake — a renewal every two days
+should not cost a call every two days.
+
+The alternative — rotating to a fresh name each time one is filtered — works, is
+cheaper to operate, and was not chosen: a name that has not been used yet is
+clean because it has not been used yet, and the rotation is a schedule somebody
+has to keep against an adversary who does not.
+
 ## What it costs
 
 A relay carries every byte of every call held on it. That is the point of

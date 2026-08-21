@@ -66,6 +66,9 @@ type reach struct {
 
 	mu   sync.RWMutex
 	down map[string]bool
+	// How many sweeps in a row found nothing at all, which is a count of this
+	// machine's own outages rather than of anybody else's.
+	blind int
 }
 
 func newReach(check Check) *reach {
@@ -122,26 +125,87 @@ func (r *reach) keep(list []store.Relay) []store.Relay {
 
 // look asks each relay once.
 func (r *reach) look(ctx context.Context, list []store.Relay) {
+	type finding struct {
+		relay  store.Relay
+		ok     bool
+		took   time.Duration
+		detail string
+	}
+
+	found := make([]finding, 0, len(list))
+	answered := 0
+
 	for _, relay := range list {
 		asking, cancel := context.WithTimeout(ctx, reachWithin)
 		ok, took, detail := r.check(asking, relay.URL)
 		cancel()
 
+		if ok {
+			answered++
+		}
+
+		found = append(found, finding{relay, ok, took, detail})
+	}
+
+	// A sweep in which nothing answered measured this machine, not the fleet.
+	//
+	// These relays are in five places on three continents and share no path but
+	// the last one, which is this node's own. When every one of them goes quiet
+	// inside the same half minute, the reading to take is that the line here is
+	// out — and the worst thing to do with that reading is to act on it, because
+	// acting on it empties the list every client is offered and turns twenty
+	// seconds of nothing into a deployment with nowhere to hold a call.
+	//
+	// The asymmetry is what decides this. Wrongly keeping a dead fleet listed
+	// costs a client one failed connection and a retry, which is what it would
+	// have paid anyway. Wrongly dropping a live one costs everybody the ability
+	// to start a call at all, and does it at exactly the moment the operator is
+	// least able to see why.
+	//
+	// Two or more, because with one relay there is nothing to compare against
+	// and a single machine going away is the ordinary case rather than a sign.
+	if answered == 0 && len(found) > 1 {
 		r.mu.Lock()
-		was := r.down[relay.URL]
-		r.down[relay.URL] = !ok
+		r.blind++
+		blind := r.blind
+		r.mu.Unlock()
+
+		if blind == 1 {
+			slog.Warn("nothing answered this sweep, so the readings are being kept as they "+
+				"were: these relays share no path but this machine's own, and all of them "+
+				"failing at once is a statement about this end",
+				"relays", len(found))
+		}
+
+		return
+	}
+
+	r.mu.Lock()
+	blind := r.blind
+	r.blind = 0
+	r.mu.Unlock()
+
+	if blind > 0 {
+		slog.Info("relays are answering again after this machine could reach none of them",
+			"sweeps", blind, "for", (time.Duration(blind) * reachEvery).String())
+	}
+
+	for _, one := range found {
+		r.mu.Lock()
+		was := r.down[one.relay.URL]
+		r.down[one.relay.URL] = !one.ok
 		r.mu.Unlock()
 
 		// Said once on the change rather than every half minute, so that a relay
 		// which has been down all night is one line in the log and not two
 		// thousand.
 		switch {
-		case !ok && !was:
+		case !one.ok && !was:
 			slog.Warn("a relay stopped answering and is no longer offered to clients",
-				"relay", relay.Name, "url", relay.URL, "detail", detail)
-		case ok && was:
+				"relay", one.relay.Name, "url", one.relay.URL, "detail", one.detail)
+		case one.ok && was:
 			slog.Info("a relay is answering again",
-				"relay", relay.Name, "url", relay.URL, "took", took)
+				"relay", one.relay.Name, "url", one.relay.URL, "took", one.took)
 		}
 	}
 }

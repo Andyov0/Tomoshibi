@@ -143,3 +143,114 @@ func names(list []store.Relay) []string {
 
 	return out
 }
+
+/*
+What a total blackout means, and what it does not.
+
+This deployment's control node sits on a residential line in Tokyo. Over one
+week it lost the network thirty-two times, for twenty to forty seconds each, and
+every time it did the reachability sweep marked all eleven relays unreachable —
+machines in mainland China, Hong Kong, Singapore, Japan and Los Angeles, which
+share no path with each other but the last one into this house. The relays were
+fine. The list every client is offered went empty anyway, so a twenty-second
+blip on somebody's home connection became a deployment with nowhere to hold a
+call, and the log said eleven relays had failed.
+
+The rule these guard is that a sweep in which nothing answered is a measurement
+of this end. The asymmetry decides it: wrongly keeping a dead fleet listed costs
+a client one failed connection and a retry, which it would have paid anyway;
+wrongly dropping a live one costs everybody the ability to call at all.
+*/
+
+func TestNothingAnsweringIsReadAsThisMachineAndNotTheFleet(t *testing.T) {
+	fleet := []store.Relay{
+		{Name: "tokyo", URL: "wss://jp.invalid", Enabled: true},
+		{Name: "hongkong", URL: "wss://hk.invalid", Enabled: true},
+		{Name: "losangeles", URL: "wss://lax.invalid", Enabled: true},
+	}
+
+	answering := true
+	watch := newReach(func(context.Context, string) (bool, time.Duration, string) {
+		return answering, time.Millisecond, "timed out"
+	})
+
+	watch.look(context.Background(), fleet)
+
+	if got := len(watch.only(fleet)); got != 3 {
+		t.Fatalf("%d relays answering while everything answered, want 3", got)
+	}
+
+	// The line goes out.
+	answering = false
+	watch.look(context.Background(), fleet)
+
+	// only(), not keep(). keep() has long returned everything when nothing is
+	// left, which is what stopped a blackout from emptying the list clients are
+	// offered — so asserting on keep() here would pass with this rule removed
+	// and prove nothing. What was wrong is one layer down: the readings
+	// themselves were being overwritten, so the picker's own view went empty
+	// and every relay was logged as having failed.
+	if got := len(watch.only(fleet)); got != 3 {
+		t.Errorf("%d relays recorded as answering after a sweep that reached none of them, "+
+			"want 3: three machines on three continents did not fail together, and writing "+
+			"that down makes the log say eleven relays died every time this house loses its "+
+			"line", got)
+	}
+
+	// And a real failure, of one machine, is still believed.
+	answering = true
+	watch.look(context.Background(), fleet)
+
+	one := 0
+	watch2 := newReach(func(_ context.Context, url string) (bool, time.Duration, string) {
+		one++
+		return url != "wss://hk.invalid", time.Millisecond, "timed out"
+	})
+	watch2.look(context.Background(), fleet)
+
+	kept := watch2.only(fleet)
+	if len(kept) != 2 {
+		t.Errorf("%d relays kept when one of three was down, want 2: the rule is about "+
+			"everything failing at once, not about any failure", len(kept))
+	}
+
+	for _, relay := range kept {
+		if relay.Name == "hongkong" {
+			t.Error("the relay that was actually down is still offered")
+		}
+	}
+}
+
+// And the readings come back by themselves, without needing a restart.
+func TestReadingsResumeWhenTheLineComesBack(t *testing.T) {
+	fleet := []store.Relay{
+		{Name: "tokyo", URL: "wss://jp.invalid", Enabled: true},
+		{Name: "hongkong", URL: "wss://hk.invalid", Enabled: true},
+	}
+
+	answering := false
+	watch := newReach(func(context.Context, string) (bool, time.Duration, string) {
+		return answering, time.Millisecond, "timed out"
+	})
+
+	// Out for a while, which must not accumulate into anything.
+	for range 5 {
+		watch.look(context.Background(), fleet)
+	}
+
+	if watch.blind != 5 {
+		t.Errorf("counted %d blind sweeps, want 5", watch.blind)
+	}
+
+	answering = true
+	watch.look(context.Background(), fleet)
+
+	if watch.blind != 0 {
+		t.Error("the count did not clear when the line came back, so the next outage would " +
+			"be reported as part of this one")
+	}
+
+	if got := len(watch.only(fleet)); got != 2 {
+		t.Errorf("%d relays recorded as answering after the line came back, want 2", got)
+	}
+}

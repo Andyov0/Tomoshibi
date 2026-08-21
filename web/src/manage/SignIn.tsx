@@ -113,7 +113,7 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 				</div>
 
 				<Button type="submit" size="lg" disabled={!passphrase || busy}>
-					{busy ? "Signing in…" : "Sign in"}
+					{busy ? t("Signing in…") : t("Sign in")}
 				</Button>
 			</form>
 		</main>

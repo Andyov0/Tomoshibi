@@ -450,6 +450,8 @@ const ja: Dictionary = {
 	"This node holds no media, so there is nothing to ask it.": "このノードはメディアを持たないため、尋ねることがありません。",
 	"Too many attempts. Wait a minute and try again.": "試行回数が多すぎます。1分ほど待ってからもう一度お試しください。",
 
+	"Signing in…": "サインイン中…",
+
 };
 
 export default ja;

@@ -483,6 +483,8 @@ const en = {
 	"This node holds no media, so there is nothing to ask it.": "This node holds no media, so there is nothing to ask it.",
 	"Too many attempts. Wait a minute and try again.": "Too many attempts. Wait a minute and try again.",
 
+	"Signing in…": "Signing in…",
+
 } as const;
 
 export default en;

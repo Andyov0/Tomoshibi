@@ -450,6 +450,8 @@ const zhHant: Dictionary = {
 	"This node holds no media, so there is nothing to ask it.": "這個節點不承載媒體,沒什麼可問的。",
 	"Too many attempts. Wait a minute and try again.": "嘗試次數太多,等一分鐘再試。",
 
+	"Signing in…": "登入中…",
+
 };
 
 export default zhHant;

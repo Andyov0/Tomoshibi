@@ -450,6 +450,8 @@ const zhHans: Dictionary = {
 	"This node holds no media, so there is nothing to ask it.": "这个节点不承载媒体,没什么可问的。",
 	"Too many attempts. Wait a minute and try again.": "尝试次数太多,等一分钟再试。",
 
+	"Signing in…": "登录中…",
+
 };
 
 export default zhHans;

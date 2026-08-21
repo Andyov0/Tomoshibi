@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "@/index.css";
+import { start } from "@/live/i18n";
 import { Notices } from "@/components/room/Notices";
 import { Manage } from "./Manage";
 
@@ -13,9 +14,14 @@ import { Manage } from "./Manage";
  * nobody has configured an administrator the server serves no document here at
  * all, which a route could not be — a route and the client would be one file.
  *
- * No language chosen and none offered. Whoever reads this runs the deployment,
- * the same person the startup log is written for.
+ * The language is chosen the same way the client chooses it, and offered in the
+ * rail. This used to say that none was chosen and none offered, on the ground
+ * that whoever reads these pages runs the deployment — which is true and is not
+ * an argument for reading them in a second language. The pages are translated;
+ * without this they were translated into a language nothing ever selected.
  */
+start();
+
 const root = document.getElementById("root");
 if (!root) throw new Error("missing #root");
 

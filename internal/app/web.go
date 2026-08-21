@@ -62,11 +62,21 @@ func Web(files fs.FS) http.Handler {
 // caching decides how long a file may be kept.
 //
 // The build names assets after their contents, so a changed file is a changed
-// URL and the old one can be kept forever. The document's name never changes, so
-// it has to be revalidated every time or a deployment would reach nobody who has
-// visited before.
+// URL and the old one can be kept forever. A document's name never changes, so
+// it has to be revalidated every time or a deployment would reach nobody who
+// has visited before.
+//
+// Every document, which this used to read as one. There are three — the client,
+// the management pages, the account page — and only the client was named here,
+// so the other two were served as immutable for a year. That is not a cache
+// that goes stale and recovers: an immutable response is one a browser will not
+// revalidate, and a content delivery network in front of it holds the same
+// answer per edge. A deployment then reaches some people and not others, for a
+// year, with nothing to distinguish it from a build that did not go out —
+// which is exactly how it presented, and it cost an hour of comparing bytes
+// that were identical the whole time.
 func caching(name string) string {
-	if name == index {
+	if strings.HasSuffix(name, ".html") {
 		return "no-cache"
 	}
 

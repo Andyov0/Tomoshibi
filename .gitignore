@@ -38,3 +38,5 @@ node_modules/
 
 # Finder's own bookkeeping, which follows anybody who opens a folder on a Mac.
 .DS_Store
+/roster
+/peekroom

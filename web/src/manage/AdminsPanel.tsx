@@ -1,5 +1,5 @@
+import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
-import { t } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
 import { Loader2, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -28,6 +28,8 @@ export function AdminsPanel({
 	canModerate: boolean;
 	onSignedOut: () => void;
 }) {
+	const t = useT();
+
 	// Slowly. This list changes when somebody joins or leaves a team, which is
 	// not a thing that happens while a page is open.
 	const { value, error, refresh } = usePoll(api.admins, { every: 60_000, onSignedOut });
@@ -65,7 +67,7 @@ export function AdminsPanel({
 	return (
 		<div className="mx-auto flex max-w-4xl flex-col gap-3 sm:gap-4">
 			<Card
-				title="Administrators"
+				title={t("Administrators")}
 				note={
 					moderators === 1
 						? t("One of these can change things")
@@ -145,6 +147,8 @@ function Row({
 	onDrop: () => void;
 	onRename: (name: string) => void;
 }) {
+	const t = useT();
+
 	const [name, setName] = useState(admin.name);
 	const role = admin.can.includes("moderate") ? "moderate" : "observe";
 
@@ -219,6 +223,8 @@ function Row({
 }
 
 function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+	const t = useT();
+
 	const [name, setName] = useState("");
 	const [trip, setTrip] = useState("");
 	const [role, setRole] = useState("observe");
@@ -323,6 +329,8 @@ function AddAdmin({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
  * two differ.
  */
 function OwnPassphrase() {
+	const t = useT();
+
 	const [current, setCurrent] = useState("");
 	const [next, setNext] = useState("");
 	const [saving, setSaving] = useState(false);
@@ -346,7 +354,7 @@ function OwnPassphrase() {
 	};
 
 	return (
-		<Card title="Your passphrase">
+		<Card title={t("Your passphrase")}>
 			<form
 				className="flex flex-col gap-3 px-3 py-3 sm:px-4"
 				onSubmit={(event) => {

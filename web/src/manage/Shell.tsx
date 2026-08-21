@@ -1,5 +1,7 @@
+import { LanguagePicker } from "@/components/room/LanguagePicker";
 import { Flagged } from "@/components/room/Flag";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import { Activity, LayoutGrid, ScrollText, Server, Users, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
@@ -36,10 +38,16 @@ const ICONS: Record<Panel, typeof Activity> = {
  * scrolls. Losing it when leaving this panel was the strongest argument for
  * moving the navigation at all, so it would be a poor trade to lose it anyway.
  *
- * English only, and not by omission. Its reader is whoever runs this deployment,
- * the same person the startup log is written for, and most of what it says is
- * technical nouns that a half-translated page renders worse than an
- * untranslated one.
+ * Translated, like the rest. This said "English only, and not by omission" for
+ * a long time, while four of its panels held a hundred and eighty-eight
+ * translated phrases and the other four held none — which is the state the
+ * comment was arguing against, arrived at by drift rather than by decision.
+ *
+ * The argument it made was that these pages are technical nouns and a
+ * half-translated one reads worse than an untranslated one. The first half is
+ * true of some of it and not of the sentences that matter: the ones somebody
+ * reads at two in the morning when a relay has stopped answering. The second
+ * half was an argument for finishing rather than for stopping.
  */
 export function Shell({
 	who,
@@ -57,6 +65,8 @@ export function Shell({
 	load?: { out: number; rooms: number; clients: number };
 	children: ReactNode;
 }) {
+	const t = useT();
+
 	return (
 		// The page is the height of the window and the panel scrolls inside it,
 		// rather than the whole document scrolling. A rail is a flex item, and a
@@ -77,7 +87,7 @@ export function Shell({
 					"lg:h-dvh lg:overflow-y-auto",
 				)}
 			>
-				<span className="px-2 pt-1 pb-3 font-semibold text-sm">Management</span>
+				<span className="px-2 pt-1 pb-3 font-semibold text-sm">{t("Management")}</span>
 
 				{PANELS.map((one) => (
 					<Rail key={one} panel={one} current={panel} onPanel={onPanel} />
@@ -85,13 +95,14 @@ export function Shell({
 
 				<div className="mt-auto flex flex-col gap-3 pt-3">
 					<Load load={load} />
+					<LanguagePicker />
 					<div className="flex items-center gap-2">
 						<span className="readout truncate text-fg-muted text-[11px]">
 							{who.name ? `${who.name} · ` : ""}
 							{who.trip}
 						</span>
 						<Button variant="ghost" size="sm" onClick={onSignOut} className="ml-auto shrink-0">
-							Sign out
+							{t("Sign out")}
 						</Button>
 					</div>
 				</div>
@@ -185,6 +196,8 @@ function Crown({
 	load?: { out: number; rooms: number; clients: number };
 	onSignOut: () => void;
 }) {
+	const t = useT();
+
 	return (
 		<header
 			className={cn(
@@ -195,12 +208,14 @@ function Crown({
 			<span className="readout font-semibold text-[15px] text-tally tabular-nums">
 				{load ? rate(load.out) : "—"}
 			</span>
-			<span className="text-fg-muted text-[11px]">
-				{load ? `${load.rooms} rooms · ${load.clients} people` : "management"}
+			<span className="mr-auto text-fg-muted text-[11px]">
+				{load ? `${load.rooms} · ${load.clients}` : t("Management")}
 			</span>
 
-			<Button variant="ghost" size="sm" onClick={onSignOut} className="ml-auto shrink-0">
-				Sign out
+			<LanguagePicker />
+
+			<Button variant="ghost" size="sm" onClick={onSignOut} className="shrink-0">
+				{t("Sign out")}
 			</Button>
 		</header>
 	);

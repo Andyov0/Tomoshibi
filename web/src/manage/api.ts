@@ -1,3 +1,5 @@
+import { t } from "@/live/i18n";
+
 /**
  * What the management pages ask the server.
  *
@@ -274,31 +276,107 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 /**
  * The server sends a code. The sentence belongs here, with the rest of the
- * words, and a code this build does not know falls back rather than being shown
- * raw: `media_server_unreachable` on screen is an internal name escaping.
+ * words.
+ *
+ * There were nine of these and the server sends forty-two, so a new account
+ * with a name somebody already had said "HTTP 409", and a passphrase two
+ * characters short said "HTTP 400". Every one of them now has a sentence, and
+ * every sentence goes through the dictionary like the rest of the interface —
+ * which it did not, because this file had no import at all.
  */
 function explain(reason: string | undefined, status: number): string {
 	switch (reason) {
 		case "too_many_attempts":
-			return "Too many attempts. Wait a minute and try again.";
+			return t("Too many attempts. Wait a minute and try again.");
 		case "refused":
-			return "That passphrase is not an administrator's.";
+			return t("That passphrase is not an administrator's.");
+		case "wrong_passphrase":
+			return t("That passphrase is not an administrator's.");
 		case "not_allowed":
-			return "This account may watch, but not change anything.";
+			return t("This account may watch, but not change anything.");
+		case "unknown_capability":
+			return t("This account may watch, but not change anything.");
+		case "signed_out":
+			return t("That session has ended. Sign in again.");
 		case "no_such_room":
-			return "That room has ended.";
+			return t("That room has ended.");
 		case "media_server_unreachable":
-			return "The media server did not answer.";
+			return t("The media server did not answer.");
+		case "no_media_here":
+			return t("This node holds no media, so there is nothing to ask it.");
 		case "no_track":
-			return "No track was named.";
+			return t("No track was named.");
 		case "no_such_span":
-			return "That is not a stretch of time this server can answer for.";
+			return t("That is not a stretch of time this server can answer for.");
 		case "no_such_policy":
-			return "Rooms are opened either by anyone or by administrators, and that was neither.";
+			return t("Rooms are opened either by anyone or by administrators, and that was neither.");
 		case "store_unwritable":
-			return "The change could not be written down, so nothing was changed.";
+			return t("The change could not be written down, so nothing was changed.");
+		case "store_unavailable":
+			return t("The store is not answering, so nothing was changed.");
+		case "name_taken":
+			return t("That name is already taken.");
+		case "name_too_long":
+			return t("That name is too long.");
+		case "bad_name":
+			return t("That name cannot be used.");
+		case "no_such_account":
+			return t("There is no account by that name.");
+		case "no_passphrase":
+			return t("A passphrase is needed.");
+		case "passphrase_too_short":
+			return t("That passphrase is too short.");
+		case "passphrase_in_use":
+			return t("That passphrase is already somebody else's.");
+		case "passphrase_unchanged":
+			return t("That is the passphrase already in use.");
+		case "already_an_administrator":
+			return t("They are an administrator already.");
+		case "no_such_administrator":
+			return t("There is no administrator by that signature.");
+		case "last_moderator":
+			return t("That is the last administrator who can change anything, so it stays.");
+		case "not_a_signature":
+			return t("That is not a signature.");
+		case "relay_exists":
+			return t("A relay by that name is already here.");
+		case "no_such_relay":
+			return t("There is no relay by that name.");
+		case "relay_no_name":
+			return t("A relay needs a name.");
+		case "relay_long_name":
+			return t("That relay name is too long.");
+		case "relay_no_url":
+			return t("A relay needs an address.");
+		case "relay_bad_url":
+			return t("That is not an address a client can dial.");
+		case "relay_long_region":
+			return t("That region name is too long.");
+		case "relay_refused":
+			return t("The relay refused.");
+		case "no_relay_list":
+			return t("This deployment keeps no relay list.");
+		case "bad_address":
+			return t("That is not an address.");
+		case "bad_prefix":
+			return t("That prefix cannot be used.");
+		case "no_enrolment":
+			return t("This deployment does not let machines enrol themselves.");
+		case "wrong_secret":
+			return t("That is not the enrolment secret.");
+		case "no_certificate":
+			return t("There is no certificate to hand out.");
+		case "unreadable_request":
+			return t("The request could not be read.");
+		case "avatar_too_large":
+			return t("That picture is too large.");
+		case "under_score":
+			return t("A name cannot start with an underscore.");
 		default:
-			return `The server refused the request (HTTP ${status}).`;
+			// A code this build has no sentence for. Better a status than the
+			// code itself: media_server_unreachable on a screen is an internal
+			// name escaping, and it escapes untranslated.
+			return t("The server refused the request.") + ` (HTTP ${status})`;
 	}
 }
 

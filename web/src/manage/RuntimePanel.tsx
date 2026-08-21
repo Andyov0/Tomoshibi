@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { type Policy, api } from "./api";
 import { words } from "./OpeningCard";
 import { usePoll } from "./poll";
@@ -16,6 +17,8 @@ import { Card, Failed } from "./Shell";
  * room on this deployment, and no page is a reason to put that on a screen.
  */
 export function RuntimePanel({ onSignedOut }: { onSignedOut: () => void }) {
+	const t = useT();
+
 	// Once a minute. This changes when somebody restarts the server, and not
 	// otherwise.
 	const { value, error } = usePoll(api.runtime, { every: 60_000, onSignedOut });
@@ -24,25 +27,25 @@ export function RuntimePanel({ onSignedOut }: { onSignedOut: () => void }) {
 		<div className="mx-auto grid max-w-4xl gap-4">
 			{error && <Failed>{error}</Failed>}
 
-			<Card title="Application">
+			<Card title={t("Application")}>
 				<Rows values={value?.meet} />
 			</Card>
 
-			<Card title="Media" note="What clients are told to dial">
+			<Card title={t("Media")} note={t("What clients are told to dial")}>
 				<Rows values={value?.rtc} />
 			</Card>
 
-			<Card title="Rooms" note="Who can start one">
+			<Card title={t("Rooms")} note={t("Who can start one")}>
 				<Opening policy={value?.rooms} />
 			</Card>
 
-			<Card title="Codecs">
+			<Card title={t("Codecs")}>
 				<p className="readout px-4 py-3 text-[12px] text-fg-muted">
 					{value?.codecs.join("  ·  ") ?? "—"}
 				</p>
 			</Card>
 
-			<Card title="Credentials" note="The secret is never shown">
+			<Card title={t("Credentials")} note={t("The secret is never shown")}>
 				<Rows values={value?.credentials} />
 			</Card>
 		</div>

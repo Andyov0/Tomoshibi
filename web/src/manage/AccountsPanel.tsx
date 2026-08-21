@@ -1,5 +1,5 @@
+import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
-import { t } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
 import { Ban, KeyRound, Loader2, Plus, Trash2, Undo2, X } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -31,6 +31,8 @@ export function AccountsPanel({
 	canModerate: boolean;
 	onSignedOut: () => void;
 }) {
+	const t = useT();
+
 	const { value, error, refresh } = usePoll(api.accounts, { every: 30_000, onSignedOut });
 
 	const [adding, setAdding] = useState(false);
@@ -63,7 +65,7 @@ export function AccountsPanel({
 	return (
 		<div className="mx-auto flex max-w-4xl flex-col gap-3 sm:gap-4">
 			<Card
-				title="Accounts"
+				title={t("Accounts")}
 				note={`${accounts.length}`}
 				actions={
 					canModerate &&
@@ -251,6 +253,8 @@ function NewAccount({
 	onDone: (name: string, passphrase: string) => void;
 	onCancel: () => void;
 }) {
+	const t = useT();
+
 	const [name, setName] = useState("");
 	const [passphrase, setPassphrase] = useState(() => suggest());
 	const [saving, setSaving] = useState(false);
@@ -332,6 +336,8 @@ function NewPassphrase({
 	onDone: (passphrase: string) => void;
 	onCancel: () => void;
 }) {
+	const t = useT();
+
 	const [passphrase, setPassphrase] = useState(() => suggest());
 
 	return (

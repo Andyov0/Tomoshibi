@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { Flagged } from "@/components/room/Flag";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,8 @@ export function RoomsPanel({
 	canModerate: boolean;
 	onSignedOut: () => void;
 }) {
+	const t = useT();
+
 	const [selected, setSelected] = useState<string>();
 	const [acting, setActing] = useState(false);
 
@@ -85,11 +88,11 @@ export function RoomsPanel({
 			)}
 		>
 			<div className={cn("flex flex-col gap-3 sm:gap-4", open && "max-lg:hidden")}>
-				<Card title="In progress" note={`${live.length}`}>
+				<Card title={t("In progress")} note={`${live.length}`}>
 					{error && <Failed>{error}</Failed>}
 
 					{live.length === 0 ? (
-						<Empty>No calls right now.</Empty>
+						<Empty>{t("No calls right now.")}</Empty>
 					) : (
 						<ul>
 							{live.map((one) => (
@@ -128,9 +131,9 @@ export function RoomsPanel({
 					)}
 				</Card>
 
-				<Card title="Known" note="Rooms this server has seen">
+				<Card title={t("Known")} note={t("Rooms this server has seen")}>
 					{known.length === 0 ? (
-						<Empty>None yet.</Empty>
+						<Empty>{t("None yet.")}</Empty>
 					) : (
 						<ul className="max-h-80 overflow-y-auto">
 							{known.map((one) => (
@@ -178,8 +181,8 @@ export function RoomsPanel({
 					onMute={(identity, track) => act(() => api.mute(open, identity, track))}
 				/>
 			) : (
-				<Card title="Participants">
-					<Empty>Choose a room.</Empty>
+				<Card title={t("Participants")}>
+					<Empty>{t("Choose a room.")}</Empty>
 				</Card>
 			)}
 		</div>
@@ -211,6 +214,8 @@ function People({
 	onRemove: (identity: string) => void;
 	onMute: (identity: string, track: string) => void;
 }) {
+	const t = useT();
+
 	const ask = useCallback(() => api.participants(room), [room]);
 	const { value, error } = usePoll(ask, { onSignedOut });
 
@@ -240,9 +245,7 @@ function People({
 				// The way back, carrying nothing but its own arrow: the room's
 				// name is already the title beside it.
 				<Button variant="ghost" size="sm" onClick={onBack} className="gap-1 lg:hidden">
-					<ChevronLeft className="size-3.5" />
-					Rooms
-				</Button>
+					<ChevronLeft className="size-3.5" />{t("Rooms")}</Button>
 			}
 		>
 			{error && <Failed>{error}</Failed>}
@@ -295,7 +298,7 @@ function People({
 					<span className="ml-auto">
 						{ending ? (
 							<span className="flex items-center gap-2">
-								<span className="text-fg">Everybody is disconnected.</span>
+								<span className="text-fg">{t("Everybody is disconnected.")}</span>
 
 								<button
 									type="button"
@@ -305,17 +308,13 @@ function People({
 										"rounded-md bg-danger px-2 py-1 text-[11px] text-danger-fg",
 										"transition-opacity hover:opacity-90 disabled:opacity-40",
 									)}
-								>
-									Close it
-								</button>
+								>{t("Close it")}</button>
 
 								<button
 									type="button"
 									onClick={() => setEnding(false)}
 									className="rounded-md border border-border px-2 py-1 text-[11px] hover:bg-surface-hi"
-								>
-									Cancel
-								</button>
+								>{t("Cancel")}</button>
 							</span>
 						) : (
 							/*
@@ -331,16 +330,14 @@ function People({
 									"text-fg-muted transition-colors hover:bg-danger/10 hover:text-fg",
 								)}
 							>
-								<DoorClosed className="size-3" />
-								Close this room
-							</button>
+								<DoorClosed className="size-3" />{t("Close this room")}</button>
 						)}
 					</span>
 				)}
 			</div>
 
 			{people.length === 0 ? (
-				<Empty>Nobody is here.</Empty>
+				<Empty>{t("Nobody is here.")}</Empty>
 			) : (
 				<ul>
 					{people.map((one) => (
@@ -378,6 +375,8 @@ function Person({
 	onRemove: () => void;
 	onMute: (track: string) => void;
 }) {
+	const t = useT();
+
 	return (
 		<li className="border-border border-b px-4 py-3 last:border-0">
 			<div className="flex items-baseline gap-2">
@@ -415,8 +414,8 @@ function Person({
 						type="button"
 						disabled={acting}
 						onClick={onRemove}
-						aria-label="Remove from the call"
-						title="Remove from the call"
+						aria-label={t("Remove from the call")}
+						title={t("Remove from the call")}
 						className={cn(
 							"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
 							"hover:bg-surface-hi hover:text-danger disabled:opacity-40",
@@ -505,6 +504,8 @@ function TrackRow({
 	acting: boolean;
 	onMute: () => void;
 }) {
+	const t = useT();
+
 	const codec = track.mime.replace(/^(video|audio)\//i, "").toLowerCase();
 
 	return (
@@ -532,8 +533,8 @@ function TrackRow({
 						type="button"
 						disabled={acting}
 						onClick={onMute}
-						aria-label="Mute this"
-						title="Mute this"
+						aria-label={t("Mute this")}
+						title={t("Mute this")}
 						className={cn(
 							"ml-auto shrink-0 rounded p-1 text-fg-muted transition-colors",
 							"hover:bg-surface-hi hover:text-fg disabled:opacity-40",
@@ -592,6 +593,8 @@ function Moving({
 	acting: boolean;
 	onPlace: (relay: string, now: boolean) => void;
 }) {
+	const t = useT();
+
 	const [open, setOpen] = useState(false);
 	const [wanted, setWanted] = useState("");
 	const { mounted, leaving } = useLingering(open, 160);
@@ -606,9 +609,7 @@ function Moving({
 					"text-fg-muted transition-colors hover:bg-surface-hi hover:text-fg",
 				)}
 			>
-				<Move className="size-3" />
-				Move
-			</button>
+				<Move className="size-3" />{t("Move")}</button>
 
 			{mounted && (
 				<div
@@ -624,7 +625,7 @@ function Moving({
 						onChange={(event) => setWanted(event.target.value)}
 						className="rounded-md border border-border bg-surface-hi px-2 py-1.5 text-[12px] outline-none"
 					>
-						<option value="">Choose a machine</option>
+						<option value="">{t("Choose a machine")}</option>
 						{relays.map((relay) => (
 							<option key={relay.name} value={relay.name}>
 								{relay.label || relay.name}
@@ -643,9 +644,7 @@ function Moving({
 							"rounded-md border border-border px-2 py-1.5 text-left text-[11.5px]",
 							"transition-colors hover:bg-surface-hi disabled:opacity-40",
 						)}
-					>
-						Hold the next call here
-					</button>
+					>{t("Hold the next call here")}</button>
 
 					<button
 						type="button"
@@ -658,9 +657,7 @@ function Moving({
 							"rounded-md border border-danger/40 bg-danger/10 px-2 py-1.5 text-left text-[11.5px]",
 							"transition-colors hover:bg-danger/20 disabled:opacity-40",
 						)}
-					>
-						Move now, ending this call
-					</button>
+					>{t("Move now, ending this call")}</button>
 				</div>
 			)}
 		</span>
@@ -685,6 +682,8 @@ function Sending({
 	acting: boolean;
 	onPlace: (relay: string) => void;
 }) {
+	const t = useT();
+
 	const [open, setOpen] = useState(false);
 	const { mounted, leaving } = useLingering(open, 160);
 
@@ -694,8 +693,8 @@ function Sending({
 				type="button"
 				disabled={acting}
 				onClick={() => setOpen((was) => !was)}
-				aria-label="Send in through another relay"
-				title="Send in through another relay"
+				aria-label={t("Send in through another relay")}
+				title={t("Send in through another relay")}
 				className={cn(
 					"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
 					"hover:bg-surface-hi hover:text-fg disabled:opacity-40",
@@ -713,9 +712,7 @@ function Sending({
 						leaving ? "animate-depart" : "animate-arrive",
 					)}
 				>
-					<p className="px-0.5 text-[10.5px] text-fg-muted leading-snug">
-						They are dropped from the call and come back in through this one.
-					</p>
+					<p className="px-0.5 text-[10.5px] text-fg-muted leading-snug">{t("They are dropped from the call and come back in through this one.")}</p>
 
 					{relays.map((relay) => (
 						<button

@@ -1,7 +1,7 @@
+import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useLingering } from "@/hooks/useLingering";
-import { t } from "@/live/i18n";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type Now, type Point, api } from "./api";
@@ -29,6 +29,8 @@ import { LINK_BITS, count, moment, rate, since, size, width } from "./units";
  * polled here, because it is only ever looked at here.
  */
 export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => void }) {
+	const t = useT();
+
 	const [span, setSpan] = useState<Span>("1h");
 	const [range, setRange] = useState<{ from: string; to: string }>();
 	const [choosing, setChoosing] = useState(false);
@@ -84,7 +86,7 @@ export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => v
 			{error && <Failed>{error}</Failed>}
 
 			<Card
-				title="Uplink"
+				title={t("Uplink")}
 				note={t("one point every {step}", { step: width(step) })}
 				actions={
 					<span className="readout font-semibold text-base tabular-nums">
@@ -159,32 +161,32 @@ export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => v
 			</Card>
 
 			<div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-				<Card title="Load">
+				<Card title={t("Load")}>
 					<dl className="grid grid-cols-2 gap-x-4 gap-y-3 px-3 py-3 sm:px-4 sm:py-4">
-						<Figure label="Rooms" value={String(now?.rooms ?? 0)} />
-						<Figure label="People" value={String(now?.clients ?? 0)} />
+						<Figure label={t("Rooms")} value={String(now?.rooms ?? 0)} />
+						<Figure label={t("People")} value={String(now?.clients ?? 0)} />
 						<Figure
-							label="Tracks"
+							label={t("Tracks")}
 							value={`${now?.tracks.in ?? 0} in · ${now?.tracks.out ?? 0} out`}
 						/>
 						<Figure
-							label="CPU"
+							label={t("CPU")}
 							value={`${Math.round((now?.cpu.load ?? 0) * 100)}% of ${now?.cpu.count ?? 0}`}
 							warn={(now?.cpu.load ?? 0) > 0.8}
 						/>
 					</dl>
 				</Card>
 
-				<Card title="Since restart">
+				<Card title={t("Since restart")}>
 					<dl className="grid grid-cols-2 gap-x-4 gap-y-3 px-3 py-3 sm:px-4 sm:py-4">
-						<Figure label="Running" value={now ? since(now.since) : "—"} />
+						<Figure label={t("Running")} value={now ? since(now.since) : "—"} />
 						<Figure
-							label="Asked for again"
+							label={t("Asked for again")}
 							value={`${(now?.packets.nackPerSec ?? 0).toFixed(1)}/s`}
 							warn={(now?.packets.nackPerSec ?? 0) > 50}
 						/>
-						<Figure label="Total out" value={size(now?.bytes.out ?? 0)} />
-						<Figure label="Total in" value={size(now?.bytes.in ?? 0)} />
+						<Figure label={t("Total out")} value={size(now?.bytes.out ?? 0)} />
+						<Figure label={t("Total in")} value={size(now?.bytes.in ?? 0)} />
 					</dl>
 				</Card>
 			</div>
@@ -258,6 +260,8 @@ function Spans({
 	onSpan: (span: Span) => void;
 	onChoose: () => void;
 }) {
+	const t = useT();
+
 	return (
 		<div className="flex flex-wrap items-center gap-1 px-3 pt-3 sm:px-4">
 			<div role="radiogroup" aria-label={t("How far back")} className="flex flex-wrap gap-1">
@@ -320,6 +324,8 @@ function Custom({
 	open: boolean;
 	onShow: (range: { from: string; to: string }) => void;
 }) {
+	const t = useT();
+
 	const { mounted, leaving } = useLingering(open, 160);
 
 	const [from, setFrom] = useState(() => typed(new Date(Date.now() - 24 * 3600 * 1000)));
@@ -401,6 +407,8 @@ function typed(when: Date): string {
  * how close the worst minute of it came.
  */
 function Reading({ point, step, leaving }: { point: Point; step: number; leaving: boolean }) {
+	const t = useT();
+
 	return (
 		<div
 			className={cn(
@@ -422,6 +430,8 @@ function Reading({ point, step, leaving }: { point: Point; step: number; leaving
 }
 
 function Was({ label, value, peak }: { label: string; value: string; peak?: string }) {
+	const t = useT();
+
 	return (
 		<span className="flex min-w-0 shrink items-baseline gap-1 truncate text-[11px]">
 			<span className="text-fg-muted">{label}</span>
@@ -438,12 +448,14 @@ function Was({ label, value, peak }: { label: string; value: string; peak?: stri
 
 /** The machines a control node's figures were summed from. */
 function Fleet({ now }: { now: Now }) {
+	const t = useT();
+
 	const nodes = now.nodes ?? [];
 	const quiet = nodes.filter((one) => !one.reachable).length;
 
 	return (
 		<Card
-			title="Relays"
+			title={t("Relays")}
 			note={
 				quiet > 0
 					? `${now.answered ?? 0} of ${now.asked ?? nodes.length} answering`
@@ -451,9 +463,7 @@ function Fleet({ now }: { now: Now }) {
 			}
 		>
 			{nodes.length === 0 && (
-				<p className="px-3 py-3 text-fg-muted text-sm sm:px-4">
-					No relays are configured, so this node has nowhere to send a call.
-				</p>
+				<p className="px-3 py-3 text-fg-muted text-sm sm:px-4">{t("No relays are configured, so this node has nowhere to send a call.")}</p>
 			)}
 
 			<ul>
@@ -523,11 +533,13 @@ function Fleet({ now }: { now: Now }) {
 
 /** The one machine, where this deployment is the one holding the calls. */
 function ThisServer({ now }: { now?: Now }) {
+	const t = useT();
+
 	return (
-		<Card title="This server">
+		<Card title={t("This server")}>
 			<dl className="grid gap-x-4 gap-y-3 px-3 py-3 sm:grid-cols-2 sm:px-4 sm:py-4">
-				<Figure label="Node" value={now?.node?.id ?? "\u2014"} mono />
-				<Figure label="Address given to clients" value={now?.node?.ip ?? "\u2014"} mono />
+				<Figure label={t("Node")} value={now?.node?.id ?? "\u2014"} mono />
+				<Figure label={t("Address given to clients")} value={now?.node?.ip ?? "\u2014"} mono />
 			</dl>
 		</Card>
 	);
@@ -567,6 +579,8 @@ function Light({ ok, busy }: { ok: boolean; busy: boolean }) {
  * cannot be carried is the second kind.
  */
 function Ceiling({ bitsPerSecond }: { bitsPerSecond: number }) {
+	const t = useT();
+
 	const share = Math.min(1, bitsPerSecond / LINK_BITS);
 
 	return (
@@ -577,7 +591,7 @@ function Ceiling({ bitsPerSecond }: { bitsPerSecond: number }) {
 				aria-valuenow={Math.round(share * 100)}
 				aria-valuemin={0}
 				aria-valuemax={100}
-				aria-label="Link usage"
+				aria-label={t("Link usage")}
 			>
 				<div
 					className={cn(

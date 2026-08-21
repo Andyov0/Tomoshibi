@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import { actionFailed } from "@/live/notices";
 import { type ReactNode, useCallback, useState } from "react";
@@ -27,6 +28,8 @@ export function OpeningCard({
 	canModerate: boolean;
 	onSignedOut: () => void;
 }) {
+	const t = useT();
+
 	const [saving, setSaving] = useState(false);
 
 	// Rarely, because this changes only when somebody on this page changes it.
@@ -55,7 +58,7 @@ export function OpeningCard({
 	);
 
 	return (
-		<Card title="New rooms" note="Who can start one">
+		<Card title={t("New rooms")} note={t("Who can start one")}>
 			{error && <Failed>{error}</Failed>}
 
 			<div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
@@ -67,23 +70,23 @@ export function OpeningCard({
 				  * underneath — which meant reading two places to answer one
 				  * question. Each row now carries its own consequence.
 				  */}
-				<div role="radiogroup" aria-label="Who can start a new room" className="flex flex-col">
+				<div role="radiogroup" aria-label={t("Who can start a new room")} className="flex flex-col">
 					<Choice
-						label="Anyone"
+						label={t("Anyone")}
 						describes="Anybody with a link can start one."
 						chosen={value?.chosen === "anyone"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("anyone")}
 					/>
 					<Choice
-						label="Users & administrators"
+						label={t("Users & administrators")}
 						describes="Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to."
 						chosen={value?.chosen === "signed"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("signed")}
 					/>
 					<Choice
-						label="Administrators"
+						label={t("Administrators")}
 						describes="Only administrators can start one. Rooms already in use stay open."
 						chosen={value?.chosen === "admins"}
 						disabled={!canModerate || saving || !value}
@@ -169,14 +172,15 @@ function Choice({
  * for names.
  */
 function HowLongItLasts({ remember }: { remember: number }) {
+	const t = useT();
+
 	return (
 		<p className="text-fg-muted text-xs leading-relaxed">
 			{remember > 0 ? (
-				<>
-					Unused rooms close after <Value>{days(remember)}</Value>.
+				<>{t("Unused rooms close after")}<Value>{days(remember)}</Value>.
 				</>
 			) : (
-				<>Rooms never close.</>
+				<>{t("Rooms never close.")}</>
 			)}
 		</p>
 	);
@@ -207,15 +211,16 @@ function days(seconds: number): string {
  * switch goes looking in a second place for what it does.
  */
 function WhereItLives({ policy }: { policy: Policy }) {
+	const t = useT();
+
 	if (policy.configured === policy.chosen) {
 		return (
-			<p className="text-fg-muted text-xs leading-relaxed">Set here, not in the config file.</p>
+			<p className="text-fg-muted text-xs leading-relaxed">{t("Set here, not in the config file.")}</p>
 		);
 	}
 
 	return (
-		<Note kind="quiet">
-			The config file says <Value>{words(policy.configured)}</Value>. This setting wins.
+		<Note kind="quiet">{t("The config file says")}<Value>{words(policy.configured)}</Value>. This setting wins.
 		</Note>
 	);
 }
@@ -228,15 +233,15 @@ function WhereItLives({ policy }: { policy: Policy }) {
  * looking at it is allowed to move it.
  */
 function Caveats({ policy, canModerate }: { policy: Policy; canModerate: boolean }) {
+	const t = useT();
+
 	return (
 		<>
 			{policy.openedBy !== policy.chosen && (
-				<Note kind="warn">
-					No administrators are configured, so anyone can start a room.
-				</Note>
+				<Note kind="warn">{t("No administrators are configured, so anyone can start a room.")}</Note>
 			)}
 
-			{!canModerate && <Note kind="quiet">You can view this but not change it.</Note>}
+			{!canModerate && <Note kind="quiet">{t("You can view this but not change it.")}</Note>}
 		</>
 	);
 }

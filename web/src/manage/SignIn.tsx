@@ -1,3 +1,4 @@
+import { useT } from "@/hooks/useT";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Eye, EyeOff, ShieldCheck } from "lucide-react";
@@ -26,6 +27,8 @@ import { api } from "./api";
  * was right.
  */
 export function SignIn({ onIn }: { onIn: () => void }) {
+	const t = useT();
+
 	const [name, setName] = useState("");
 	const [passphrase, setPassphrase] = useState("");
 	const [shown, setShown] = useState(false);
@@ -56,10 +59,8 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 			<form onSubmit={submit} className="flex w-full max-w-sm flex-col gap-4">
 				<header className="flex flex-col items-center gap-2 text-center">
 					<ShieldCheck className="size-8 text-fg-muted" />
-					<h1 className="font-semibold text-xl tracking-tight">Management</h1>
-					<p className="text-fg-muted text-sm">
-						Enter your name and passphrase.
-					</p>
+					<h1 className="font-semibold text-xl tracking-tight">{t("Management")}</h1>
+					<p className="text-fg-muted text-sm">{t("Enter your name and passphrase.")}</p>
 				</header>
 
 				{/*
@@ -78,8 +79,8 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 				<Input
 					value={name}
 					onChange={(event) => setName(event.target.value)}
-					placeholder="Name"
-					aria-label="Name"
+					placeholder={t("Name")}
+					aria-label={t("Name")}
 					autoComplete="username"
 					// biome-ignore lint/a11y/noAutofocus: the page exists to be typed into
 					autoFocus
@@ -91,8 +92,8 @@ export function SignIn({ onIn }: { onIn: () => void }) {
 						type={shown ? "text" : "password"}
 						value={passphrase}
 						onChange={(event) => setPassphrase(event.target.value)}
-						placeholder="Passphrase"
-						aria-label="Passphrase"
+						placeholder={t("Passphrase")}
+						aria-label={t("Passphrase")}
 						autoComplete="current-password"
 						maxLength={200}
 						className={passphrase ? "pr-10" : undefined}

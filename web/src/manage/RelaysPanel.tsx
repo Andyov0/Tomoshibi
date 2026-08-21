@@ -1,7 +1,8 @@
+import { useT } from "@/hooks/useT";
 import { useLingering } from "@/hooks/useLingering";
 import { useReorder } from "@/hooks/useReorder";
 import { cn } from "@/lib/utils";
-import { say, t } from "@/live/i18n";
+import { say } from "@/live/i18n";
 import { actionFailed } from "@/live/notices";
 import {
 	Check,
@@ -44,6 +45,8 @@ export function RelaysPanel({
 	canModerate: boolean;
 	onSignedOut: () => void;
 }) {
+	const t = useT();
+
 	// Often enough that a relay going down is noticed while somebody is
 	// watching, rarely enough that the control node is not measuring every
 	// relay continuously for a page nobody has open.
@@ -360,6 +363,8 @@ function RelayRow({
 		fallback?: boolean;
 	}) => void;
 }) {
+	const t = useT();
+
 	const [confirming, setConfirming] = useState(false);
 
 	// Shut by default. The settings are four fields and two switches and they
@@ -639,6 +644,8 @@ function Settings({
 		adminOnly?: boolean;
 	}) => void;
 }) {
+	const t = useT();
+
 	const [name, setName] = useState(relay.name);
 	const [url, setUrl] = useState(relay.url);
 	const [region, setRegion] = useState(relay.region ?? "");
@@ -858,6 +865,8 @@ function Field({
 }
 
 function AddRelay({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+	const t = useT();
+
 	const [name, setName] = useState("");
 	const [url, setUrl] = useState("");
 	const [region, setRegion] = useState("");
@@ -958,6 +967,8 @@ function AddRelay({ onDone, onCancel }: { onDone: () => void; onCancel: () => vo
  * is the end, which is where the secret is.
  */
 function Command({ command }: { command: string }) {
+	const t = useT();
+
 	const [copied, setCopied] = useState(false);
 
 	return (
@@ -1002,6 +1013,8 @@ function AddByScript({
 	command,
 	onDone,
 }: { script: string; command?: string; onDone: () => void }) {
+	const t = useT();
+
 	const [copied, setCopied] = useState(false);
 
 	return (

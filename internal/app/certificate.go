@@ -36,6 +36,14 @@ overlap; an hourly loop that forgets everything has seven hundred chances.
 // restarted nightly and one running for a year behave alike.
 const carryingEvery = time.Hour
 
+// How little is left on a certificate before it is worth saying so.
+//
+// Two days. The certificates this warns about renew every two, so anything
+// under that is a renewal that did not happen rather than one that has not
+// happened yet — and the ninety-day wildcard is thirty days from expiry when it
+// renews, so it never comes near this.
+const shortly = 48 * time.Hour
+
 // carrying hands every relay the certificate this node serves, whenever it
 // changes, and once at startup.
 //
@@ -116,7 +124,8 @@ func (a *App) carry(last string) (string, bool) {
 	var taken, refused int
 
 	for _, relay := range relays {
-		if err := a.cluster.SendCertificate(ctx, relay.URL, carried); err != nil {
+		serving, err := a.cluster.SendCertificate(ctx, relay.URL, carried)
+		if err != nil {
 			// Not fatal and not retried here. The next hour offers it again,
 			// and a certificate arrives with about thirty days to spare.
 			slog.Warn("a relay would not take the certificate; it will be offered again",
@@ -128,6 +137,25 @@ func (a *App) carry(last string) (string, bool) {
 		}
 
 		taken++
+
+		// What it is actually serving, which is not always what was sent.
+		//
+		// A relay may hold a certificate this node has no copy of and cannot
+		// renew: two here have one for their own bare address, because the name
+		// they used to answer to is filtered on the path that reaches them.
+		// Those are six-day certificates renewed by a cron job on the machine
+		// itself, and until now nothing anywhere would have noticed that job
+		// stopping — the relay would have gone on answering perfectly until the
+		// morning it did not.
+		//
+		// Warned about rather than fixed, because it cannot be fixed from here.
+		// Two days is enough warning for a certificate that renews every two.
+		if !serving.IsZero() && time.Until(serving) < shortly {
+			slog.Warn("a relay is serving a certificate that expires soon, and it is not one "+
+				"this node can renew: look at the acme client on that machine",
+				"relay", relay.Name, "expires", serving.Format(time.RFC3339),
+				"in", time.Until(serving).Round(time.Hour).String())
+		}
 	}
 
 	slog.Info("offered the renewed certificate to the relays",

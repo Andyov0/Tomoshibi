@@ -289,3 +289,45 @@ func TestARenewalOfTheSameCertificateIsStillTaken(t *testing.T) {
 		t.Error("a plain renewal was refused, which would leave the fleet expiring on schedule")
 	}
 }
+
+// What a relay says it is serving, which is how the one certificate this
+// deployment cannot renew gets watched at all.
+//
+// Two relays hold a six-day certificate for their own bare address, issued and
+// renewed by a cron job on the machine itself. Nothing here can renew it and
+// nothing was watching it: the job could stop and the relay would answer
+// perfectly until the morning it did not. The push already reaches every relay
+// every hour, so the date comes back in the answer.
+func TestTheRelaySaysWhatItIsServing(t *testing.T) {
+	dir := t.TempDir()
+	expires := time.Now().Add(6 * 24 * time.Hour).Truncate(time.Second)
+	certPath, keyPath, _ := issuedFor(t, dir, expires, "", net.ParseIP("198.51.100.9"))
+
+	handler := CertificateHandler(certPath, keyPath, testKey, testSecret)
+
+	// Offered a wildcard it will not take, which is the ordinary case for these
+	// two and the one where the date matters most.
+	_, _, wildcard := issuedFor(t, t.TempDir(), time.Now().Add(90*24*time.Hour), "relay.example.invalid", nil)
+
+	recorder := pushing(t, handler, wildcard, true)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("answered %d", recorder.Code)
+	}
+
+	var said struct {
+		Kept    bool      `json:"kept"`
+		Expires time.Time `json:"expires"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &said); err != nil {
+		t.Fatal(err)
+	}
+
+	if !said.Kept {
+		t.Error("it took the wildcard over its own address certificate")
+	}
+
+	if !said.Expires.Equal(expires) {
+		t.Errorf("it says %s and is serving something that expires %s: a date nobody can read "+
+			"back is a certificate nobody is watching", said.Expires, expires)
+	}
+}

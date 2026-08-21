@@ -181,7 +181,7 @@ func (c *Cluster) AskStats(ctx context.Context, relay string) (Stats, error) {
 // node changes, and no record is kept of who has what. Keeping that record
 // would be a second thing to go stale, and the far end can answer the question
 // from the file it is serving.
-func (c *Cluster) SendCertificate(ctx context.Context, relay string, cert Certificate) error {
+func (c *Cluster) SendCertificate(ctx context.Context, relay string, cert Certificate) (time.Time, error) {
 	control := c.controlFor(relay)
 
 	token, err := auth.NewAccessToken(control.key, control.secret).
@@ -190,32 +190,49 @@ func (c *Cluster) SendCertificate(ctx context.Context, relay string, cert Certif
 		SetValidFor(time.Minute).
 		ToJWT()
 	if err != nil {
-		return fmt.Errorf("mint a token for the certificate push: %w", err)
+		return time.Time{}, fmt.Errorf("mint a token for the certificate push: %w", err)
 	}
 
 	body, err := json.Marshal(cert)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodPut,
 		control.upstream+CertificatePath, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 	request.Header.Set("Authorization", "Bearer "+token)
 	request.Header.Set("Content-Type", "application/json")
 
 	response, err := c.client.Do(request)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, response.Body)
 
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("relay %s answered %d", relay, response.StatusCode)
+		_, _ = io.Copy(io.Discard, response.Body)
+
+		return time.Time{}, fmt.Errorf("relay %s answered %d", relay, response.StatusCode)
 	}
 
-	return nil
+	// What it is serving now, which is not always what was sent.
+	//
+	// A relay may hold a certificate this node has no copy of — two here have
+	// one for their own bare address, issued and renewed on the machine itself
+	// because the name they used to answer to is filtered on the path that
+	// reaches them. Those are short-lived, six days, and depend on a cron job
+	// nobody watches. Reading the date back is the whole of watching it: this
+	// node already talks to every relay every hour, and the answer costs a field.
+	var said struct {
+		Expires time.Time `json:"expires"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&said); err != nil {
+		// An older relay says nothing here. Not knowing is not a failure.
+		return time.Time{}, nil
+	}
+
+	return said.Expires, nil
 }

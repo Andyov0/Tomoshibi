@@ -123,6 +123,13 @@ func (a *App) carry(last string) (string, bool) {
 
 	var taken, refused int
 
+	// Relays holding a certificate this node did not send, and when theirs runs
+	// out. Said every round rather than only when it is nearly too late: a
+	// watchdog whose only output is an alarm is one nobody can tell from a
+	// watchdog that has stopped, and these are the machines whose certificate
+	// depends on a cron job somewhere else.
+	own := map[string]time.Time{}
+
 	for _, relay := range relays {
 		serving, err := a.cluster.SendCertificate(ctx, relay.URL, carried)
 		if err != nil {
@@ -150,6 +157,10 @@ func (a *App) carry(last string) (string, bool) {
 		//
 		// Warned about rather than fixed, because it cannot be fixed from here.
 		// Two days is enough warning for a certificate that renews every two.
+		if !serving.IsZero() && !serving.Equal(expires) {
+			own[relay.Name] = serving
+		}
+
 		if !serving.IsZero() && time.Until(serving) < shortly {
 			slog.Warn("a relay is serving a certificate that expires soon, and it is not one "+
 				"this node can renew: look at the acme client on that machine",
@@ -160,6 +171,12 @@ func (a *App) carry(last string) (string, bool) {
 
 	slog.Info("offered the renewed certificate to the relays",
 		"expires", expires.Format(time.RFC3339), "answered", taken, "unreachable", refused)
+
+	for name, when := range own {
+		slog.Info("a relay is serving its own certificate, which this node cannot renew",
+			"relay", name, "expires", when.Format(time.RFC3339),
+			"in", time.Until(when).Round(time.Hour).String())
+	}
 
 	return mark, true
 }

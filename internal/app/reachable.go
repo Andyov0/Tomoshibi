@@ -162,19 +162,35 @@ func (r *reach) look(ctx context.Context, list []store.Relay) {
 	// to start a call at all, and does it at exactly the moment the operator is
 	// least able to see why.
 	//
-	// Two or more, because with one relay there is nothing to compare against
-	// and a single machine going away is the ordinary case rather than a sign.
-	if answered == 0 && len(found) > 1 {
+	// Most of them rather than all of them, which is what the readings say the
+	// shape actually is.
+	//
+	// This was written as "nothing answered", on the assumption that a link
+	// going down makes every check fail. It does not, because the sweep is
+	// sequential: eleven relays at a three-second timeout is up to thirty-three
+	// seconds of walking, and these outages last twenty to forty. So the sweep
+	// starts before the outage or ends after it, and some relays are checked
+	// while the line is up. Fourteen hours of readings have ten sweeps where
+	// eight of eleven failed together and none at all where every one did — so
+	// the rule as written was never going to fire.
+	//
+	// Half is the line. More than half of a fleet in Hong Kong, Singapore,
+	// Tokyo, Los Angeles and four places in mainland China does not stop
+	// answering at the same moment for any reason that is about them.
+	//
+	// Three or more, because with two a single machine going away is half of
+	// them and is the ordinary case rather than a sign.
+	if len(found) >= 3 && answered*2 < len(found) {
 		r.mu.Lock()
 		r.blind++
 		blind := r.blind
 		r.mu.Unlock()
 
 		if blind == 1 {
-			slog.Warn("nothing answered this sweep, so the readings are being kept as they "+
-				"were: these relays share no path but this machine's own, and all of them "+
-				"failing at once is a statement about this end",
-				"relays", len(found))
+			slog.Warn("most of the fleet did not answer this sweep, so the readings are being "+
+				"kept as they were: these relays share no path but this machine's own, and "+
+				"most of them failing at once is a statement about this end",
+				"relays", len(found), "answered", answered)
 		}
 
 		return

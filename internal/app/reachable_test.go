@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -226,6 +227,7 @@ func TestReadingsResumeWhenTheLineComesBack(t *testing.T) {
 	fleet := []store.Relay{
 		{Name: "tokyo", URL: "wss://jp.invalid", Enabled: true},
 		{Name: "hongkong", URL: "wss://hk.invalid", Enabled: true},
+		{Name: "singapore", URL: "wss://sg.invalid", Enabled: true},
 	}
 
 	answering := false
@@ -250,7 +252,69 @@ func TestReadingsResumeWhenTheLineComesBack(t *testing.T) {
 			"be reported as part of this one")
 	}
 
-	if got := len(watch.only(fleet)); got != 2 {
-		t.Errorf("%d relays recorded as answering after the line came back, want 2", got)
+	if got := len(watch.only(fleet)); got != 3 {
+		t.Errorf("%d relays recorded as answering after the line came back, want 3", got)
+	}
+}
+
+// The shape the readings actually have, which is not the shape this was first
+// written for.
+//
+// A sweep is sequential — eleven relays at a three-second timeout is up to
+// thirty-three seconds of walking — and these outages last twenty to forty. So
+// the sweep straddles the outage and some relays are checked while the line is
+// up. Fourteen hours of production readings hold ten sweeps where eight of
+// eleven failed together and not one where all eleven did, so a rule asking for
+// all of them would never have fired once.
+func TestMostOfTheFleetFailingIsAlsoReadAsThisMachine(t *testing.T) {
+	fleet := make([]store.Relay, 0, 11)
+	for i := range 11 {
+		fleet = append(fleet, store.Relay{
+			Name:    fmt.Sprintf("relay%02d", i),
+			URL:     fmt.Sprintf("wss://r%02d.invalid", i),
+			Enabled: true,
+		})
+	}
+
+	// Eight of eleven, which is what the log says one of these looks like.
+	failing := map[string]bool{}
+	for _, relay := range fleet[:8] {
+		failing[relay.URL] = true
+	}
+
+	watch := newReach(func(_ context.Context, url string) (bool, time.Duration, string) {
+		return !failing[url], time.Millisecond, "timed out"
+	})
+
+	// Everything up first, so there is a reading to keep.
+	all := map[string]bool{}
+	settled := newReach(func(_ context.Context, url string) (bool, time.Duration, string) {
+		return !all[url], time.Millisecond, ""
+	})
+	settled.look(context.Background(), fleet)
+
+	if got := len(settled.only(fleet)); got != 11 {
+		t.Fatalf("%d answering before anything went wrong, want 11", got)
+	}
+
+	watch.look(context.Background(), fleet)
+
+	if got := len(watch.only(fleet)); got != 11 {
+		t.Errorf("%d relays recorded as answering after eight of eleven failed at once, want "+
+			"11: eleven machines in five places on three continents do not lose eight of "+
+			"themselves in the same half minute, and writing that down empties the picker "+
+			"for whoever is nearest the three that happened to be checked early", got)
+	}
+
+	// And a minority failing is still believed, because that is a relay.
+	only := map[string]bool{fleet[0].URL: true}
+	one := newReach(func(_ context.Context, url string) (bool, time.Duration, string) {
+		return !only[url], time.Millisecond, "timed out"
+	})
+	one.look(context.Background(), fleet)
+
+	if got := len(one.only(fleet)); got != 10 {
+		t.Errorf("%d answering when one of eleven was down, want 10: the rule is about most "+
+			"of them failing together, not about any failure", got)
 	}
 }

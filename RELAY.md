@@ -171,3 +171,23 @@ A relay carries every byte of every call held on it. That is the point of
 putting it where the routes are good, and it is also the whole of the bill on a
 host that charges for egress. `sticky` is the policy that minimises it; `probe`
 trades some of it for latency, and needs redis to do so.
+
+## What a control node going away costs
+
+Measured rather than reasoned about, because the answer decides how much the
+control node's stability matters. It was stopped for sixty seconds during a call
+between two people on the same relay.
+
+The call did not notice. Both ends stayed `connected` with no reconnection
+event, and traffic went on flowing throughout — one participant's counters moved
+from 1.7 MB to 21.6 MB across the outage. Nothing about a call in progress goes
+through the control node: it signs the token at the door and the media server
+holds everything after that.
+
+What does stop is joining. A token cannot be signed, so nobody new gets in until
+it is back — and when it came back, a third person joined normally and was sent
+to the relay already holding the room.
+
+The one thing a client asks for mid-call is who the host is, polled from
+`/api/rooms/{name}/host`. It fails quietly and keeps the last answer, so a host
+panel goes stale rather than a call going down.

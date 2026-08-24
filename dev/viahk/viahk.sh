@@ -1,5 +1,5 @@
 #!/bin/bash
-# Send this relay's traffic to one overseas relay through Hong Kong.
+# Send this relay's traffic to the overseas relays through Hong Kong.
 #
 # No tunnel and no new software. The kernel rewrites the destination on the way
 # out and the source on the way back, so what leaves this machine is ordinary
@@ -7,49 +7,103 @@
 # would also have been a protocol with a handshake somebody can fingerprint,
 # which on a machine rented in mainland China is a reason not to have one.
 #
-#   viahk.sh <hub-ip> <dest-ip> <dest-port> <hub-port>
+#   viahk.sh <hub-ip> <dest-ip>:<dest-port>:<hub-port> ...
+#   viahk.sh off
 #
-# Run again to change nothing. Run with `off` as the first argument to remove it.
+# Built whole and replaced whole, so running it again is how the machine is kept
+# right rather than a way to end up with two of everything.
 set -euo pipefail
 
 TABLE="viahk"
 
 if [ "${1:-}" = "off" ]; then
-    nft delete table ip "$TABLE" 2>/dev/null && echo "removed" || echo "nothing to remove"
+    if command -v nft >/dev/null && nft list table ip "$TABLE" >/dev/null 2>&1; then
+        nft delete table ip "$TABLE" && echo "removed"
+    elif command -v iptables >/dev/null; then
+        # Flushed by name, so nothing else in the nat table is touched.
+        iptables -t nat -D OUTPUT -j VIAHK_OUT 2>/dev/null || true
+        iptables -t nat -D POSTROUTING -j VIAHK_POST 2>/dev/null || true
+        for chain in VIAHK_OUT VIAHK_POST; do
+            iptables -t nat -F "$chain" 2>/dev/null || true
+            iptables -t nat -X "$chain" 2>/dev/null || true
+        done
+        echo "removed"
+    else
+        echo "nothing to remove"
+    fi
     exit 0
 fi
 
-[ $# -eq 4 ] || { echo "usage: viahk.sh <hub-ip> <dest-ip> <dest-port> <hub-port>" >&2; exit 2; }
+[ $# -ge 2 ] || { echo "usage: viahk.sh <hub-ip> <dest-ip>:<dest-port>:<hub-port> ..." >&2; exit 2; }
 
-HUB="$1"; DEST="$2"; DPORT="$3"; HPORT="$4"
+HUB="$1"; shift
 
-command -v nft >/dev/null || { echo "nftables is not installed" >&2; exit 1; }
+# nftables where it exists, iptables where it does not. One relay in this fleet
+# has only iptables and installing a package on it to match the others would be
+# a change to that machine made for the tidiness of this script.
+if command -v nft >/dev/null; then
+    KIND=nft
+elif command -v iptables >/dev/null && iptables -t nat -L -n >/dev/null 2>&1; then
+    KIND=iptables
+else
+    echo "neither nftables nor an iptables nat table is available" >&2
+    exit 1
+fi
 
-# Built whole and replaced whole. Adding rules to a table that may already have
-# some is how a machine ends up with two of everything and no way to tell which
-# one is in force.
+out=""
+for spec in "$@"; do
+    IFS=: read -r dest dport hport <<<"$spec"
+    [ -n "$dest" ] && [ -n "$dport" ] && [ -n "$hport" ] || {
+        echo "bad mapping: $spec" >&2; exit 2; }
+
+    out+="        ip daddr ${dest} udp dport ${dport} dnat to ${HUB}:${hport}"$'\n'
+done
+
+if [ "$KIND" = iptables ]; then
+    # Own chains, hooked once, emptied and refilled. Editing the built-in chains
+    # directly is how a machine ends up with yesterday's rules underneath
+    # today's and no way to tell which is in force.
+    for chain in VIAHK_OUT VIAHK_POST; do
+        iptables -t nat -N "$chain" 2>/dev/null || iptables -t nat -F "$chain"
+    done
+
+    iptables -t nat -C OUTPUT -j VIAHK_OUT 2>/dev/null || iptables -t nat -I OUTPUT 1 -j VIAHK_OUT
+    iptables -t nat -C POSTROUTING -j VIAHK_POST 2>/dev/null || iptables -t nat -I POSTROUTING 1 -j VIAHK_POST
+
+    for spec in "$@"; do
+        IFS=: read -r dest dport hport <<<"$spec"
+        iptables -t nat -A VIAHK_OUT -p udp -d "$dest" --dport "$dport" \
+            -j DNAT --to-destination "${HUB}:${hport}"
+    done
+
+    iptables -t nat -A VIAHK_POST -d "$HUB" -j MASQUERADE
+
+    echo "via ${HUB} (iptables):"
+    iptables -t nat -S VIAHK_OUT | grep DNAT | sed 's/^/  /'
+    exit 0
+fi
+
 nft -f - <<EOF
 table ip ${TABLE} {
     chain output {
         # -100 rather than the name dstnat, which nftables only accepts on
-        # prerouting. Same number, and the output hook is where a packet this
-        # machine originated can still have its destination changed.
+        # prerouting. Same number, and output is where a packet this machine
+        # originated can still have its destination changed.
         type nat hook output priority -100; policy accept;
 
-        # Anything this machine sends to the overseas relay goes to the hub
-        # instead, on a port the hub has been told means that relay.
-        ip daddr ${DEST} udp dport ${DPORT} dnat to ${HUB}:${HPORT}
-    }
+${out}    }
 
     chain postrouting {
         type nat hook postrouting priority srcnat; policy accept;
 
-        # And leaves as this machine, so the hub answers to somewhere that has
-        # a route back.
-        ip daddr ${HUB} udp dport ${HPORT} masquerade
+        # Leaves as this machine, so the hub answers somewhere with a route
+        # back. Conntrack undoes both rewrites on the way in, so the relay
+        # process sees the overseas address it addressed and never learns any
+        # of this happened.
+        ip daddr ${HUB} masquerade
     }
 }
 EOF
 
-echo "sending ${DEST}:${DPORT} via ${HUB}:${HPORT}"
-nft list table ip "$TABLE" | sed 's/^/  /'
+echo "via ${HUB}:"
+nft list chain ip "$TABLE" output | grep dnat | sed 's/^/  /'

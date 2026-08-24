@@ -61,6 +61,41 @@ participant's media for overseas meetings, in both directions, and its bill and
 its uptime become the bill and uptime of that path. That is a decision about a
 machine rather than about a protocol.
 
+## The path that only goes one way
+
+Hong Kong Gomami and Shanghai Telecom were written down as a pair that does not
+carry, and they are — but only in one direction. Shanghai Telecom reaches Hong
+Kong in 44 ms and answers every packet; Hong Kong reaches Shanghai Telecom not
+at all, zero of eight on every port tried.
+
+The same trick fixes it, pointed the other way. Shanghai Tencent reaches
+Shanghai Telecom in 6 ms, so Hong Kong sends what it has for Shanghai Telecom
+through Shanghai Tencent, and the path that answered nothing now answers ten of
+ten at 36 ms.
+
+Worth noticing that this is a hub in the other direction: the mainland relays
+send their overseas traffic through Hong Kong, and Hong Kong sends its Shanghai
+Telecom traffic through Shanghai Tencent. Nothing about the scripts assumes
+which side is which.
+
+## Measuring it honestly
+
+The first reading said Los Angeles gained nothing, and that reading was taken at
+four in the morning. The paths this fleet crosses are congested on somebody
+else's schedule, and the hour that decides whether a detour is worth having is
+the hour it was not measured in.
+
+`compare.py` measures both at once instead. Port 39218 has a rule and port 39219
+does not, so on the same relay in the same minute one reading goes through Hong
+Kong and the other goes the way it always did — the same weather for both.
+A before-and-after separated by a day compares two afternoons and calls the
+difference a result.
+
+Running on Guangzhou as `viahk-compare`. At midday: Singapore 7.9x, Tokyo 1.9x
+and the direct path already dropping a packet in six, Los Angeles 1.0x. Whether
+Los Angeles stays at 1.0x through an evening is the question it is there to
+answer.
+
 ## Applying it
 
 Two scripts, one per end, one destination at a time.

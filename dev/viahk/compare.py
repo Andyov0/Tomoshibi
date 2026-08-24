@@ -80,7 +80,18 @@ def main():
                 f"({direct / via:.1f}x {viaOk}/{n},{directOk}/{n})"
             )
 
-        print(" ".join(parts), flush=True)
+        line = " ".join(parts)
+        print(line, flush=True)
+
+        # And to a file, because the journal on these machines is already
+        # gigabytes and rotates on its own schedule. A record that disappears
+        # before it is read is not a record.
+        try:
+            with open("/var/log/viahk-compare.log", "a") as kept:
+                kept.write(line + "\n")
+        except OSError:
+            pass
+
         time.sleep(every)
 
 

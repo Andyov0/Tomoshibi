@@ -115,3 +115,19 @@ rented in mainland China is a reason not to have one.
 
 Verify with `dev/udpcheck` from the mainland relay before and after: the numbers
 in the table above are what a working setup looks like.
+
+## Reading the record
+
+`compare.py` runs on Guangzhou as `viahk-compare`, every two minutes, writing to
+the journal and to `/var/log/viahk-compare.log`. The file as well as the journal
+because the journal on these machines is already gigabytes and rotates on a
+schedule of its own; a record that disappears before it is read is not a record.
+
+`report.py` folds it by hour, which is the whole point — the question is not what
+the average is but which hours the detour earns its keep in, and an average over
+a day hides exactly that. A path no better for twenty hours and twice as good
+for four is worth having, and its mean says 1.2x.
+
+Loss is printed beside the milliseconds rather than folded into them. A path
+answering five of six is not a slower path; it is a call that stutters, and the
+two want different decisions.

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -394,6 +395,12 @@ func (a *API) dropRelay(session Session, w http.ResponseWriter, r *http.Request)
 
 	name := r.PathValue("relay")
 
+	removed, found := a.relayNamed(name)
+	if !found {
+		refuse(w, http.StatusNotFound, "no_such_relay")
+		return
+	}
+
 	if err := a.relays.RemoveRelay(name); err != nil {
 		a.log.Record(Entry{
 			Action: "remove relay", Trip: session.Trip, Target: name,
@@ -416,9 +423,19 @@ func (a *API) dropRelay(session Session, w http.ResponseWriter, r *http.Request)
 	// After the removal rather than before, and not fatal to it. Somebody
 	// pressing remove wants the relay to stop being used, and a zone that will
 	// not answer must not stand in the way of that.
-	if a.enrolment != nil && a.enrolment.Naming != nil {
-		host := a.enrolment.hostFor(name)
-
+	// The name is read out of the address rather than made from the relay's
+	// own name, which is not the same thing and only looks like it.
+	//
+	// hostFor builds a host from the prefix a machine enrolled under. That
+	// equals the relay's name at enrolment and stops equalling it the moment
+	// anybody renames the relay — and renaming is ordinary, because the name
+	// somebody types on a machine being set up is short and the name a page
+	// shows is not. Removing "GZ Volcano" asked the zone to delete
+	// "GZ Volcano.api.shota.sg", which is not a name, while the record it
+	// actually had went on resolving.
+	//
+	// The address is the one thing that cannot drift: it is what clients dial.
+	if host := hostOf(removed.URL); host != "" && a.enrolment != nil && a.enrolment.Naming != nil {
 		if err := a.enrolment.Naming.Unpoint(host); err != nil {
 			slog.Error("failed to remove the DNS record for a relay that was removed",
 				"host", host, "error", err)
@@ -527,4 +544,44 @@ func trimmed(names []string) []string {
 	}
 
 	return out
+}
+
+// relayNamed finds one relay by name, for the things that need more of it than
+// the name.
+func (a *API) relayNamed(name string) (store.Relay, bool) {
+	list, err := a.relays.Relays()
+	if err != nil {
+		return store.Relay{}, false
+	}
+
+	for _, relay := range list {
+		if relay.Name == name {
+			return relay, true
+		}
+	}
+
+	return store.Relay{}, false
+}
+
+// hostOf is the host a relay's address names, or "" where it names an address.
+//
+// A relay dialled by bare address has no name in any zone, so there is nothing
+// to remove and nothing to report — two of them here are exactly that.
+func hostOf(url string) string {
+	trimmed := url
+	for _, scheme := range []string{"wss://", "ws://", "https://", "http://"} {
+		trimmed = strings.TrimPrefix(trimmed, scheme)
+	}
+
+	if at := strings.IndexAny(trimmed, "/:"); at >= 0 {
+		trimmed = trimmed[:at]
+	}
+
+	// An address is not a name. net.ParseIP is the only reliable way to tell,
+	// because a hostname may be all digits and dots and still be a hostname.
+	if trimmed == "" || net.ParseIP(trimmed) != nil {
+		return ""
+	}
+
+	return trimmed
 }

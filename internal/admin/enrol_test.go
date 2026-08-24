@@ -559,6 +559,61 @@ func TestReinstallingARelayKeepsWhatSomebodyConfiguredOnIt(t *testing.T) {
 // A name left pointing at an address is a name that goes on resolving after the
 // provider hands that address to somebody else, under a host this deployment
 // created and a client may still have written down.
+// And the name it removes is the one the relay actually has.
+//
+// The host is built from the address rather than from the relay's name, because
+// those are the same thing only until somebody renames the relay — and renaming
+// is ordinary: the name typed on a machine being set up is short, and the name a
+// page shows is not. Removing a relay called "GZ Volcano" asked the zone to
+// delete "GZ Volcano.api.shota.sg", which is not a name, and left the record it
+// really had resolving to a machine that was gone.
+func TestTheNameRemovedIsTheOneTheRelayAnswersTo(t *testing.T) {
+	api, relays, names, mux := enrolling(t)
+
+	if code := post(mux, enrolRequest(
+		`{"secret":"`+enrolSecret+`","prefix":"osaka","region":"jp","address":"198.51.100.9"}`,
+	)); code != http.StatusOK {
+		t.Fatalf("enrolment answered %d", code)
+	}
+
+	// Renamed afterwards, which is what breaks the naive version.
+	if err := relays.RenameRelay("osaka", "JP Osaka"); err != nil {
+		t.Fatal(err)
+	}
+
+	api.conf.Meet.Admins[0].Can = []string{config.Moderate}
+
+	_, token, ok := api.sessions.Open("", "a passphrase")
+	if !ok {
+		t.Fatal("could not open a management session")
+	}
+
+	managing := http.NewServeMux()
+	api.Mount(managing)
+
+	if code := ask(t, managing, http.MethodDelete, "/api/admin/relays/JP%20Osaka", token).Code; code != http.StatusOK {
+		t.Fatalf("removing the relay answered %d", code)
+	}
+
+	if addr, still := names.pointed["osaka.relay.example.invalid"]; still {
+		t.Errorf("the record still resolves, to %s: the name was built from what the relay "+
+			"is called rather than from the address it answers at, so a rename left it "+
+			"behind", addr)
+	}
+}
+
+// A relay dialled by bare address has no name to remove, and asking the zone to
+// delete one would be asking it to delete an address.
+func TestARelayDialledByAddressHasNoNameToRemove(t *testing.T) {
+	if got := hostOf("wss://198.51.100.9:39217"); got != "" {
+		t.Errorf("hostOf on an address gave %q, want empty", got)
+	}
+
+	if got := hostOf("wss://osaka.relay.example.invalid:39217"); got != "osaka.relay.example.invalid" {
+		t.Errorf("hostOf gave %q", got)
+	}
+}
+
 func TestRemovingARelayRemovesTheNamePointedAtIt(t *testing.T) {
 	api, relays, names, mux := enrolling(t)
 

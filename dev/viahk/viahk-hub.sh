@@ -40,6 +40,14 @@ for spec in "$@"; do
     post+="        ip daddr ${dest} udp dport ${dport} masquerade"$'\n'
 done
 
+# Emptied before it is filled. `nft -f` with a table block merges into whatever
+# is already there, so running this twice gave two of every rule — which is not
+# an error, and matters the day somebody reads the table to find out what a
+# machine is doing. Deleting only the chains this owns leaves the spoke rules,
+# which live in the same table under a different chain.
+nft delete chain ip "$TABLE" prerouting 2>/dev/null || true
+nft delete chain ip "$TABLE" hubpost 2>/dev/null || true
+
 nft -f - <<EOF
 table ip ${TABLE} {
     chain prerouting {
@@ -47,7 +55,9 @@ table ip ${TABLE} {
 
 ${pre}    }
 
-    chain postrouting {
+    # Its own chain rather than the one the spoke uses, so each end of this can
+    # be rebuilt without flushing the other's rules out from under it.
+    chain hubpost {
         type nat hook postrouting priority srcnat; policy accept;
 
         # Sent on as this machine, so the far end replies here and conntrack can

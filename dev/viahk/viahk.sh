@@ -83,6 +83,10 @@ if [ "$KIND" = iptables ]; then
     exit 0
 fi
 
+# Emptied before it is filled, for the same reason the hub is: nft merges.
+nft delete chain ip "$TABLE" output 2>/dev/null || true
+nft delete chain ip "$TABLE" postrouting 2>/dev/null || true
+
 nft -f - <<EOF
 table ip ${TABLE} {
     chain output {

@@ -96,6 +96,26 @@ and the direct path already dropping a packet in six, Los Angeles 1.0x. Whether
 Los Angeles stays at 1.0x through an evening is the question it is there to
 answer.
 
+## A hop that only works for traffic the machine made itself
+
+Hong Kong reaches Shanghai Telecom through Shanghai Tencent, and that was set up
+with the spoke script — which puts its rule in the `output` chain, where packets
+this machine originated can still have their destination changed.
+
+Forwarded packets never reach `output`. They go prerouting, forward,
+postrouting. So the moment the overseas relays were pointed at Hong Kong for
+their Shanghai Telecom traffic, every one of those packets was forwarded
+straight at Shanghai Telecom by the route Hong Kong has, which is the route that
+answers nothing — and three relays that had been reaching it at 348 ms went to
+answering not at all.
+
+The fix is in the mapping rather than in the chain: a packet arriving at Hong
+Kong for Shanghai Telecom is sent on to Shanghai Tencent's port for it, not to
+Shanghai Telecom. Two hops expressed as two mappings, which is what the hub is
+for. Worth knowing before adding a third hop anywhere: `output` is for what a
+machine says, `prerouting` is for what it passes on, and a rule in the wrong one
+of those is invisible until something is forwarded.
+
 ## Applying it
 
 Two scripts, one per end, one destination at a time.

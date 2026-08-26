@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/livekit/protocol/auth"
@@ -175,6 +176,23 @@ func (c *Cluster) AskStats(ctx context.Context, relay string) (Stats, error) {
 	return stats, nil
 }
 
+// routineRefusal says whether a relay keeping what it has is the ordinary case.
+//
+// Two are, and they happen on every round: a relay handed the certificate it is
+// already serving refuses it for expiring no later than what it holds, and a
+// relay dialled by bare address refuses a wildcard for not answering to its
+// address. The second is the never-narrow rule working — it was written after a
+// wildcard pushed over the two bare-address relays took them off the air.
+//
+// Matched on the wording the far end sends, which is this repository's own
+// string in internal/rtc/certificate.go rather than a library's. Anything else
+// is a relay stuck behind a certificate this node cannot replace, which is the
+// case the warning exists for and the only one worth waking somebody for.
+func routineRefusal(why string) bool {
+	return strings.Contains(why, "expires no later") ||
+		strings.Contains(why, "does not answer to")
+}
+
 // SendCertificate hands one relay a renewed certificate.
 //
 // Answers without error when the relay kept what it already had, which is the
@@ -249,11 +267,28 @@ func (c *Cluster) SendCertificate(ctx context.Context, relay string, cert Certif
 		return time.Time{}, nil
 	}
 
+	// Said at warning level only where it is not the ordinary case.
+	//
+	// Two refusals are routine and happen on every round. A relay handed the
+	// certificate it is already serving refuses it for expiring no later than
+	// what it holds, which is every relay every hour; and a relay dialled by
+	// bare address refuses a wildcard for not answering to its address, which is
+	// the never-narrow rule doing exactly its job — that rule exists because a
+	// wildcard pushed over those two took them off the air.
+	//
+	// Warning on both trained somebody to ignore the line, which is the whole
+	// value of it: the case worth hearing about is a relay stuck behind a
+	// certificate this node cannot replace, and it is not either of these.
 	if said.Kept && said.Why != "" {
-		slog.Warn("a relay refused the certificate and kept what it has: it will refuse every "+
-			"later one for the same reason until what it holds runs out",
-			"relay", relay, "why", said.Why,
-			"holds until", said.Expires.Format(time.RFC3339))
+		if routineRefusal(said.Why) {
+			slog.Debug("a relay kept the certificate it has",
+				"relay", relay, "why", said.Why)
+		} else {
+			slog.Warn("a relay refused the certificate and kept what it has: it will refuse "+
+				"every later one for the same reason until what it holds runs out",
+				"relay", relay, "why", said.Why,
+				"holds until", said.Expires.Format(time.RFC3339))
+		}
 	}
 
 	return said.Expires, nil

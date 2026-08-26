@@ -393,3 +393,41 @@ func TestTakingTheFileAwayLetsTheNextPushLand(t *testing.T) {
 			"by mistake has no way back at all")
 	}
 }
+
+/*
+ * Which certificate refusals are worth waking somebody for.
+ *
+ * A relay that keeps what it has answers 200 either way, so the reason is the
+ * only thing that separates "this is every round of every hour" from "this
+ * machine is stuck behind a certificate nothing here can replace".
+ *
+ * Both routine cases were warned about when this was first written, and the
+ * first run against the real fleet produced six of them in one round — one per
+ * relay, every hour, for ever. A warning that fires on the ordinary case is a
+ * warning somebody learns to scroll past, which costs the line the one time it
+ * means something.
+ *
+ * The strings are this repository's own, from keeping() in certificate.go, and
+ * the cases below are taken from that function rather than invented.
+ */
+func TestWhichRefusalsAreRoutine(t *testing.T) {
+	for _, why := range []string{
+		"the offer expires no later than what is held",
+		"the offer does not answer to 118.196.31.233",
+		"the offer does not answer to hk.api.shota.sg",
+	} {
+		if !routineRefusal(why) {
+			t.Errorf("warned about the ordinary case: %q", why)
+		}
+	}
+
+	for _, why := range []string{
+		"the offer could not be read",
+		"",
+		"something nobody has written yet",
+	} {
+		if routineRefusal(why) && why != "" {
+			t.Errorf("stayed quiet about a refusal that is not ordinary: %q", why)
+		}
+	}
+}

@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+	"tomoshibi/internal/dns"
 
 	"tomoshibi/internal/store"
 )
@@ -285,6 +287,40 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 		} else {
 			named = true
 			slog.Info("pointed a relay's name at it", "host", host, "address", address)
+
+			// And asked, rather than assumed.
+			//
+			// A zone accepting a record is not the internet returning it, and
+			// the ways those come apart are all quiet: a CNAME above the name
+			// shadowing it, the subtree served by somebody else, a conflicting
+			// record with higher precedence. Each ends with an API call that
+			// succeeded, a log line saying the name was created, and a machine
+			// nobody can reach by it — the install finishes, the certificate is
+			// written, and the relay never carries a call.
+			//
+			// In the background because a fresh record is not visible at once
+			// and the enrolment must not wait on a resolver; the answer is a
+			// line in the log rather than a refusal, because by the time it is
+			// known the machine is already up and the honest thing is to say so
+			// rather than to undo it.
+			go func(host, address string) {
+				time.Sleep(dnsSettles)
+
+				switch ok, err := dns.Answers(host, address); {
+				case err != nil:
+					slog.Warn("could not check whether a relay's name resolves; it may have "+
+						"been created and may not be reachable by it",
+						"host", host, "error", err)
+
+				case !ok:
+					slog.Error("a relay's name was created and does not resolve to it: the "+
+						"zone accepted the record and something above it is answering first",
+						"host", host, "address", address)
+
+				default:
+					slog.Info("a relay's name resolves to it", "host", host)
+				}
+			}(host, address)
 		}
 	}
 
@@ -531,6 +567,14 @@ func (a *API) merged(fresh store.Relay) (store.Relay, error) {
 
 	return fresh, nil
 }
+
+// How long to wait before asking whether a new record resolves.
+//
+// Long enough that the ordinary case has propagated and short enough that
+// somebody watching an install still sees the answer. The record is written
+// with a five minute TTL, so a resolver that had the name cached as missing
+// will still say so — which is why this reports rather than refuses.
+const dnsSettles = 20 * time.Second
 
 // nodeRegion is one place, as the media servers compare places.
 type nodeRegion struct {

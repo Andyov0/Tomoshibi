@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -104,6 +105,34 @@ func (c *Cloudflare) Point(host, addr string) error {
 	}
 
 	return nil
+}
+
+// Answers reports whether the name resolves to the address, by asking rather
+// than by trusting the write.
+//
+// A zone accepting a record is not the same as the internet returning it, and
+// the ways they come apart are quiet ones: the name may sit under a CNAME that
+// shadows it, the zone may not be the one serving that subtree, or somebody may
+// have written the same name somewhere with higher precedence. Every one of
+// those ends with an API call that succeeded, a log line saying the name was
+// created, and a machine nobody can reach by it.
+//
+// Not called by Point, deliberately. A new record takes time to be visible and
+// a check inside the write would fail on the ordinary case; this is for the
+// caller who has somewhere to report the answer and can wait.
+func Answers(host, addr string) (bool, error) {
+	found, err := net.LookupHost(host)
+	if err != nil {
+		return false, err
+	}
+
+	for _, one := range found {
+		if one == addr {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // Unpoint removes every A record for host.

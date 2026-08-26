@@ -16,7 +16,7 @@ import (
 func main() {
 	if len(os.Args) < 3 {
 		fmt.Println("usage: roster <db> list")
-		fmt.Println("       roster <db> add <trip> [name]")
+		fmt.Println("       roster <db> add <trip> [name] [observe|moderate]")
 		fmt.Println("       roster <db> drop <trip>")
 		os.Exit(2)
 	}
@@ -32,9 +32,27 @@ func main() {
 
 	switch action {
 	case "add":
+		// Both capabilities unless asked for one, because the reason to reach
+		// for this is being locked out and somebody locked out needs to be able
+		// to act. But "observe" has to be reachable: a monitor signs in to read
+		// the fleet and nothing more, and giving it the ability to close every
+		// meeting on the deployment because that was the only option here is a
+		// credential on a cron job that can end every call.
 		admin := store.Admin{Trip: os.Args[3], Can: []string{"observe", "moderate"}}
 		if len(os.Args) > 4 {
 			admin.Name = os.Args[4]
+		}
+		if len(os.Args) > 5 {
+			switch os.Args[5] {
+			case "observe":
+				admin.Can = []string{"observe"}
+			case "moderate":
+				admin.Can = []string{"observe", "moderate"}
+			default:
+				fmt.Printf("%q is not something an administrator can be allowed. "+
+					"The two are \"observe\" and \"moderate\"\n", os.Args[5])
+				os.Exit(2)
+			}
 		}
 
 		if err := kept.AddAdmin(admin); err != nil {

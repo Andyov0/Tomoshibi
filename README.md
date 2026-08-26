@@ -634,9 +634,13 @@ since the day to find them is not the day something has:
 
 ## Watching it
 
-Everything this notices is written to the log, and nothing is sent anywhere. On
-a fleet this is the part most likely to be missing when it matters, so it is
-worth knowing what is said and what nobody will hear:
+Everything this notices is written to the log. `dev/watch/` reads that log and
+the fleet every five minutes and puts the part that cannot fix itself in front
+of a person, through whatever bot the operator already has — its README is the
+whole deployment, and the discipline it follows is that a fault has to survive
+three rounds before anybody hears about it.
+
+What is said, so that somebody reading a journal knows what they are looking at:
 
 | Said | When |
 | --- | --- |
@@ -674,10 +678,13 @@ To restore: stop the service, move a copy over the store, start it.
 - **Self-service registration.** There are accounts — see below — but nobody
   signs themselves up. An administrator makes them, or a deployment runs without
   any and everybody is a guest.
-- **Alerting.** Everything this notices, it writes to the log. There is no
-  webhook, no mail, and no metrics endpoint. A certificate two days from expiry,
-  a relay whose media port has stopped answering, a store that has been emptied:
-  all of them say so, to a journal nobody is watching. See "Watching it" below.
+- **Metrics.** No `/metrics`, no statsd, no OpenTelemetry. The readings this
+  keeps are for the management pages and the six-month trend in the store, and
+  a deployment wanting them somewhere else would have to read them from there.
+
+  Alerting is not on this list any more: `dev/watch/` sends the faults that
+  cannot fix themselves to a bot. It is a pair of scripts rather than something
+  built in, because which bot is a property of whoever runs the deployment.
 
 Three things this section used to list are here now, and were listed as missing
 for long enough that the list is worth correcting explicitly rather than quietly:

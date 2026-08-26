@@ -9,6 +9,7 @@ import {
 } from "livekit-client";
 import type { Join } from "./api";
 import { installNoValidate } from "./novalidate";
+import { seal, sealing } from "./secrecy";
 
 /**
  * What a screen share is, as two questions.
@@ -248,7 +249,15 @@ function handheld(): boolean {
  * paid for by whoever is sending, which is the side with the least bandwidth to
  * spare.
  */
-export function create(): Room {
+/**
+ * A room, ready to connect.
+ *
+ * `secret` is required rather than defaulted, and empty is how a call says it
+ * is not sealed. A default would make forgetting to pass it compile — and what
+ * forgetting produces is a call somebody was told is encrypted and is not,
+ * which is the one failure here that must not be quiet.
+ */
+export function create(secret: string): Room {
 	// Before anything can connect, because the request it removes is made by
 	// the SDK during a failed connection and there is no later moment to do
 	// it in.
@@ -304,6 +313,16 @@ export function create(): Room {
 		// Speaking is worked out by the media server and pushed to everybody, so
 		// no client has to run an analyser of its own.
 		disconnectOnPageLeave: true,
+
+		// Media the relay cannot read, where somebody asked for it and the
+		// browser can do it. Undefined otherwise, and a room built without it is
+		// the room this always built.
+		//
+		// Given to the constructor rather than turned on afterwards, because the
+		// SDK builds its transports around it: a room that starts unencrypted
+		// cannot become encrypted without reconnecting, and half a call is not a
+		// state worth being able to reach.
+		e2ee: sealing(secret),
 	});
 }
 
@@ -333,8 +352,21 @@ export function tokenFor(room: Room): string {
 	return tokens.get(room) ?? "";
 }
 
-export async function connect(room: Room, grant: Join): Promise<void> {
+export async function connect(room: Room, grant: Join, secret: string): Promise<void> {
 	tokens.set(room, grant.token);
+
+	// The key before the connection, and encryption on before anything is
+	// published.
+	//
+	// Before, because a track published while this is still off goes out in
+	// clear and the machines carrying it have already seen it — turning it on a
+	// moment later does not take that back. Nothing here is published until
+	// after connect returns, so this is the last moment that is still early
+	// enough.
+	if (secret && sealing(secret)) {
+		await seal(grant.room, secret);
+		await room.setE2EEEnabled(true);
+	}
 
 	if (!grant.forward) {
 		await room.connect(grant.url, grant.token);

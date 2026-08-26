@@ -455,6 +455,10 @@ const zhHant: Dictionary = {
 	"No sound from it": "\u6c92\u6709\u8072\u97f3\u9032\u4f86",
 	"Where it is": "\u4f4d\u7f6e",
 	"Latitude, longitude. Puts it on the globe and lets the fleet judge distance": "\u7def\u5ea6, \u7d93\u5ea6\u3002\u7528\u65bc\u5730\u7403\u5100\u986f\u793a,\u4e5f\u8b93\u53e2\u96c6\u80fd\u5224\u65b7\u9060\u8fd1",
+	"Seal this call": "\u7d66\u9019\u901a\u8a71\u52a0\u5bc6",
+	"This call is sealed": "\u9019\u901a\u8a71\u5df2\u52a0\u5bc6",
+	"Sealing word": "\u6697\u865f",
+	"Everybody who types the same word can hear each other, and the server carrying the call cannot. Tell people the word some other way.": "\u8f38\u5165\u540c\u4e00\u500b\u6697\u865f\u7684\u4eba\u624d\u80fd\u4e92\u76f8\u807d\u898b,\u627f\u8f09\u901a\u8a71\u7684\u4f3a\u670d\u5668\u807d\u4e0d\u898b\u3002\u6697\u865f\u8acb\u7528\u5225\u7684\u65b9\u5f0f\u544a\u8a34\u5c0d\u65b9\u3002",
 };
 
 export default zhHant;

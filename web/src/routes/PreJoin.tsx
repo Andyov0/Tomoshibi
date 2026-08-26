@@ -2,6 +2,7 @@ import { Identity } from "@/components/room/Identity";
 import { LanguagePicker } from "@/components/room/LanguagePicker";
 import { MicLevel } from "@/components/room/MicLevel";
 import { RoomTitle } from "@/components/room/RoomTitle";
+import { Sealed } from "@/components/room/Sealed";
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
@@ -58,6 +59,18 @@ export interface Choices {
 	name: string;
 	/** Never leaves this tab except in the join request. */
 	passphrase: string;
+	/**
+	 * A word the people in the call agree on, which the media is encrypted with.
+	 *
+	 * Never leaves this tab at all — not in the join request, not in the token,
+	 * nowhere. It is combined with the room name in the browser and the result
+	 * encrypts every frame before it is sent, so the relay carrying the call
+	 * forwards something it cannot read.
+	 *
+	 * Empty is the ordinary case and the default. Somebody who does not know
+	 * this exists has a call exactly as they always did.
+	 */
+	secret: string;
 	camera: boolean;
 	microphone: boolean;
 	/**
@@ -244,6 +257,7 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 	// somebody already chose — in the lobby, a screen ago — and this used to
 	// start blank regardless, so a machine picked deliberately came back as
 	// "whichever is fastest" on the very next page.
+	const [sealWord, setSealWord] = useState("");
 	const [relay, setRelay] = useState(() => as?.relay ?? chosenRelay());
 	const [servers, setServers] = useState<OfferedRelay[]>([]);
 	const [offerChoice, setOfferChoice] = useState(false);
@@ -377,7 +391,13 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 		setJoining(true);
 
 		try {
-			await onJoin({ name: display, passphrase, relay: as ? as.relay : relay, ...devices });
+			await onJoin({
+				name: display,
+				passphrase,
+				secret: sealWord,
+				relay: as ? as.relay : relay,
+				...devices,
+			});
 		} catch {
 			// Reported by whoever tried, which holds the room object that has to
 			// be torn down and the words for what went wrong. Caught here all the
@@ -553,6 +573,13 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 							</p>
 						</div>
 					)}
+
+					{/* Folded away, under the identity, because most calls do not
+					    want it and the ones that do want it before they start.
+					    Offered to a guest as much as to anybody: the word is not
+					    the passphrase and knowing it is what the invitation
+					    assumes. */}
+					<Sealed value={sealWord} onChange={setSealWord} />
 
 					{/* Below the identity and above the button, because it is the
 					    last thing anybody would change and the first thing nobody

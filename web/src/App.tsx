@@ -146,6 +146,15 @@ export function App() {
 						void onJoin({
 							name: rememberedName(),
 							passphrase: "",
+							// Empty, and that is the honest answer.
+							//
+							// This is a reload: the tab that held the word is gone
+							// and nothing wrote it down, which is the whole point of
+							// keeping it in memory. A reload of a sealed call comes
+							// back unsealed, hears nobody, and the person types the
+							// word again — which is what should happen, and is
+							// better than any of the ways of avoiding it.
+							secret: "",
 							relay: chosenRelay(),
 							...remembered(),
 						});
@@ -166,6 +175,8 @@ export function App() {
 					void onJoin({
 						name: account.name,
 						passphrase: "",
+						// See above: a reload cannot recover a word nothing stored.
+						secret: "",
 						relay: chosenRelay(),
 						...remembered(),
 					});
@@ -247,11 +258,18 @@ export function App() {
 	 */
 	const said = useRef("");
 
-	const onJoin = useCallback(
-		async ({ name, passphrase, camera, microphone, relay }: Choices) => {
-			said.current = passphrase;
+	// And the sealing word, for the same reason and with the same rule: memory
+	// only, gone with the tab. A room that comes back unsealed after being moved
+	// is a room whose participants can no longer hear each other, which reads as
+	// the call being broken rather than as a key having been dropped.
+	const sealed = useRef("");
 
-			const made = create();
+	const onJoin = useCallback(
+		async ({ name, passphrase, secret, camera, microphone, relay }: Choices) => {
+			said.current = passphrase;
+			sealed.current = secret;
+
+			const made = create(secret);
 
 			try {
 				const grant = await requestJoin(room, name, passphrase, relay, inviteToken());
@@ -259,7 +277,7 @@ export function App() {
 				// the picker used rather than as an address.
 				setHolding(grant.relay);
 				setCarrying(grant.holding);
-				await connect(made, grant);
+				await connect(made, grant, secret);
 
 				// After connecting rather than before, so somebody appears in the
 				// room the moment they join and their devices come up a beat
@@ -270,6 +288,16 @@ export function App() {
 
 				current.current = made;
 				setLive(made);
+
+				// A handle for the browser scripts in dev/twobrowsers, which check
+				// things no unit test can reach: whether frames are actually
+				// encrypted, what the media server thinks is in the room. Only in
+				// a development build — a page that hands its room object to
+				// anything on the page is a page where an extension can end the
+				// call.
+				if (import.meta.env.DEV) {
+					(window as unknown as { __room?: LiveRoom }).__room = made;
+				}
 			} catch (err) {
 				void made.disconnect();
 				joinFailed(err instanceof Error ? err.message : String(err));
@@ -403,6 +431,7 @@ export function App() {
 					// Carried, so somebody comes back as who they were rather than
 					// as a stranger with their name.
 					passphrase: said.current,
+					secret: sealed.current,
 					relay: "",
 					...remembered(),
 				});

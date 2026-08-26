@@ -455,6 +455,10 @@ const zhHans: Dictionary = {
 	"No sound from it": "\u6ca1\u6709\u58f0\u97f3\u8fdb\u6765",
 	"Where it is": "\u4f4d\u7f6e",
 	"Latitude, longitude. Puts it on the globe and lets the fleet judge distance": "\u7eac\u5ea6, \u7ecf\u5ea6\u3002\u7528\u4e8e\u5730\u7403\u4eea\u663e\u793a,\u4e5f\u8ba9\u96c6\u7fa4\u80fd\u5224\u65ad\u8fdc\u8fd1",
+	"Seal this call": "\u7ed9\u8fd9\u901a\u8bdd\u52a0\u5bc6",
+	"This call is sealed": "\u8fd9\u901a\u8bdd\u5df2\u52a0\u5bc6",
+	"Sealing word": "\u6697\u53f7",
+	"Everybody who types the same word can hear each other, and the server carrying the call cannot. Tell people the word some other way.": "\u8f93\u5165\u540c\u4e00\u4e2a\u6697\u53f7\u7684\u4eba\u624d\u80fd\u4e92\u76f8\u542c\u89c1,\u627f\u8f7d\u901a\u8bdd\u7684\u670d\u52a1\u5668\u542c\u4e0d\u89c1\u3002\u6697\u53f7\u8bf7\u7528\u522b\u7684\u65b9\u5f0f\u544a\u8bc9\u5bf9\u65b9\u3002",
 };
 
 export default zhHans;

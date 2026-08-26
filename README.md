@@ -299,6 +299,42 @@ An administrator opens a new room by joining it with their passphrase, in the
 passphrase field on the join page. Everybody else is told the room has not been
 opened and to ask whoever is holding the meeting for the link.
 
+## Sealing a call
+
+Every call here crosses a machine that is rented rather than owned. The media
+server on it decrypts each stream and encrypts it again for each subscriber —
+that is what an SFU does — so whoever holds the machine, or takes it, has the
+pictures and the sound.
+
+There is a word for that on the join screen, folded away. Type one, tell the
+other people some other way, and the frames are encrypted in the browser before
+they are sent. The relay forwards something it cannot read.
+
+The key is the room name and the word, derived in the browser. **The server
+never sees it**: it is not in the token, it is not the passphrase that proves a
+name, and it does not leave the tab except as the frames it encrypts. The room
+name is in it so that one word used for two meetings does not make them one key.
+
+What it does not hide is who is in the room, what they are called, when they
+joined, or how much they are sending. All of that is signalling and all of it is
+the server's to know.
+
+Three things worth saying plainly:
+
+- **Everybody has to type the same word.** Somebody who types a different one
+  joins, appears in the roster, and hears nothing — which is the point, and is
+  also what it looks like when somebody mistypes.
+- **A reload loses it.** The word is held in the tab's memory and written down
+  nowhere, so a refresh comes back unsealed and has to be told again. That is
+  the cost of not storing it, and it is the right way round.
+- **Not every browser can.** Safari has no insertable streams. The control is
+  absent rather than present-and-inert where it cannot work, because a promise
+  about who can read a conversation is the worst kind to break quietly.
+
+Cheap here for a reason that is specific to this deployment: nothing on the
+server needs the plaintext. There is no recording and no transcription, so
+turning it on takes nothing away.
+
 ## Accounts
 
 Optional, and a deployment that wants none has none: nothing above this line
@@ -667,11 +703,6 @@ To restore: stop the service, move a copy over the store, start it.
 
 ## What is not here
 
-- **End-to-end encryption.** The SDK supports it; nothing here turns it on. This
-  is the one worth reconsidering, because media crosses machines that are rented
-  rather than owned and the server decrypts it on each of them. Nothing here
-  needs the plaintext — there is no recording and no transcription — so it would
-  cost less than it does in most meeting software.
 - **Recording and telephony.** Both are available from the media server and
   neither is wired up. Recording needs a second service, which is the property
   this deployment is built around not having.

@@ -486,6 +486,10 @@ const en = {
 	"No sound from it": "No sound from it",
 	"Where it is": "Where it is",
 	"Latitude, longitude. Puts it on the globe and lets the fleet judge distance": "Latitude, longitude. Puts it on the globe and lets the fleet judge distance",
+	"Seal this call": "Seal this call",
+	"This call is sealed": "This call is sealed",
+	"Sealing word": "Sealing word",
+	"Everybody who types the same word can hear each other, and the server carrying the call cannot. Tell people the word some other way.": "Everybody who types the same word can hear each other, and the server carrying the call cannot. Tell people the word some other way.",
 } as const;
 
 export default en;

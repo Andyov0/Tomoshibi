@@ -168,14 +168,34 @@ func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte
 		api.control = media.Manage(conf.Key, conf.Secret)
 	}
 
-	// Sampled on its own schedule rather than when a page asks. A trend with a
-	// gap wherever nobody was looking is not a trend, and the first thing
-	// anybody does with one is read the gap as quiet.
-	if api.Configured() {
-		go api.history.Watch(api.stop, api.sample)
+	return api
+}
+
+// Watching starts the sampling that fills the trend.
+//
+// Separate from New, and called after the cluster and the enrolment are in
+// place, because the sampler reads the fields those set. Started inside New it
+// raced them: the goroutine was running before UseCluster assigned `control`,
+// `probe` and `fleet`, so the first sample read three fields while another
+// goroutine wrote them.
+//
+// The race detector found it in a test that attaches a cluster, which is what
+// startup does — the same write to the same words a moment later. What it
+// costs in practice is one sample, at the moment of least interest, and what
+// it costs in principle is that the answer is undefined. Ordering is the fix
+// rather than a mutex: the fields are written once, during assembly, and read
+// for the life of the process, so there is nothing to guard afterwards and a
+// lock on every read would be paying for the wrong thing.
+//
+// Sampled on its own schedule rather than when a page asks. A trend with a gap
+// wherever nobody was looking is not a trend, and the first thing anybody does
+// with one is read the gap as quiet.
+func (a *API) Watching() {
+	if a == nil || !a.Configured() {
+		return
 	}
 
-	return api
+	go a.history.Watch(a.stop, a.sample)
 }
 
 // Close stops sampling.

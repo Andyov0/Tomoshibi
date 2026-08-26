@@ -73,8 +73,15 @@ func keeping(t *testing.T, remember time.Duration) (*App, *store.Store) {
 
 	// No media server and no client: a control node is assembled exactly this
 	// way, and neither is any part of what the timer does.
+	//
+	// Watching after New, which is also how a control node does it. It used to
+	// be started inside New, where it raced the fields UseCluster assigns — so
+	// the sampler could read three of them while another goroutine wrote them.
+	// This line is the ordering, and this test is what says the ordering still
+	// leaves the sampling switched on.
 	app := New(conf, st, nil, nil, tripKey)
 	t.Cleanup(app.Close)
+	app.Watching()
 
 	return app, st
 }

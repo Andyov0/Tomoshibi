@@ -318,6 +318,11 @@ func serve(args []string) error {
 		}
 	}
 
+	// After everything above, because the sampler reads what those assigned.
+	// Started during construction it raced them, which the race detector found
+	// in a test doing exactly what these lines do.
+	application.Watching()
+
 	server := &http.Server{
 		Addr:    conf.Meet.Listen,
 		Handler: application.Handler(),

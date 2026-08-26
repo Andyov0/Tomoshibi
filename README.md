@@ -667,6 +667,7 @@ since the day to find them is not the day something has:
 | `peekroom` | What the media server thinks is in a room. |
 | `crossrelay` | Whether two relays can carry a call between them, which is what `apart` records. |
 | `viahk` | Routing a mainland relay's overseas traffic through Hong Kong. Its own README. |
+| `watch` | The two scripts that put what this notices in front of a person. Its own README. |
 
 ## Watching it
 

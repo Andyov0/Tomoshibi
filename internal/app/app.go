@@ -1208,3 +1208,14 @@ func (a *App) takesCertificates(mux *http.ServeMux) {
 	mux.Handle("PUT "+rtc.CertificatePath, rtc.CertificateHandler(
 		a.conf.Meet.TLSCert, a.conf.Meet.TLSKey, a.conf.Key, a.conf.Secret))
 }
+
+// Watching starts the management side's sampling.
+//
+// Passed through rather than done during construction: the sampler reads the
+// cluster and the enrolment, and those are attached afterwards. See
+// admin.Watching.
+func (a *App) Watching() {
+	if a.admin != nil {
+		a.admin.Watching()
+	}
+}

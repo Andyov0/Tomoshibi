@@ -133,9 +133,26 @@ func Open(path string) (*Store, error) {
 		}
 	}
 
-	// A short timeout rather than none: the file is locked exclusively, so
-	// without one a second process would wait forever with no indication of why.
-	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: 2 * time.Second})
+	// Long enough to outlast a restart, and short enough to be an answer.
+	//
+	// The file is locked exclusively, so without any timeout a second process
+	// waits for ever with no indication of why. With two seconds it gave up
+	// inside the window the process it is replacing is still draining: shutdown
+	// waits up to ten for calls to end, so `systemctl restart` produced a run of
+	// "held by another process" failures and a restart counter climbing, until
+	// one attempt happened to land after the old process let go.
+	//
+	// That is a working restart which reads like a broken one, and the log it
+	// leaves is the same shape as the log of a genuine second copy — which is
+	// what this message exists to name. Fifteen covers the drain with room, and
+	// a process genuinely fighting another for the file waits fifteen seconds
+	// and is then told exactly that.
+	//
+	// Reasoned from the two numbers rather than reproduced. An idle deployment
+	// lets go at once, so the overlap only appears where there are calls to
+	// drain — which is the restart nobody schedules and everybody eventually
+	// does.
+	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: 15 * time.Second})
 	if errors.Is(err, bolt.ErrTimeout) {
 		return nil, fmt.Errorf(
 			"%s is held by another process, almost certainly the server itself. "+

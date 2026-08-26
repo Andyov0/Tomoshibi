@@ -498,6 +498,7 @@ const en = {
 	"Not through yet: still setting up their connection": "Not through yet: still setting up their connection",
 	"One link stopped working.": "One link stopped working.",
 	"{count} links stopped working.": "{count} links stopped working.",
+	"That label is too long.": "That label is too long.",
 } as const;
 
 export default en;

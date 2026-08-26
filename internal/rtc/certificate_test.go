@@ -331,3 +331,65 @@ func TestTheRelaySaysWhatItIsServing(t *testing.T) {
 			"back is a certificate nobody is watching", said.Expires, expires)
 	}
 }
+
+/*
+ * The way back from a certificate pushed by mistake.
+ *
+ * The refusal rules only go one way, deliberately: a relay never narrows what
+ * it answers to and never takes something that expires no later than what it
+ * holds. Both were written after real faults — a wildcard pushed over the
+ * certificates of two relays dialled by bare address took them off the air.
+ *
+ * The cost is that a certificate pushed by mistake with a distant expiry cannot
+ * be pushed over. Every correct push afterwards is refused, and the refusal
+ * answers 200 and looks exactly like the ordinary case of a relay already
+ * having what was sent.
+ *
+ * There is no override for this and there should not be: one reachable over the
+ * network is a way for whoever can reach the relay to narrow its certificate,
+ * which is what the rule prevents. The way out is on the machine — take the
+ * file away, and the next push has nothing to be refused in favour of. This
+ * test is that claim, and RELAY.md is where somebody looks for it.
+ */
+func TestTakingTheFileAwayLetsTheNextPushLand(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath, _ := issued(t, dir, time.Now().Add(3650*24*time.Hour))
+
+	handler := CertificateHandler(certPath, keyPath, testKey, testSecret)
+
+	// The real one, which expires long before the mistake and is therefore
+	// refused while the mistake is in place.
+	_, _, right := issued(t, t.TempDir(), time.Now().Add(60*24*time.Hour))
+
+	if code := pushing(t, handler, right, true).Code; code != http.StatusOK {
+		t.Fatalf("answered %d, want 200", code)
+	}
+
+	on, err := os.ReadFile(certPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(on) == right.Cert {
+		t.Fatal("a certificate expiring sooner replaced one expiring later, which is the rule " +
+			"that stops somebody choosing the hour this relay goes off the air")
+	}
+
+	// The way out, taken on the machine itself.
+	if err := os.Remove(certPath); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := pushing(t, handler, right, true).Code; code != http.StatusOK {
+		t.Fatalf("answered %d after the file was taken away, want 200", code)
+	}
+
+	on, err = os.ReadFile(certPath)
+	if err != nil {
+		t.Fatalf("nothing was written after the file was taken away: %v", err)
+	}
+
+	if string(on) != right.Cert {
+		t.Error("taking the file away did not let the next push land, so a certificate pushed " +
+			"by mistake has no way back at all")
+	}
+}

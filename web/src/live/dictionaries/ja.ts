@@ -467,6 +467,7 @@ const ja: Dictionary = {
 	"Not through yet: still setting up their connection": "\u307e\u3060\u5165\u308c\u3066\u3044\u307e\u305b\u3093:\u63a5\u7d9a\u3092\u78ba\u7acb\u4e2d\u3067\u3059",
 	"One link stopped working.": "\u30ea\u30f3\u30af\u3092 1 \u672c\u6b62\u3081\u307e\u3057\u305f\u3002",
 	"{count} links stopped working.": "\u30ea\u30f3\u30af\u3092 {count} \u672c\u6b62\u3081\u307e\u3057\u305f\u3002",
+	"That label is too long.": "\u305d\u306e\u8868\u793a\u540d\u306f\u9577\u3059\u304e\u307e\u3059\u3002",
 };
 
 export default ja;

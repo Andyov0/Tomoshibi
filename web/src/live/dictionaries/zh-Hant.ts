@@ -467,6 +467,7 @@ const zhHant: Dictionary = {
 	"Not through yet: still setting up their connection": "\u9084\u6c92\u9032\u4f86:\u9023\u7dda\u4ecd\u5728\u5efa\u7acb\u4e2d",
 	"One link stopped working.": "\u5df2\u505c\u7528 1 \u689d\u9023\u7d50\u3002",
 	"{count} links stopped working.": "\u5df2\u505c\u7528 {count} \u689d\u9023\u7d50\u3002",
+	"That label is too long.": "\u9019\u500b\u986f\u793a\u540d\u592a\u9577\u4e86\u3002",
 };
 
 export default zhHant;

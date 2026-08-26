@@ -226,6 +226,31 @@ costs three things and is worth them:
   serving and says so every round, and warns when one is under two days out.
   That is the whole of watching it, and the message names the machine.
 
+### Undoing a certificate pushed by mistake
+
+The refusal rules go one way, deliberately. A relay never narrows what it
+answers to, and never takes a certificate that expires no later than the one it
+holds. Both were written after real faults: a wildcard pushed over the
+certificates of the two relays dialled by bare address took them off the air.
+
+So a certificate pushed by mistake with a distant expiry cannot be pushed over.
+Every correct push afterwards is refused — and a refusal answers 200 and reads
+exactly like the ordinary case of a relay already having what was sent. The
+control node now says which it was, at warning level, naming the machine and the
+reason; before that it looked like nothing at all.
+
+There is no override for this and there should not be. One reachable over the
+network is a way for whoever can reach a relay to narrow its certificate, which
+is the thing the rule prevents. The way out is on the machine:
+
+```bash
+rm /etc/tomoshibi/certs/relay.fullchain.pem
+```
+
+With nothing there, the next hourly push has nothing to be refused in favour of
+and lands. No restart: the server re-reads its certificate on the next
+handshake.
+
 Set the acme client's reload command to fix the file's group and mode and
 nothing else. Restarting the relay drops every call on it, and the server
 re-reads its certificate on the next handshake — a renewal every two days

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -82,11 +83,17 @@ func (s *Store) KeepSession(token string, session Session) error {
 }
 
 // Session reads one back, or says there is none.
+//
+// A store that will not answer says there is none, which signs everybody out at
+// once — and what that looks like from a chair is a passphrase that has stopped
+// working. Said out loud for that reason: the refusal is right, and an operator
+// reading "your passphrase is wrong" from three people in a minute should be
+// able to find out it was neither of those things.
 func (s *Store) Session(token string) (Session, bool) {
 	var session Session
 	found := false
 
-	_ = s.db.View(func(tx *bolt.Tx) error {
+	if err := s.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(sessionsBucket)
 		if bucket == nil {
 			return nil
@@ -102,7 +109,9 @@ func (s *Store) Session(token string) (Session, bool) {
 		}
 
 		return nil
-	})
+	}); err != nil {
+		slog.Error("could not read a session, so whoever holds it is signed out", "error", err)
+	}
 
 	return session, found
 }

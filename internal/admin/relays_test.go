@@ -183,3 +183,47 @@ func TestCheckingARelayNobodyHasHeardOf(t *testing.T) {
 		t.Errorf("dialled %v for a name nothing in the list holds", asked)
 	}
 }
+
+/*
+ * Which relay addresses name something a DNS record can be made for.
+ *
+ * This decides whether a record is created when a relay is enrolled and removed
+ * when it is dropped, so a wrong answer in one direction leaves a record behind
+ * pointing at a machine that is gone, and in the other goes looking to make one
+ * for something that is not a name.
+ *
+ * The IPv6 case was wrong. The host was taken by cutting at the first colon or
+ * slash, and an IPv6 literal is written in brackets and is full of colons — so
+ * "wss://[2001:db8::1]:443" gave "[2001", which net.ParseIP does not recognise,
+ * so it was taken for a hostname. No relay in this deployment is dialled that
+ * way, which is the only reason it never happened.
+ */
+func TestWhichAddressesNameAHost(t *testing.T) {
+	for _, one := range []struct {
+		url  string
+		host string
+	}{
+		// Names, which have records.
+		{"wss://hk.api.shota.sg", "hk.api.shota.sg"},
+		{"wss://hk.api.shota.sg:443", "hk.api.shota.sg"},
+		{"wss://hk.api.shota.sg:39217/rtc", "hk.api.shota.sg"},
+		{"https://relay.example", "relay.example"},
+		{"hk.api.shota.sg:39217", "hk.api.shota.sg"},
+
+		// Addresses, which have none. Two relays here are dialled this way,
+		// because the path filters the name in the handshake.
+		{"wss://194.114.138.245", ""},
+		{"wss://194.114.138.245:39217", ""},
+		{"wss://[2001:db8::1]", ""},
+		{"wss://[2001:db8::1]:443", ""},
+		{"wss://::1", ""},
+
+		// Nothing at all.
+		{"", ""},
+		{"wss://", ""},
+	} {
+		if got := hostOf(one.url); got != one.host {
+			t.Errorf("hostOf(%q) = %q, want %q", one.url, got, one.host)
+		}
+	}
+}

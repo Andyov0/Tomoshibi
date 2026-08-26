@@ -855,11 +855,30 @@ func outward() []net.IP {
 // logging installs a handler at the level the configuration asked for.
 func logging(level string) {
 	var parsed slog.Level
-	if err := parsed.UnmarshalText([]byte(level)); err != nil {
+
+	err := parsed.UnmarshalText([]byte(level))
+	if err != nil {
 		parsed = slog.LevelInfo
 	}
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: parsed})))
+
+	// Said after the handler is in place, because before it there is nothing to
+	// say it with.
+	//
+	// A level that does not parse fell back to info and told nobody, and the
+	// thing somebody types when they mean warn is "warning" — which is not a
+	// level. So a deployment set to be quiet was as loud as the default and the
+	// only evidence was the volume of its own log, which is exactly what
+	// somebody had decided not to read.
+	//
+	// Not fatal. A log level nobody can parse should not stop a server that
+	// otherwise starts, and info is the safe direction: it says more rather than
+	// less.
+	if err != nil && strings.TrimSpace(level) != "" {
+		slog.Warn("that is not a log level, so this is running at info",
+			"asked for", level, "levels", "debug, info, warn, error")
+	}
 }
 
 // emptied says so when the store holds nothing but has held something before.

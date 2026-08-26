@@ -467,6 +467,7 @@ const zhHans: Dictionary = {
 	"Not through yet: still setting up their connection": "\u8fd8\u6ca1\u8fdb\u6765:\u8fde\u63a5\u4ecd\u5728\u5efa\u7acb\u4e2d",
 	"One link stopped working.": "\u5df2\u505c\u7528 1 \u6761\u94fe\u63a5\u3002",
 	"{count} links stopped working.": "\u5df2\u505c\u7528 {count} \u6761\u94fe\u63a5\u3002",
+	"That label is too long.": "\u8fd9\u4e2a\u663e\u793a\u540d\u592a\u957f\u4e86\u3002",
 };
 
 export default zhHans;

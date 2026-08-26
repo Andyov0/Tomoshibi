@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -176,7 +177,18 @@ func (a *API) measure(ctx context.Context, view *relayView, url string) {
 	ok, took, detail := a.probe.Check(ctx, url)
 
 	view.Reachable = ok
-	view.LatencyMS = took.Milliseconds()
+
+	// At least one where it answered at all.
+	//
+	// Milliseconds truncates, and the field is omitempty, so a relay on the same
+	// machine — or one on a good local link — answered in under a millisecond,
+	// became nought, was omitted, and the page drew nothing where the fastest
+	// relay in the fleet should have been. "Answered in 0 ms" was the better
+	// half of that; the worse half was a blank.
+	if ok {
+		view.LatencyMS = max(1, took.Milliseconds())
+	}
+
 	view.Detail = detail
 }
 
@@ -480,6 +492,12 @@ func relayReason(err error) string {
 		return "relay_no_url"
 	case errors.Is(err, store.ErrRelayBadURL):
 		return "relay_bad_url"
+	// Added late, and its absence is the shape of fault this whole mapping
+	// exists to prevent: a label over the limit came back as the general
+	// refusal, so the page said the relay was refused and could not say which
+	// field to shorten.
+	case errors.Is(err, store.ErrRelayLongLabel):
+		return "relay_long_label"
 	case errors.Is(err, store.ErrRelayLongTag):
 		return "relay_long_region"
 	default:
@@ -566,22 +584,39 @@ func (a *API) relayNamed(name string) (store.Relay, bool) {
 // hostOf is the host a relay's address names, or "" where it names an address.
 //
 // A relay dialled by bare address has no name in any zone, so there is nothing
-// to remove and nothing to report — two of them here are exactly that.
-func hostOf(url string) string {
-	trimmed := url
-	for _, scheme := range []string{"wss://", "ws://", "https://", "http://"} {
-		trimmed = strings.TrimPrefix(trimmed, scheme)
+// to remove and nothing to report — two of them here are exactly that. What
+// this decides is whether a DNS record is created for a machine and removed
+// when it goes, so getting it wrong means a record made for something that is
+// not a name.
+//
+// Parsed rather than cut at the first colon. An IPv6 address is written in
+// brackets and is full of colons, so cutting gave "[2001" — which is not an
+// address, so it was taken for a hostname, and the deployment would have gone
+// looking to make a record for it. No relay here is dialled that way yet, which
+// is the only reason it has not happened.
+func hostOf(raw string) string {
+	trimmed := raw
+	if !strings.Contains(trimmed, "://") {
+		// url.Parse wants a scheme to find a host. Relays are stored with one,
+		// but a bare "host:port" typed into the panel should not be read as a
+		// path.
+		trimmed = "wss://" + trimmed
 	}
 
-	if at := strings.IndexAny(trimmed, "/:"); at >= 0 {
-		trimmed = trimmed[:at]
-	}
-
-	// An address is not a name. net.ParseIP is the only reliable way to tell,
-	// because a hostname may be all digits and dots and still be a hostname.
-	if trimmed == "" || net.ParseIP(trimmed) != nil {
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
 		return ""
 	}
 
-	return trimmed
+	// Hostname strips the port and the brackets around an IPv6 literal, which
+	// is what makes the check below work for both kinds.
+	host := parsed.Hostname()
+
+	// An address is not a name. net.ParseIP is the only reliable way to tell,
+	// because a hostname may be all digits and dots and still be a hostname.
+	if host == "" || net.ParseIP(host) != nil {
+		return ""
+	}
+
+	return host
 }

@@ -347,6 +347,8 @@ function explain(reason: string | undefined, status: number): string {
 			return t("A relay needs a name.");
 		case "relay_long_name":
 			return t("That relay name is too long.");
+		case "relay_long_label":
+			return t("That label is too long.");
 		case "relay_no_url":
 			return t("A relay needs an address.");
 		case "relay_bad_url":

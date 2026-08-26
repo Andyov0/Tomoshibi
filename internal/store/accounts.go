@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -222,11 +223,17 @@ func taken(bucket *bolt.Bucket, trip, except string) bool {
 }
 
 // Account reads one by name.
+//
+// Not found where the store will not answer, which refuses the sign-in — the
+// safe direction, and the one that reads as a wrong passphrase to whoever is
+// typing. See Session for the same reasoning; both are said out loud so that a
+// run of "wrong passphrase" from people who have not changed theirs has
+// somewhere to be traced to.
 func (s *Store) Account(name string) (Account, bool) {
 	var account Account
 	found := false
 
-	_ = s.db.View(func(tx *bolt.Tx) error {
+	if err := s.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(accountsBucket)
 		if bucket == nil {
 			return nil
@@ -237,12 +244,24 @@ func (s *Store) Account(name string) (Account, bool) {
 			return nil
 		}
 
-		if err := json.Unmarshal(raw, &account); err == nil {
-			found = true
+		if err := json.Unmarshal(raw, &account); err != nil {
+			// A record this build cannot read is one that is not there, which is
+			// the rule for every record here. Worth a line for this one, because
+			// what it refuses is somebody's own sign-in and the reason will not
+			// occur to them.
+			slog.Error("an account's record could not be read, so it cannot be signed in to",
+				"account", name, "error", err)
+
+			return nil
 		}
 
+		found = true
+
 		return nil
-	})
+	}); err != nil {
+		slog.Error("could not look up an account, so the sign-in was refused",
+			"account", name, "error", err)
+	}
 
 	return account, found
 }

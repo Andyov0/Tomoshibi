@@ -624,6 +624,19 @@ func placeOf(relay store.Relay) string {
 func (a *API) selectorFor(relay store.Relay) string {
 	regions := a.fleetRegions()
 	if len(regions) < 2 {
+		// Nothing to choose between, so no block — and a relay without one falls
+		// back to picking a media node at random, which is the fault recorded in
+		// internal/store/relays.go as having put people into meetings on machines
+		// they could not reach.
+		//
+		// Fewer than two regions almost always means nobody has given the relays
+		// a place. The management page has a field for it; until this was said,
+		// the only way to find out it mattered was for calls to be bad.
+		slog.Warn("this deployment has fewer than two relays with a place recorded, so new "+
+			"relays are brought up without distance-aware node selection: set where each "+
+			"machine is, on the relay page",
+			"relay", relay.Name, "placed", len(regions))
+
 		return ""
 	}
 
@@ -642,6 +655,11 @@ func (a *API) selectorFor(relay store.Relay) string {
 	// unknown to its own list refuses to start. Better no block, which means the
 	// default selector, than a relay that will not come up.
 	if !found {
+		slog.Warn("this relay has no place recorded, so it is brought up without distance-aware "+
+			"node selection: a media server whose own region is missing from its own list "+
+			"refuses to start, so no block is written rather than one it would reject",
+			"relay", relay.Name)
+
 		return ""
 	}
 

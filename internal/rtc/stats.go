@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -226,12 +227,33 @@ func (c *Cluster) SendCertificate(ctx context.Context, relay string, cert Certif
 	// reaches them. Those are short-lived, six days, and depend on a cron job
 	// nobody watches. Reading the date back is the whole of watching it: this
 	// node already talks to every relay every hour, and the answer costs a field.
+	// And why, where it refused what was sent.
+	//
+	// The refusal rules are one-way on purpose: a relay never narrows what it
+	// answers to, and never takes a certificate that expires no later than the
+	// one it holds. Which means a certificate pushed by mistake with a distant
+	// expiry cannot be pushed over — every correct push afterwards is refused,
+	// and the refusal is indistinguishable from the ordinary case of a relay
+	// already having what was sent. Both answer 200 and both keep serving.
+	//
+	// The relay has always said which it was. This threw the answer away, so a
+	// machine locked out that way would have gone on reporting itself fine
+	// until the certificate it was stuck with ran out.
 	var said struct {
 		Expires time.Time `json:"expires"`
+		Kept    bool      `json:"kept"`
+		Why     string    `json:"why"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&said); err != nil {
 		// An older relay says nothing here. Not knowing is not a failure.
 		return time.Time{}, nil
+	}
+
+	if said.Kept && said.Why != "" {
+		slog.Warn("a relay refused the certificate and kept what it has: it will refuse every "+
+			"later one for the same reason until what it holds runs out",
+			"relay", relay, "why", said.Why,
+			"holds until", said.Expires.Format(time.RFC3339))
 	}
 
 	return said.Expires, nil

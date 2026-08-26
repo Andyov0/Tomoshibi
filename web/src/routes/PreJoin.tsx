@@ -535,7 +535,7 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 									? t("You were invited to this room. Choose a name and go in.")
 									: passphrase
 										? t("Only you can join as {name}", { name: display || "?" })
-										: t("Add a passphrase so nobody else can use your name.")}
+										: t("Add a passphrase to keep your name, and to run the room you open.")}
 							</p>
 						</div>
 					)}

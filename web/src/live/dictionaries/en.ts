@@ -16,8 +16,7 @@ const en = {
 	"Passphrase": "Passphrase",
 	"Show passphrase": "Show passphrase",
 	"Hide passphrase": "Hide passphrase",
-	"Add a passphrase so nobody else can use your name.":
-		"Add a passphrase so nobody else can use your name.",
+	"Add a passphrase to keep your name, and to run the room you open.": "Add a passphrase to keep your name, and to run the room you open.",
 	"Anyone who guesses this name can join.":
 		"Anyone who guesses this name can join.",
 	"Only administrators can start new rooms. Enter the name you were given.":
@@ -78,8 +77,6 @@ const en = {
 	"{name} (you)": "{name} (you)",
 	unverified: "unverified",
 	"Only this person can use this name": "Only this person can use this name",
-	"Anyone could use this name":
-		"Anyone could use this name",
 	"Someone else has proved this name":
 		"Someone else has proved this name",
 
@@ -162,10 +159,6 @@ const en = {
 	Copy: "Copy",
 	Copied: "Copied",
 	Done: "Done",
-	Quality: "Quality",
-	Standard: "Standard",
-	High: "High",
-	Ultra: "Ultra",
 	"Administrators": "Administrators",
 	"Add somebody": "Add somebody",
 	"A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.": "A signature is what a passphrase produces, and it is public: it prints beside its owner's name in every room they join. Ask somebody for theirs rather than for their passphrase, which this server is never told and could not store.",
@@ -237,13 +230,8 @@ const en = {
 	"Measured at": "Measured at",
 	"host:port where it answers STUN. Empty means time the socket instead": "host:port where it answers STUN. Empty means time the socket instead",
 	"blocked": "blocked",
-	"administrator": "administrator",
 	"Block": "Block",
 	"Let back in": "Let back in",
-	"Forget": "Forget",
-	"Why, for whoever reads this later": "Why, for whoever reads this later",
-	"Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.": "Nobody has joined with a passphrase yet. Anonymous visitors are not listed here, because their signature is different in every tab.",
-	"Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.": "Blocking refuses their next join. It does not end a call they are already in, and it does not stop somebody choosing a different passphrase — what it stops is that signature, which is the only thing about a visitor this server can recognise.",
 	"This passphrase cannot join. Ask the organiser.": "This passphrase cannot join. Ask the organiser.",
 	"Timeout": "Timeout",
 	"carried": "carried",
@@ -297,7 +285,6 @@ const en = {
 	"Set a passphrase to start a new room. Anybody can join one that already exists.": "Set a passphrase to start a new room. Anybody can join one that already exists.",
 	"Meetings here are started by the people who belong here. If somebody sent you a link, open that instead.": "Meetings here are started by the people who belong here. If somebody sent you a link, open that instead.",
 	"Start a meeting": "Start a meeting",
-	"A new room with a name nobody has used.": "A new room with a name nobody has used.",
 	"Join a meeting": "Join a meeting",
 	"The name you were given.": "The name you were given.",
 	"You were invited to this room. Choose a name and go in.": "You were invited to this room. Choose a name and go in.",
@@ -338,7 +325,6 @@ const en = {
 	"Stands in for pairs that cannot reach each other": "Stands in for pairs that cannot reach each other",
 	"A meeting is already happening under that name.": "A meeting is already happening under that name.",
 	"No meeting is happening under that name.": "No meeting is happening under that name.",
-	"Joining as {name}": "Joining as {name}",
 	"Relays answering": "Relays answering",
 	"Leave the call": "Leave the call",
 	"The meeting carries on without you.": "The meeting carries on without you.",
@@ -484,7 +470,16 @@ const en = {
 	"Too many attempts. Wait a minute and try again.": "Too many attempts. Wait a minute and try again.",
 
 	"Signing in…": "Signing in…",
-
+	"Anybody with a link can start one.": "Anybody with a link can start one.",
+	"Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.": "Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.",
+	"Only administrators can start one. Rooms already in use stay open.": "Only administrators can start one. Rooms already in use stay open.",
+	". This setting wins.": ". This setting wins.",
+	"administrators": "administrators",
+	"users and administrators": "users and administrators",
+	"anyone": "anyone",
+	"1 day": "1 day",
+	"{count} days": "{count} days",
+	"{count} hours": "{count} hours",
 } as const;
 
 export default en;

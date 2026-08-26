@@ -1,4 +1,5 @@
 import { useT } from "@/hooks/useT";
+import type { Phrase } from "@/live/i18n";
 import { cn } from "@/lib/utils";
 import { actionFailed } from "@/live/notices";
 import { type ReactNode, useCallback, useState } from "react";
@@ -73,21 +74,23 @@ export function OpeningCard({
 				<div role="radiogroup" aria-label={t("Who can start a new room")} className="flex flex-col">
 					<Choice
 						label={t("Anyone")}
-						describes="Anybody with a link can start one."
+						describes={t("Anybody with a link can start one.")}
 						chosen={value?.chosen === "anyone"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("anyone")}
 					/>
 					<Choice
 						label={t("Users & administrators")}
-						describes="Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to."
+						describes={t(
+							"Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.",
+						)}
 						chosen={value?.chosen === "signed"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("signed")}
 					/>
 					<Choice
 						label={t("Administrators")}
-						describes="Only administrators can start one. Rooms already in use stay open."
+						describes={t("Only administrators can start one. Rooms already in use stay open.")}
 						chosen={value?.chosen === "admins"}
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("admins")}
@@ -177,7 +180,7 @@ function HowLongItLasts({ remember }: { remember: number }) {
 	return (
 		<p className="text-fg-muted text-xs leading-relaxed">
 			{remember > 0 ? (
-				<>{t("Unused rooms close after")}<Value>{days(remember)}</Value>.
+				<>{t("Unused rooms close after")}<Value>{days(remember, t)}</Value>.
 				</>
 			) : (
 				<>{t("Rooms never close.")}</>
@@ -186,14 +189,27 @@ function HowLongItLasts({ remember }: { remember: number }) {
 	);
 }
 
-/** A retention said the way somebody would say it out loud. */
-function days(seconds: number): string {
+/**
+ * A retention said the way somebody would say it out loud.
+ *
+ * Takes the translator so the number comes back in the reader's language. It
+ * used to build the string itself, so a panel that spoke four languages ended
+ * its one sentence about retention with "30 days" in every one of them.
+ *
+ * Four phrases rather than two with a placeholder for the unit, because the
+ * singular and the plural are different words in English and the same word in
+ * Japanese, and a sentence assembled from a number and a separately translated
+ * noun can only ever come out in the order English wanted.
+ */
+function days(seconds: number, t: ReturnType<typeof useT>): string {
 	const whole = Math.round(seconds / 86_400);
-	if (whole >= 1) return `${whole} ${whole === 1 ? "day" : "days"}`;
+	if (whole >= 1) {
+		return whole === 1 ? t("1 day") : t("{count} days", { count: String(whole) });
+	}
 
 	const hours = Math.max(1, Math.round(seconds / 3_600));
 
-	return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+	return hours === 1 ? t("1 hour") : t("{count} hours", { count: String(hours) });
 }
 
 /**
@@ -220,7 +236,10 @@ function WhereItLives({ policy }: { policy: Policy }) {
 	}
 
 	return (
-		<Note kind="quiet">{t("The config file says")}<Value>{words(policy.configured)}</Value>. This setting wins.
+		<Note kind="quiet">
+			{t("The config file says")}
+			<Value>{t(words(policy.configured))}</Value>
+			{t(". This setting wins.")}
 		</Note>
 	);
 }
@@ -266,7 +285,21 @@ function Value({ children }: { children: ReactNode }) {
 	return <span className="readout text-fg">{children}</span>;
 }
 
-/** The setting as it is written down, said the way the switch says it. */
-export function words(opening: Opening): string {
-	return opening === "admins" ? "administrators" : "anyone";
+/**
+ * The setting as it is written down, said the way the switch says it.
+ *
+ * Three answers rather than two. This used to fold "signed" into "anyone",
+ * which made the panel say the config file was set to something it was not —
+ * and "signed" is the middle setting, the one most deployments want, so the
+ * reading was wrong exactly where somebody was most likely to be checking it.
+ * Two places show this: the note under the switch and the runtime readout.
+ *
+ * Returned as a phrase rather than a sentence, because both readers put it
+ * inside one of their own.
+ */
+export function words(opening: Opening): Phrase {
+	if (opening === "admins") return "administrators";
+	if (opening === "signed") return "users and administrators";
+
+	return "anyone";
 }

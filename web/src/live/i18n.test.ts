@@ -67,19 +67,19 @@ describe("the vocabulary", () => {
 		const root = join(import.meta.dirname, "..");
 		const suspicious: string[] = [];
 
-		// The management pages are English and stay English, so their labels are
-		// written where they are read. Their audience is whoever runs the
-		// deployment — the same person the startup log is for — and most of what
-		// they say is technical nouns, which a half-translated page renders
-		// worse than an untranslated one.
-		const untranslated = "manage";
-
 		const walk = (directory: string) => {
 			for (const entry of readdirSync(directory, { withFileTypes: true })) {
 				const path = join(directory, entry.name);
 
 				if (entry.isDirectory()) {
-					if (entry.name !== untranslated) walk(path);
+					// The management pages used to be skipped here, under a
+					// paragraph explaining that they were English on purpose. They
+					// were not: four of their panels held a hundred and eighty-eight
+					// translated phrases and four held none, which is drift with a
+					// justification written in front of it. src/manage/phrases.test.ts
+					// says so at length and holds the finished state; this exemption
+					// was what let the last handful of bare labels survive it.
+					walk(path);
 					continue;
 				}
 				if (!entry.name.endsWith(".tsx") || entry.name.includes(".test.")) continue;
@@ -87,7 +87,15 @@ describe("the vocabulary", () => {
 				for (const [index, line] of readFileSync(path, "utf8").split("\n").entries()) {
 					// A label given as a bare string, which is how every one of
 					// these looked before they were collected into a dictionary.
-					const bare = /(aria-label|placeholder|title)="[A-Z]/.test(line);
+					// The attribute names are listed rather than matched generally,
+					// because most attributes carry class names and identifiers
+					// rather than sentences. This list is short by accident and not
+					// by design: `describes` was missing, and three sentences on the
+					// panel that decides who may open a room sat untranslated beside
+					// labels that were, for as long as it was.
+					const bare = /(aria-label|placeholder|title|describes|label|heading|hint|note)="[A-Z]/.test(
+						line,
+					);
 					if (bare) suspicious.push(`${entry.name}:${index + 1}`);
 				}
 			}
@@ -139,5 +147,128 @@ describe("segments", () => {
 			undefined,
 			"room",
 		]);
+	});
+});
+
+/*
+ * And the direction nobody was checking at all: English against the interface.
+ *
+ * The three tests above hold the other dictionaries to the English one, so a
+ * phrase that stops being said is removed from three files and kept in the
+ * fourth — where it is the key, so nothing is inconsistent and nothing fails.
+ * Five had accumulated that way. Three belonged to a management panel deleted
+ * months ago, one to a badge state whose own comment says it now draws nothing,
+ * and one to a room description that was rewritten. Each was carried in four
+ * languages, so five dead phrases were twenty dead lines and four translators'
+ * worth of work spent on sentences no reader could reach.
+ *
+ * It costs nothing at runtime, which is exactly why it survives. An inventory
+ * problem is checked by counting.
+ */
+
+/**
+ * Phrases the interface never writes down, because it does not know them.
+ *
+ * Relay labels and region names are typed into a management page by whoever
+ * runs the deployment and arrive at the client as data, so they go through
+ * [say] rather than [t] and a search of the source cannot see them. A
+ * deployment that calls a machine "Shanghai Telecom" gets that translated for
+ * a reader in Japanese; one that calls it something else gets what was typed.
+ *
+ * Adding a place here is how a new one gets a translation. Nothing else is
+ * allowed in: an entry in this list is a claim that something says the phrase,
+ * and a wrong claim is how the five above survived.
+ */
+const SUPPLIED_BY_THE_DEPLOYMENT = [
+	"Guangzhou Tencent",
+	"Shanghai Tencent",
+	"Shanghai Telecom",
+	"Hong Kong",
+	"China Mainland",
+	"Oversea",
+	"Asia",
+	"Europe",
+	"America",
+	"cn-east",
+	"cn-south",
+	"cn-north",
+	"cn-west",
+	"Shanghai",
+	"Guangzhou",
+	"Beijing",
+	"Japan",
+	"Singapore",
+	"Taiwan",
+	"Korea",
+	"United States",
+];
+
+describe("the English dictionary", () => {
+	it("says nothing the interface no longer says", () => {
+		const root = join(import.meta.dirname, "..");
+
+		const sources: string[] = [];
+		const walk = (at: string) => {
+			for (const entry of readdirSync(at, { withFileTypes: true })) {
+				const path = join(at, entry.name);
+
+				if (entry.isDirectory()) {
+					if (entry.name !== "dictionaries") walk(path);
+					continue;
+				}
+
+				if (/\.tsx?$/.test(entry.name)) sources.push(readFileSync(path, "utf8"));
+			}
+		};
+		walk(root);
+
+		const said = sources.join("\n");
+
+		// Matched as a whole string literal rather than as a substring. A bare
+		// includes() cleared every short phrase that happened to sit inside a
+		// longer identifier somewhere, which is a check that reports the absence
+		// of exactly the phrases short enough to be worth checking for.
+		//
+		// And nothing here may name a phrase in quotes: this file is walked like
+		// any other, so a phrase written out in a comment is a phrase this
+		// declares to be alive. It happened while this was being written.
+		const unsaid = BASE.filter(
+			(phrase) =>
+				!SUPPLIED_BY_THE_DEPLOYMENT.includes(phrase) && !said.includes(JSON.stringify(phrase)),
+		);
+
+		expect(unsaid).toEqual([]);
+	});
+});
+
+/*
+ * A key written twice, which JavaScript resolves by keeping the last and
+ * mentioning nothing.
+ *
+ * TypeScript does object to it, so this is not the only thing standing in the
+ * way — but the compiler's message names a line number in a file of four
+ * hundred and says the property is duplicated, which is a puzzle rather than an
+ * answer. This names the phrase. It went in after adding a phrase that was
+ * already there under a different heading and reading four of those messages.
+ */
+describe("every dictionary", () => {
+	it.each(["en", ...OTHERS])("says each phrase once (%s)", (locale) => {
+		const source = readFileSync(
+			join(import.meta.dirname, "dictionaries", `${locale}.ts`),
+			"utf8",
+		);
+
+		const seen = new Map<string, number>();
+		for (const line of source.split("\n")) {
+			// A key is quoted only where it has to be, so an identifier-shaped one
+			// sits bare.
+			const found = /^\t(?:"((?:[^"\\]|\\.)*)"|([A-Za-z_$][\w$]*)):/.exec(line);
+			if (!found) continue;
+
+			const key = found[1] ?? found[2] ?? "";
+			seen.set(key, (seen.get(key) ?? 0) + 1);
+		}
+
+		expect([...seen].filter(([, n]) => n > 1).map(([key]) => key)).toEqual([]);
 	});
 });

@@ -559,6 +559,23 @@ func checkRole(meet *Meet) error {
 			meet.RelayPolicy, PickSticky, PickNearest, PickRoundRobin, PickProbe)
 	}
 
+	// Refused rather than warned about, because it cannot mean anything.
+	//
+	// "nearest" reads where a client is out of a header, and that header is only
+	// read where trust_proxy says somebody upstream overwrites it -- unguarded
+	// it is whatever the caller typed. So the two together are a policy that
+	// never matches and silently falls through to sticky: the setting is
+	// accepted, does nothing, and the only way to find out is to notice that
+	// every client lands where sticky would have put them.
+	if meet.RelayPolicy == PickNearest && !meet.TrustProxy {
+		return fmt.Errorf(
+			"meet.relay_policy is %q, which reads where a client is from a header, and "+
+				"meet.trust_proxy is false, so that header is not believed and nothing would "+
+				"ever match. Set trust_proxy where a proxy in front overwrites it, or choose "+
+				"%q, which asks the client to measure instead",
+			PickNearest, PickProbe)
+	}
+
 	switch meet.Role {
 	case RoleControl:
 		if len(meet.Relays) == 0 {

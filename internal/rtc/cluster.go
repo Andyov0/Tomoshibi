@@ -179,6 +179,24 @@ func (c *Cluster) ask(ctx context.Context, run func(*Control) error) error {
 
 // unreachable says whether an error is a failure to reach a relay rather than
 // an answer from one.
+//
+// The distinction decides whether the next relay is tried. An answer is final —
+// asking somebody else the same question produces the same answer — so anything
+// classified as an answer stops the walk, and a failure to reach is skipped past.
+//
+// Which makes a wrong classification expensive in one direction only. A refusal
+// read as unreachable costs one extra request; a transport failure read as a
+// refusal stops the walk at the first broken machine and returns its error as
+// the fleet's answer.
+//
+// The certificate cases were missing, and they are the ones this deployment
+// produces. A relay whose certificate has expired -- which is a thing that
+// happens here, because two of them renew from a cron job on the machine itself
+// -- refuses the TLS handshake, and that was read as the relay having answered.
+// So one machine's certificate running out took every room listing, every
+// removal and every close on the whole cluster with it, and the error handed to
+// the page was about a certificate on a machine the operator had not asked
+// about.
 func unreachable(err error) bool {
 	if err == nil {
 		return false
@@ -189,6 +207,13 @@ func unreachable(err error) bool {
 	for _, sign := range []string{
 		"connection refused", "no such host", "timeout", "deadline exceeded",
 		"connection reset", "EOF", "network is unreachable", "i/o timeout",
+
+		// Nothing at the far end read the request, so it is not an answer. The
+		// prefixes rather than the wordings, because the wordings are the
+		// standard library's to change: crypto/tls and crypto/x509 put these in
+		// front of every error they raise.
+		"tls:", "x509:", "certificate",
+		"handshake failure", "protocol version",
 	} {
 		if strings.Contains(text, sign) {
 			return true

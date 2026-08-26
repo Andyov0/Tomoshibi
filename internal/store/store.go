@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -702,10 +703,18 @@ func (s *Store) ClaimHost(name, mark string) (bool, error) {
 }
 
 // HostOf says which mark a room answers to, or "" where it answers to nobody.
+//
+// A room this cannot read answers to nobody, which is the safe direction: the
+// alternative is a room that answers to whoever asks. But it is also the
+// direction that says nothing, and what it looks like from a chair is a host
+// whose controls stop working in the middle of their own meeting, with no
+// notice and nothing in any log. Both failures are said out loud for that
+// reason, and neither is returned: there is nothing the caller could do with
+// them that differs from what it does already.
 func (s *Store) HostOf(name string) string {
 	var mark string
 
-	_ = s.db.View(func(tx *bolt.Tx) error {
+	if err := s.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(rooms)
 		if bucket == nil {
 			return nil
@@ -717,12 +726,23 @@ func (s *Store) HostOf(name string) string {
 		}
 
 		var tally Room
-		if err := json.Unmarshal(raw, &tally); err == nil {
-			mark = tally.Host
+		if err := json.Unmarshal(raw, &tally); err != nil {
+			// A record this build cannot read is treated as one that is not
+			// there, which is the rule for every record here. Worth saying for
+			// this one, because the thing it decides is who may run a meeting.
+			slog.Error("a room's record could not be read, so it answers to nobody",
+				"room", name, "error", err)
+
+			return nil
 		}
 
+		mark = tally.Host
+
 		return nil
-	})
+	}); err != nil {
+		slog.Error("could not look up who a room answers to, so it answers to nobody",
+			"room", name, "error", err)
+	}
 
 	return mark
 }

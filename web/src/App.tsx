@@ -227,8 +227,29 @@ export function App() {
 		return () => window.removeEventListener("hashchange", onHashChange);
 	}, []);
 
+	/*
+	 * The passphrase, for as long as this tab is in this call.
+	 *
+	 * Not stored. This is a ref, so it lives in the tab's memory, dies when the
+	 * tab does, and never reaches local storage — which is the rule, and the rule
+	 * is about storage: the browser's own password manager is where a passphrase
+	 * belongs, because it is encrypted, behind the machine's lock, and deletable
+	 * by its owner.
+	 *
+	 * It is here because a rejoin is not a new join. When a room is moved to
+	 * another machine, or somebody is placed on one, the call ends and this tab
+	 * comes straight back — and it used to come back with an empty passphrase,
+	 * which mints a mark drawn from nothing. So the host of a meeting who moved
+	 * their own meeting arrived on the new machine as somebody else, with the
+	 * room still answering to the mark they no longer had. Every control they
+	 * had a moment ago answered 403, and the only way back was to leave and join
+	 * again with the passphrase they had typed two minutes earlier.
+	 */
+	const said = useRef("");
+
 	const onJoin = useCallback(
 		async ({ name, passphrase, camera, microphone, relay }: Choices) => {
+			said.current = passphrase;
 
 			const made = create();
 
@@ -379,7 +400,9 @@ export function App() {
 
 				void onJoin({
 					name: front.at === "lobby" || front.at === "ready" ? front.me.name : rememberedName(),
-					passphrase: "",
+					// Carried, so somebody comes back as who they were rather than
+					// as a stranger with their name.
+					passphrase: said.current,
 					relay: "",
 					...remembered(),
 				});

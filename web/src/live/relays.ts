@@ -278,14 +278,12 @@ export async function fastest(list: Relay[]): Promise<string | undefined> {
 		return cached.name;
 	}
 
-	const timings = await Promise.all(
-		list.map(async (relay) => ({ name: relay.name, took: await probe(relay) })),
-	);
+	const took = await measure(list);
 
 	let best: { name: string; took: number } | undefined;
-	for (const timing of timings) {
-		if (timing.took === undefined) continue;
-		if (!best || timing.took < best.took) best = { name: timing.name, took: timing.took };
+	for (const [name, one] of took) {
+		if (one === undefined) continue;
+		if (!best || one < best.took) best = { name, took: one };
 	}
 
 	if (!best) return undefined;
@@ -310,18 +308,15 @@ export async function fastest(list: Relay[]): Promise<string | undefined> {
  * ask.
  */
 export async function timings(list: Relay[]): Promise<Map<string, number | undefined>> {
-	const measured = await Promise.all(
-		// Skipped for a relay out of service: it is shown so somebody can see it
-		// is still there, and measuring a machine nobody may be sent to is a
-		// connection spent on a number that cannot be acted on.
-		list.map(async (relay) =>
-			relay.maintenance
-				? ([relay.name, undefined] as const)
-				: ([relay.name, await probe(relay)] as const),
-		),
-	);
+	// A relay out of service is left out of the measurement rather than given a
+	// reading: it is shown so somebody can see it is still there, and a
+	// connection spent on a machine nobody may be sent to buys a number that
+	// cannot be acted on. Left out of the choice of measurement, too — a
+	// machine nobody is measuring should not decide how everybody else is.
+	const measurable = list.filter((relay) => !relay.maintenance);
+	const took = await measure(measurable);
 
-	return new Map(measured);
+	return new Map(list.map((relay) => [relay.name, took.get(relay.name)] as const));
 }
 
 /**
@@ -344,7 +339,13 @@ export async function preferred(): Promise<string> {
 	}
 }
 
-/** Forget the last measurement. Exported for tests. */
+/**
+ * Forget the last measurement.
+ *
+ * Called when a call drops, which is the moment the held reading is worst: it
+ * names as fastest the machine that has just stopped carrying a conversation.
+ * Also by tests, which is all it was for when the drop path did not call it.
+ */
 export function forget(): void {
 	cached = undefined;
 }
@@ -359,11 +360,30 @@ export function forget(): void {
  * than per relay: [timings] and [fastest] both ask for one kind and use it for
  * everybody, falling back only where no relay offers the better one.
  */
-async function probe(relay: Relay): Promise<number | undefined> {
-	if (relay.probe) {
-		const took = await overUDP(relay);
-		if (took !== undefined) return took;
+async function measure(list: Relay[]): Promise<Map<string, number | undefined>> {
+	const answered = (took: Array<number | undefined>) =>
+		new Map(list.map((relay, at) => [relay.name, took[at]] as const));
+
+	// Only where every one of them offers it, so what comes back is a set of
+	// readings rather than a mixture.
+	//
+	// This used to be decided one relay at a time, immediately under the
+	// paragraph above explaining why it must not be: whichever relays had a
+	// probe port got a one-round-trip number and the rest got a three, and the
+	// ranking went to whoever had been configured rather than to whoever was
+	// near. On a fleet where the enrolment script never writes a probe port —
+	// which is this one — that is most of the machines losing to a few.
+	if (list.length > 0 && list.every((relay) => relay.probe)) {
+		const took = await Promise.all(list.map(overUDP));
+
+		if (took.every((one) => one !== undefined)) return answered(took);
+
+		// One of them did not answer, and keeping the rest would compare the
+		// ones that answered quickly against nothing. A relay that advertises a
+		// probe port which does not work is worth finding out about, and the
+		// way to find out is that everybody is measured the slower way and the
+		// numbers are all still comparable.
 	}
 
-	return overSignalling(relay);
+	return answered(await Promise.all(list.map(overSignalling)));
 }

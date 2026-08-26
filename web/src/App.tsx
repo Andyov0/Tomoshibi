@@ -1,4 +1,6 @@
 import { type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
+import { doorway } from "@/live/doorway";
+import { forget as forgetTimings } from "@/live/relays";
 import { chosenRelay, leftRoom, rememberRelay, wasIn } from "@/live/api";
 import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
@@ -26,26 +28,18 @@ const DISCONNECT_ROOM_CLOSED = 5;
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * The room this page is for, generating one if the address does not name it.
+ * The room the address names, or nothing.
  *
- * Arriving at the bare address means a new meeting, so one is made rather than
- * everybody being funnelled into a shared default. A shared default is a room
- * that strangers walk into, which is a worse outcome than a name nobody asked
- * for.
+ * Nothing rather than a generated name: a page that has not decided to be a
+ * room yet must not put one in the address bar, which is what used to happen —
+ * somebody signing in read their own URL and found a room they had not asked
+ * for. Where a name is wanted for a bare address, doorway says so and it is
+ * minted then.
  *
- * Replaced rather than pushed: the address without a room is a state to pass
- * through, and leaving it in the history means the back button returns to a page
- * that generates a different room every time it is visited.
+ * An invalid name is treated as no name at all. The hash is whatever somebody
+ * pasted, and a room called "../../etc" is not a room this refuses politely; it
+ * is a room this never had.
  */
-/**
- * Which machine was chosen last, so a reload does not silently move the call.
- *
- * In session storage rather than local: it is about this tab and this meeting,
- * and a browser that remembered it for a month would send somebody to a relay
- * they picked once, in another country, for a different call.
- */
-
-
 function initialRoom(): string {
 	const raw = normaliseRoomName(window.location.hash.replace(/^#\/?/, ""));
 
@@ -102,17 +96,8 @@ export function App() {
 			([said, account, invitation]) => {
 				if (!live) return;
 
-				// An invite wins over everything. Somebody holding one was sent to
-				// a particular meeting, and asking them to sign in first is asking
-				// them for something they were never given.
-				if (invitation?.room) {
-					setRoom(invitation.room);
-					setFront({ at: "invited", room: invitation.room });
-					return;
-				}
-
-				// And an invite that is no good is still an invite, which is to
-				// say it is still somebody who was sent here on purpose and who
+				// An invitation that is no good is still an invitation, which is
+				// to say it is still somebody who was sent here on purpose and who
 				// arrives to find the sign-in page of a deployment they have no
 				// account on. They were not told why, so the reading available to
 				// them is that the link was mistyped or that this is the wrong
@@ -133,60 +118,46 @@ export function App() {
 					);
 				}
 
-				// A deployment anybody may open a room on has no lobby, so the
-				// bare address means a new meeting and one is made. Made here
-				// rather than on load, which is what used to put a generated name
-				// in the address bar of a page that had not decided to be a room
-				// yet — somebody signing in read their own URL and found a room
-				// they had not asked for.
-				// A reload while in a call must not lose the call.
-				//
-				// The address has said which room this is all along — it is what
-				// somebody copies to invite people — and after a reload it was
-				// being ignored: the lobby appeared, the room in the address bar
-				// was not the room on the screen, and getting back in meant typing
-				// a name that was already there. What lands instead is the screen
-				// one press from rejoining, rather than a rejoin nobody asked for:
-				// a refresh should not put somebody back on a live microphone.
-				// Back into the call this tab was in, whoever they are.
-				//
-				// The guard is that this tab was in this room, not that somebody
-				// is signed in. Signed in was the wrong test twice over: it walked
-				// somebody who had merely pasted a room link straight into the
-				// call without a look at their own camera, and it left everybody
-				// who arrived on an invitation — who has no account by design —
-				// pressing Join again after every refresh.
-				if (initialRoom() && wasIn() === initialRoom()) {
-					setFront(
-						account
-							? { at: "ready", me: account, relay: chosenRelay() }
-							: { at: "invited", room: initialRoom() },
-					);
+				// Which screen, decided in one place and tested there. The order
+				// between these conditions is the whole policy and it used to be
+				// spelled out here, in an effect that also connects to rooms and
+				// reads storage — which is why the branch that admits somebody
+				// holding a room name on a deployment with settings was missing
+				// for as long as it was.
+				const landing = doorway({
+					invitation: invitation?.room,
+					address: initialRoom(),
+					wasIn: wasIn(),
+					account: Boolean(account),
+					opening: said.openedBy,
+				});
 
-					void onJoin({
-						name: account?.name ?? rememberedName(),
-						passphrase: "",
-						relay: chosenRelay(),
-						...remembered(),
-					});
+				if (landing.at === "invited") {
+					setRoom(landing.room);
+					setFront({ at: "invited", room: landing.room });
+
+					// Rejoining rather than arriving: this tab was in this room a
+					// moment ago and the devices go back exactly as they were, so
+					// nothing is turned on that was off.
+					if (landing.rejoin) {
+						void onJoin({
+							name: rememberedName(),
+							passphrase: "",
+							relay: chosenRelay(),
+							...remembered(),
+						});
+					}
 
 					return;
 				}
 
-				if (account && initialRoom()) {
-					// Back into the call rather than to the screen in front of it.
-					//
-					// The first attempt landed on the device screen, on the
-					// reasoning that a refresh should not put somebody back on a
-					// live microphone. That is the wrong way round: they were
-					// already on it a second ago, and the surprising thing is not
-					// the microphone carrying on — it is a call that stops because
-					// a page was reloaded. Every other application on the machine
-					// survives a refresh, and this one made you press a button to
-					// get back into a conversation you never left.
-					//
-					// With the devices exactly as they were, so nothing is turned
-					// on that was off.
+				// The account is tested again rather than asserted. doorway only
+				// says "ready" where it was given one, so this is a narrowing the
+				// compiler needs and not a case that happens — but written as a
+				// cast it would be a claim about the other file that nothing here
+				// would notice going stale, and the fall-through is the sign-in,
+				// which is the right place to be wrong.
+				if (landing.at === "ready" && account) {
 					setFront({ at: "ready", me: account, relay: chosenRelay() });
 
 					void onJoin({
@@ -199,13 +170,18 @@ export function App() {
 					return;
 				}
 
-				if (said.openedBy === "anyone") {
-					setRoom((held) => held || generateRoomName());
+				if (landing.at === "open") {
+					// Minted here rather than on load, which is what used to put a
+					// generated name in the address bar of a page that had not
+					// decided to be a room yet — somebody signing in read their own
+					// URL and found a room they had not asked for.
+					if ("mint" in landing) setRoom((held) => held || generateRoomName());
+
 					setFront({ at: "open" });
 					return;
 				}
 
-				setFront(account ? { at: "lobby", me: account } : { at: "sign in" });
+				setFront(landing.at === "lobby" && account ? { at: "lobby", me: account } : { at: "sign in" });
 			},
 		);
 
@@ -427,6 +403,24 @@ export function App() {
 			// path to the media server is the thing most likely to fail, that was
 			// the most common ending a call had, and it was the one that looked
 			// like the software was broken.
+			// And the measurement goes, so that the one press back is not a press
+			// back onto the same machine.
+			//
+			// The reading is held for five minutes, which is right while things
+			// are working and exactly wrong here: a relay that has just dropped a
+			// call is the one thing this now knows about the fleet, and without
+			// this it would go on naming that relay as the fastest for another
+			// five minutes. A relay filtered off the network — the failure this
+			// deployment exists to survive — answers nothing, so a fresh
+			// measurement picks somebody else. Keeping the stale one turned a
+			// single drop into a loop that looked like the software refusing to
+			// work, with the way out being a picker most people never open.
+			//
+			// Only the measurement. A machine somebody chose by hand stays chosen:
+			// they asked for it, the picker still says so, and quietly moving them
+			// off it would be answering a question they did not ask.
+			forgetTimings();
+
 			joinFailed(t("The connection to this room was lost."));
 			void current.current?.disconnect();
 			current.current = undefined;

@@ -71,6 +71,10 @@ type Enrolment struct {
 	UDPPort    int
 	TCPPort    int
 
+	// Where a new relay answers STUN. Zero writes nothing, which is what a
+	// deployment that has not chosen a port should get rather than a zero.
+	ProbePort int
+
 	// Naming creates the DNS record. Optional: without it a relay still enrols
 	// and whoever ran the script is told to point the name themselves.
 	Naming Naming
@@ -468,7 +472,8 @@ func (a *API) writeInstall(w http.ResponseWriter, secret string) {
 		strings.TrimRight(a.enrolment.PublicURL, "/"),
 		a.enrolment.Domain,
 		secret,
-		a.enrolment.ListenPort, a.enrolment.UDPPort, a.enrolment.TCPPort)
+		a.enrolment.ListenPort, a.enrolment.UDPPort, a.enrolment.TCPPort,
+		a.enrolment.ProbePort)
 }
 
 // prefixTaken says whether a relay already answers to this name.

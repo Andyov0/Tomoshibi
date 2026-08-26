@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"tomoshibi/internal/rtc"
 	"tomoshibi/internal/store"
 )
 
@@ -66,13 +67,17 @@ type reach struct {
 
 	mu   sync.RWMutex
 	down map[string]bool
+	// Which relays answer signalling but not media. Kept apart from [down]
+	// because it is reported and not acted on: a relay in this map is still
+	// offered, still chosen, and still the only machine in its country.
+	silent map[string]bool
 	// How many sweeps in a row found nothing at all, which is a count of this
 	// machine's own outages rather than of anybody else's.
 	blind int
 }
 
 func newReach(check Check) *reach {
-	return &reach{check: check, down: map[string]bool{}}
+	return &reach{check: check, down: map[string]bool{}, silent: map[string]bool{}}
 }
 
 // up reports whether a relay is worth offering.
@@ -212,6 +217,23 @@ func (r *reach) look(ctx context.Context, list []store.Relay) {
 		r.down[one.relay.URL] = !one.ok
 		r.mu.Unlock()
 
+		// And whether media can reach it, which is a different question from
+		// whether it is switched on and is the one these break on.
+		//
+		// Signalling is TCP and media is UDP on another port, and the two are
+		// let through by different rules: a host firewall, a provider's security
+		// group, an nftables mapping that did not survive a reboot. When the UDP
+		// port stops being reachable and the TCP one does not, the check above
+		// answers in eleven milliseconds, the relay shows green, and every call
+		// sent to it fails to get any media at all.
+		//
+		// Said, not acted on. A relay whose media port has gone is still the
+		// relay somebody chose by hand and still the only one in its country,
+		// and dropping it from the list on a reading this node takes from one
+		// vantage point would turn a reported fault into a fleet with nowhere to
+		// hold a call. The same asymmetry as above, for the same reason.
+		r.carrying(ctx, one.relay)
+
 		// Said once on the change rather than every half minute, so that a relay
 		// which has been down all night is one line in the log and not two
 		// thousand.
@@ -223,6 +245,34 @@ func (r *reach) look(ctx context.Context, list []store.Relay) {
 			slog.Info("a relay is answering again",
 				"relay", one.relay.Name, "url", one.relay.URL, "took", one.took)
 		}
+	}
+}
+
+// carrying says when a relay's media port stops answering, and when it comes
+// back.
+//
+// Only where the deployment gave the relay a probe port. Most have not, and a
+// check that reported those as unreachable would fill the log with a setting
+// nobody had filled in.
+func (r *reach) carrying(ctx context.Context, relay store.Relay) {
+	asked, ok, took := rtc.Carrying(ctx, relay.Probe)
+	if !asked {
+		return
+	}
+
+	r.mu.Lock()
+	was := r.silent[relay.URL]
+	r.silent[relay.URL] = !ok
+	r.mu.Unlock()
+
+	switch {
+	case !ok && !was:
+		slog.Warn("a relay answers signalling but its media port does not answer, so calls sent "+
+			"there will connect and then have no sound or picture: look at what is allowed "+
+			"through to that port",
+			"relay", relay.Name, "probe", relay.Probe)
+	case ok && was:
+		slog.Info("a relay's media port is answering again", "relay", relay.Name, "took", took)
 	}
 }
 

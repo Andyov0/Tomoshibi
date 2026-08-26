@@ -275,6 +275,21 @@ type Enrol struct {
 	UDPPort    int `yaml:"udp_port"`
 	TCPPort    int `yaml:"tcp_port"`
 
+	// ProbePort is written into every new relay's configuration, and is the
+	// reason the picker can show a number anybody believes.
+	//
+	// It was not, and the effect was quiet: the enrolment wrote no probe port,
+	// zero is off, so every machine brought up by the script answered no STUN
+	// and was timed over the signalling socket instead — three round trips
+	// against one. A relay given a probe port by hand afterwards then won the
+	// ranking against nearer machines on nothing but the measurement it had
+	// been allowed. That comparison is fixed in the client, which now measures
+	// the whole list one way; this is what makes the fast way available at all.
+	//
+	// Zero is off, and the same reasoning as the field it becomes applies: not
+	// 3478, which is scanned continuously.
+	ProbePort int `yaml:"probe_port"`
+
 	// CertFile and KeyFile are the certificate handed to a new relay. Empty
 	// takes the listener's own, which is what a control node serving TLS
 	// directly already holds.

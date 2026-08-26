@@ -53,6 +53,19 @@ SECRET="${2:-${ENROL:-%s}}"
 LISTEN_PORT=%d
 UDP_PORT=%d
 TCP_PORT=%d
+PROBE_PORT=%d
+
+# Whether this machine answers anything but a WebSocket upgrade.
+#
+# Set for a relay on a network that decides what a machine is by asking it: a
+# mainland Chinese host is probed with an ordinary HTTPS request, and any answer
+# at all identifies the port as a website, which an unregistered domain may not
+# be. Off elsewhere, where a machine that answers is a machine that can be
+# diagnosed.
+#
+# Passed as an environment variable rather than asked for, so the ordinary
+# install stays one line:  SILENT=1 sh install.sh <prefix>
+SILENT="${SILENT:-}"
 
 say() { printf '\n\033[1m%%s\033[0m\n' "$1"; }
 die() { printf '\nerror: %%s\n' "$1" >&2; exit 1; }
@@ -309,6 +322,18 @@ say "Writing the configuration"
     printf '  listen: ":%%s"\n' "$LISTEN_PORT"
     printf '  tls_cert: /etc/tomoshibi/certs/relay.fullchain.pem\n'
     printf '  tls_key: /etc/tomoshibi/certs/relay.key\n'
+    # Where this machine answers STUN, so a browser can time one round trip over
+    # the transport a call uses rather than three over the signalling socket.
+    # Nothing written where the deployment has not chosen a port, rather than a
+    # zero for somebody to puzzle over.
+    [ "${PROBE_PORT:-0}" -gt 0 ] 2>/dev/null && printf '  probe_port: %%s\n' "$PROBE_PORT"
+    [ -n "$SILENT" ] && printf '  silent: true\n'
+    # Both of the above are conditional, so the block can end on a test that
+    # failed. Under set -e the left side of an && is exempt and this is not
+    # needed on the shell it was tried on, but shells differ on whether that
+    # exemption reaches the group's own status, and the cost of being sure is
+    # one character.
+    :
 } > /etc/tomoshibi/relay.yaml
 
 # Readable by the group the service runs in, and by nobody else. The file holds

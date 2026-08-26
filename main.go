@@ -504,6 +504,7 @@ func enrolFrom(conf *config.Config) *admin.Enrolment {
 		ListenPort:    conf.Meet.Enrol.ListenPort,
 		UDPPort:       conf.Meet.Enrol.UDPPort,
 		TCPPort:       conf.Meet.Enrol.TCPPort,
+		ProbePort:     conf.Meet.Enrol.ProbePort,
 	}
 
 	if cf := dns.NewCloudflare(conf.Meet.Enrol.CloudflareToken, conf.Meet.Enrol.CloudflareZone); cf.Configured() {

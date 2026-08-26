@@ -209,6 +209,14 @@ func serve(args []string) error {
 		}
 		defer st.Close()
 
+		// Before anything is adopted into it, because adopting writes. A store
+		// that has lost everything and one being started for the first time look
+		// identical to bolt — a file truncated to nothing opens without an error
+		// and reports no buckets — and the adoption is what makes the second
+		// indistinguishable from the first by filling it back in from the
+		// configuration file. Asked here, it is still possible to tell.
+		emptied(st, conf)
+
 		if err := adoptOpening(st, conf); err != nil {
 			return err
 		}
@@ -785,4 +793,39 @@ func logging(level string) {
 	}
 
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: parsed})))
+}
+
+// emptied says so when the store holds nothing but has held something before.
+//
+// A first start and a store truncated to nothing are the same thing to bolt: it
+// opens both without complaint and reports no buckets in either. They call for
+// opposite reactions, and the only thing that tells them apart is whether there
+// are copies beside it — a first start has none.
+//
+// Called before the configuration file is adopted into the store, which is the
+// only moment this can be asked. Adopting writes, so a second later the store
+// has buckets and looks like a working deployment that has merely forgotten its
+// relays' addresses, its accounts and every measurement anybody made by hand.
+func emptied(st *store.Store, conf *config.Config) {
+	empty, err := st.Empty()
+	if err != nil {
+		slog.Warn("could not look at the store to see whether it holds anything", "error", err)
+		return
+	}
+
+	if !empty {
+		return
+	}
+
+	copies, err := store.Copies(conf.Meet.Database)
+	if err != nil || len(copies) == 0 {
+		// Nothing to compare against, so nothing can be said. A deployment being
+		// started for the first time lands here and is right to hear nothing.
+		return
+	}
+
+	slog.Error("the store is empty and there are copies of it beside it, so this deployment held "+
+		"something and no longer does: the relay addresses, the accounts and the administrators "+
+		"live only here, and a truncated store opens without an error",
+		"store", conf.Meet.Database, "newest copy", copies[0], "copies", len(copies))
 }

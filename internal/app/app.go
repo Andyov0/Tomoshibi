@@ -94,6 +94,13 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 	// away.
 	if st != nil {
 		go a.forgetting()
+
+		// And copies of it, on the same condition and for a stronger reason:
+		// this is the only place the relay definitions, the accounts and the
+		// administrators exist, and a store truncated to nothing opens without
+		// an error and reports no buckets.
+		//
+		go a.copying()
 	}
 
 	return a

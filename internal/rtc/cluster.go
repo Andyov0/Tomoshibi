@@ -344,6 +344,13 @@ func (c *Cluster) Announce(ctx context.Context, room, topic string, data []byte)
 	})
 }
 
+// Tell says something to one person in a room.
+func (c *Cluster) Tell(ctx context.Context, room, identity, topic string, data []byte) error {
+	return c.ask(ctx, func(control *Control) error {
+		return control.Tell(ctx, room, identity, topic, data)
+	})
+}
+
 func (c *Cluster) Close(ctx context.Context, room string) error {
 	return c.ask(ctx, func(control *Control) error { return control.Close(ctx, room) })
 }

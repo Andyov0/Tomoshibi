@@ -160,6 +160,26 @@ func (a *API) placePerson(session Session, w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Warned first, and only them.
+	//
+	// Letting go of somebody is how they are moved -- a browser holds its
+	// connection to the machine it dialled and nothing in the protocol asks it
+	// to move -- but the only thing they were told was that they had been
+	// removed, which is what the client says when a host throws somebody out.
+	// So an operator putting one person on a healthier relay sent them a notice
+	// that they had been ejected from the meeting, and a dead call.
+	//
+	// Addressed to them rather than said to the room. A message on this topic
+	// arms a tab to come back after the next disconnection, and broadcasting it
+	// would arm every tab in the room -- so the next time a host legitimately
+	// ended the meeting, everybody would rebuild it.
+	//
+	// Not fatal. A move nobody was warned about is still a move, and the person
+	// is one press from being back either way.
+	if err := a.control.Tell(r.Context(), name, identity, "placing", []byte(relay)); err != nil {
+		a.record(session, "announce placing", name, identity, err)
+	}
+
 	if err := a.control.Remove(r.Context(), name, identity); err != nil {
 		a.record(session, "place person", name, identity, err)
 		refuse(w, statusOf(err), reasonOf(err))

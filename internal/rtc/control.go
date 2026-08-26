@@ -134,6 +134,24 @@ func (c *Control) Announce(ctx context.Context, room, topic string, data []byte)
 		&livekit.SendDataResponse{})
 }
 
+// Tell is Announce to one person rather than to the room.
+//
+// Addressed rather than broadcast and then filtered, because the two are not
+// the same thing where the message is a warning that a call is about to end. A
+// broadcast one arms every tab in the room to rejoin, and the next legitimate
+// closure -- a host ending the meeting -- is then read by all of them as
+// something to come back from. Filtering in the client leaves that arming in
+// place and only hides it.
+func (c *Control) Tell(ctx context.Context, room, identity, topic string, data []byte) error {
+	return c.call(ctx, "SendData",
+		&auth.VideoGrant{RoomAdmin: true, Room: room},
+		&livekit.SendDataRequest{
+			Room: room, Data: data, Kind: livekit.DataPacket_LOSSY, Topic: &topic,
+			DestinationIdentities: []string{identity},
+		},
+		&livekit.SendDataResponse{})
+}
+
 // call spends one token on one request.
 //
 // Minted per call and valid for a minute. A long-lived administrative token

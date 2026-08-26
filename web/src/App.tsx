@@ -339,8 +339,22 @@ export function App() {
 		 */
 		const MOVING_HOLDS_FOR = 15_000;
 
+		// Two topics and one meaning: this call is about to end and coming back
+		// is the right thing to do. "moving" is the whole room being put on
+		// another machine; "placing" is one person being put on another machine,
+		// and is addressed to them rather than said to the room, so a tab that
+		// receives it is a tab it is about.
+		//
+		// They end differently, which is why both are needed. A room being moved
+		// is closed, so everybody in it gets ROOM_CLOSED. One person being placed
+		// is let go of, so they get REMOVED — the same code a host throwing
+		// somebody out produces, and before this the only thing that person was
+		// told was that they had been removed from the room. An operator putting
+		// somebody on a healthier relay sent them an ejection notice and a dead
+		// call.
 		const told = (_payload: Uint8Array, who: unknown, _kind: unknown, topic?: string) => {
-			if (topic !== "moving" || who !== undefined) return;
+			if (who !== undefined) return;
+			if (topic !== "moving" && topic !== "placing") return;
 
 			moving.soon = true;
 			moving.at = Date.now();
@@ -355,7 +369,7 @@ export function App() {
 			if (
 				moving.soon &&
 				Date.now() - moving.at < MOVING_HOLDS_FOR &&
-				reason === DISCONNECT_ROOM_CLOSED
+				(reason === DISCONNECT_ROOM_CLOSED || reason === DISCONNECT_REMOVED)
 			) {
 				setLive(undefined);
 				current.current = undefined;

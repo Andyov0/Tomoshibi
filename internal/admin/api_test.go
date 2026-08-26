@@ -617,3 +617,5 @@ func TestARelayThatWillNotAnswerDoesNotEmptyTheReading(t *testing.T) {
 }
 
 func (absent) Announce(context.Context, string, string, []byte) error { return nil }
+
+func (absent) Tell(context.Context, string, string, string, []byte) error { return nil }

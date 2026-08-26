@@ -42,6 +42,7 @@ type Control interface {
 	// Announce tells everybody in a room something, which is how they are told
 	// that being disconnected means "come back" rather than "it is over".
 	Announce(ctx context.Context, room, topic string, data []byte) error
+	Tell(ctx context.Context, room, identity, topic string, data []byte) error
 }
 
 // Names is what they need of the record of names that have been used.

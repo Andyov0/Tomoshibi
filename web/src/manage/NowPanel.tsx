@@ -504,7 +504,16 @@ function Fleet({ now }: { now: Now }) {
 									<span>{one.rooms} rooms</span>
 									<span>{one.clients} people</span>
 									<span>{rate(one.outPerSec ?? 0)}</span>
-									<span>{Math.round((one.load ?? 0) * 100)}% cpu</span>
+									{/* With the core count, because the percentage alone does
+									    not say what it is a percentage of. Eighty per cent
+									    of two cores and of thirty-two are different
+									    situations, and the number was the same. Omitted
+									    where the relay did not report one rather than shown
+									    as nought cores. */}
+									<span>
+										{Math.round((one.load ?? 0) * 100)}% cpu
+										{one.cpus ? ` / ${one.cpus}` : ""}
+									</span>
 
 									{/* What this machine has actually carried, which is the
 									    figure a bill is made of — and the one that was

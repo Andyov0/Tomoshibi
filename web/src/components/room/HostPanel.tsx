@@ -13,7 +13,7 @@ import {
 	useOthers,
 	type Standing,
 } from "@/live/host";
-import { actionFailed } from "@/live/notices";
+import { actionDone, actionFailed } from "@/live/notices";
 import { cn } from "@/lib/utils";
 import type { Room } from "livekit-client";
 import {
@@ -176,9 +176,18 @@ export function HostPanel({
 							disabled={busy === "revoke"}
 							onClick={() =>
 								act("revoke", async () => {
-									await revoke(room);
+									const gone = await revoke(room);
 									setLink(undefined);
 									setCopied(false);
+
+									// Said, because "nothing happened" and "three links
+									// stopped working" look identical otherwise, and the
+									// reason to press this is not being sure which.
+									actionDone(
+										gone === 1
+											? t("One link stopped working.")
+											: t("{count} links stopped working.", { count: String(gone) }),
+									);
 								})
 							}
 							className={cn(

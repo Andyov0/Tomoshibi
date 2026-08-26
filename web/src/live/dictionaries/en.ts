@@ -490,6 +490,14 @@ const en = {
 	"This call is sealed": "This call is sealed",
 	"Sealing word": "Sealing word",
 	"Everybody who types the same word can hear each other, and the server carrying the call cannot. Tell people the word some other way.": "Everybody who types the same word can hear each other, and the server carrying the call cannot. Tell people the word some other way.",
+	"It becomes": "It becomes",
+	"Open these on the machine:": "Open these on the machine:",
+	", and the UDP media port.": ", and the UDP media port.",
+	"Earned from a passphrase": "Earned from a passphrase",
+	"Issued for this call, and says nothing about who they are": "Issued for this call, and says nothing about who they are",
+	"Not through yet: still setting up their connection": "Not through yet: still setting up their connection",
+	"One link stopped working.": "One link stopped working.",
+	"{count} links stopped working.": "{count} links stopped working.",
 } as const;
 
 export default en;

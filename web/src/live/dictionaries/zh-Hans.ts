@@ -459,6 +459,14 @@ const zhHans: Dictionary = {
 	"This call is sealed": "\u8fd9\u901a\u8bdd\u5df2\u52a0\u5bc6",
 	"Sealing word": "\u6697\u53f7",
 	"Everybody who types the same word can hear each other, and the server carrying the call cannot. Tell people the word some other way.": "\u8f93\u5165\u540c\u4e00\u4e2a\u6697\u53f7\u7684\u4eba\u624d\u80fd\u4e92\u76f8\u542c\u89c1,\u627f\u8f7d\u901a\u8bdd\u7684\u670d\u52a1\u5668\u542c\u4e0d\u89c1\u3002\u6697\u53f7\u8bf7\u7528\u522b\u7684\u65b9\u5f0f\u544a\u8bc9\u5bf9\u65b9\u3002",
+	"It becomes": "\u5b83\u4f1a\u6210\u4e3a",
+	"Open these on the machine:": "\u8fd9\u53f0\u673a\u5668\u4e0a\u8981\u653e\u884c:",
+	", and the UDP media port.": ",\u4ee5\u53ca UDP \u5a92\u4f53\u7aef\u53e3\u3002",
+	"Earned from a passphrase": "\u7531\u53e3\u4ee4\u7b97\u51fa,\u662f\u540c\u4e00\u4e2a\u4eba",
+	"Issued for this call, and says nothing about who they are": "\u53ea\u4e3a\u8fd9\u4e00\u901a\u8bdd\u53d1\u653e,\u8bf4\u660e\u4e0d\u4e86\u5bf9\u65b9\u662f\u8c01",
+	"Not through yet: still setting up their connection": "\u8fd8\u6ca1\u8fdb\u6765:\u8fde\u63a5\u4ecd\u5728\u5efa\u7acb\u4e2d",
+	"One link stopped working.": "\u5df2\u505c\u7528 1 \u6761\u94fe\u63a5\u3002",
+	"{count} links stopped working.": "\u5df2\u505c\u7528 {count} \u6761\u94fe\u63a5\u3002",
 };
 
 export default zhHans;

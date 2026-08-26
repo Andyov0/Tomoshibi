@@ -389,13 +389,28 @@ function Person({
 					className={cn("readout text-[11px]", person.trip.proven ? "text-fg-muted" : "text-fg-muted/50")}
 					title={
 						person.trip.proven
-							? "Earned from a passphrase"
-							: "Issued for this call, and says nothing about who they are"
+							? t("Earned from a passphrase")
+							: t("Issued for this call, and says nothing about who they are")
 					}
 				>
 					{person.trip.proven ? "·" : ""}
 					{person.trip.mark}
 				</span>
+
+				{/* Only where somebody is not through yet.
+				    ACTIVE is everybody in an ordinary room, so drawing it would
+				    be a label on every row saying nothing — and the one person
+				    stuck part-way through a handshake looked exactly like the
+				    people around them, which is the state an operator is looking
+				    at this list to find. */}
+				{person.state && person.state !== "ACTIVE" && (
+					<span
+						className="rounded-full bg-surface-hi px-1.5 py-0.5 text-[10.5px] text-fg-muted"
+						title={t("Not through yet: still setting up their connection")}
+					>
+						{person.state.toLowerCase()}
+					</span>
+				)}
 
 				<span className="ml-auto text-fg-muted text-xs tabular-nums">
 					{since(person.joinedAt)}

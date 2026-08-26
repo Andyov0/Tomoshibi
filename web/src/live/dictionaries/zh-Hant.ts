@@ -459,6 +459,14 @@ const zhHant: Dictionary = {
 	"This call is sealed": "\u9019\u901a\u8a71\u5df2\u52a0\u5bc6",
 	"Sealing word": "\u6697\u865f",
 	"Everybody who types the same word can hear each other, and the server carrying the call cannot. Tell people the word some other way.": "\u8f38\u5165\u540c\u4e00\u500b\u6697\u865f\u7684\u4eba\u624d\u80fd\u4e92\u76f8\u807d\u898b,\u627f\u8f09\u901a\u8a71\u7684\u4f3a\u670d\u5668\u807d\u4e0d\u898b\u3002\u6697\u865f\u8acb\u7528\u5225\u7684\u65b9\u5f0f\u544a\u8a34\u5c0d\u65b9\u3002",
+	"It becomes": "\u5b83\u6703\u6210\u70ba",
+	"Open these on the machine:": "\u9019\u53f0\u6a5f\u5668\u4e0a\u8981\u653e\u884c:",
+	", and the UDP media port.": ",\u4ee5\u53ca UDP \u5a92\u9ad4\u57e0\u3002",
+	"Earned from a passphrase": "\u7531\u5bc6\u8a9e\u7b97\u51fa,\u662f\u540c\u4e00\u500b\u4eba",
+	"Issued for this call, and says nothing about who they are": "\u53ea\u70ba\u9019\u4e00\u901a\u8a71\u767c\u653e,\u8aaa\u660e\u4e0d\u4e86\u5c0d\u65b9\u662f\u8ab0",
+	"Not through yet: still setting up their connection": "\u9084\u6c92\u9032\u4f86:\u9023\u7dda\u4ecd\u5728\u5efa\u7acb\u4e2d",
+	"One link stopped working.": "\u5df2\u505c\u7528 1 \u689d\u9023\u7d50\u3002",
+	"{count} links stopped working.": "\u5df2\u505c\u7528 {count} \u689d\u9023\u7d50\u3002",
 };
 
 export default zhHant;

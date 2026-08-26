@@ -55,6 +55,10 @@ export function RelaysPanel({
 	const [adding, setAdding] = useState(false);
 	const [script, setScript] = useState<string>();
 	const [command, setCommand] = useState<string>();
+	// What the new machine will be called, and what has to be reachable on it.
+	// Both come back with the command and neither was drawn.
+	const [enrolDomain, setEnrolDomain] = useState<string>();
+	const [enrolPort, setEnrolPort] = useState<number>();
 	const [busy, setBusy] = useState<string>();
 
 	/**
@@ -193,6 +197,8 @@ export function RelaysPanel({
 											api.relayCommand(),
 										]);
 										setCommand(ready.command);
+										setEnrolDomain(ready.domain);
+										setEnrolPort(ready.port);
 										setScript(text);
 									} catch {
 										actionFailed(t("This deployment cannot bring up relays from a script."));
@@ -220,6 +226,8 @@ export function RelaysPanel({
 					<AddByScript
 						script={script}
 						command={command}
+						domain={enrolDomain}
+						port={enrolPort}
 						onDone={() => {
 							setScript(undefined);
 							setCommand(undefined);
@@ -1043,8 +1051,10 @@ function Command({ command }: { command: string }) {
 function AddByScript({
 	script,
 	command,
+	domain,
+	port,
 	onDone,
-}: { script: string; command?: string; onDone: () => void }) {
+}: { script: string; command?: string; domain?: string; port?: number; onDone: () => void }) {
 	const t = useT();
 
 	const [copied, setCopied] = useState(false);
@@ -1056,6 +1066,30 @@ function AddByScript({
 			</p>
 
 			{command && <Command command={command} />}
+
+			{/* What the machine will be called and what has to be open on it.
+			    The server has always sent both and this drew neither, so an
+			    operator ran the line and then found out which name it had taken
+			    by reading the DNS, and which port to open by a call failing. A
+			    provider's security group is not something to be discovering
+			    afterwards. */}
+			{(domain || port) && (
+				<p className="text-fg-muted text-xs leading-relaxed">
+					{domain && (
+						<>
+							{t("It becomes")} <span className="readout text-fg">{`<prefix>.${domain}`}</span>
+							{". "}
+						</>
+					)}
+					{port ? (
+						<>
+							{t("Open these on the machine:")}{" "}
+							<span className="readout text-fg">{`tcp/${port}`}</span>
+							{t(", and the UDP media port.")}
+						</>
+					) : null}
+				</p>
+			)}
 
 			<p className="text-fg-muted text-xs">
 				{t("What that runs, in full. Worth reading before running anything as root.")}

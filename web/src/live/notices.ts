@@ -134,6 +134,21 @@ export function actionFailed(reason: string): void {
 }
 
 /**
+ * Something that worked, where working is not visible on its own.
+ *
+ * Most actions here show their own result: a muted track goes quiet, a removed
+ * participant disappears. A few do not, and stopping the invitations is the one
+ * that matters — the panel looks the same afterwards whether three links stopped
+ * working or none did, and the reason to press it is not being sure which.
+ *
+ * Fades, like everything else about something that has already happened. A
+ * notice that stays is for a condition somebody has to act on.
+ */
+export function actionDone(said: string): void {
+	toast.success(said, { duration: AT_MOST });
+}
+
+/**
  * Sound the browser refused to start on its own.
  *
  * The same category as a refused device, and shown the same way: it stays until

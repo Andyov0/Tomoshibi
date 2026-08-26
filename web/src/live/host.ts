@@ -20,11 +20,19 @@ needs: quiet a microphone somebody left open, remove somebody who will not leave
 and hand the room on when you go.
 */
 
-/** What this browser may do in this room. */
+/**
+ * What this browser may do in this room.
+ *
+ * Two booleans about the reader, and deliberately nothing about anybody else.
+ * There was a `host` here carrying the mark the room answers to, which the
+ * server stopped sending for a reason it records at length: a mark is somebody's
+ * identity in every room on this deployment, and handing it to everybody in the
+ * call turns "be the host" into "send back the mark you were shown". The field
+ * outlived the value by long enough that anything reading it would have got an
+ * empty string rather than a type error.
+ */
 export interface Standing {
-	/** Whoever the room answers to, as a mark. Empty where it answers to nobody. */
-	host: string;
-	/** Whether the person reading is that, one way or another. */
+	/** Whether the person reading may act, one way or another. */
 	yours: boolean;
 	/** And whether by being an administrator, which is worth saying differently. */
 	admin: boolean;
@@ -80,7 +88,7 @@ async function ask(room: Room, path: string, init: RequestInit = {}): Promise<Re
 
 /** Whether this browser runs this room, asked again whenever it might change. */
 export function useStanding(room: Room): Standing {
-	const [standing, setStanding] = useState<Standing>({ host: "", yours: false, admin: false });
+	const [standing, setStanding] = useState<Standing>({ yours: false, admin: false });
 
 	const refresh = useCallback(() => {
 		void ask(room, "/host", { method: "GET" })
@@ -225,10 +233,18 @@ export async function invite(room: Room): Promise<string> {
  * The other way a link dies is the room being closed, which is a far bigger
  * thing than anybody wants to do about a link pasted into the wrong window.
  */
-export async function revoke(room: Room): Promise<void> {
+export async function revoke(room: Room): Promise<number> {
 	const response = await ask(room, "/invites", { method: "DELETE" });
 
 	if (!response.ok) throw await refusal(response, "revoke_failed");
+
+	// How many stopped working. The server has always answered with it and the
+	// caller threw it away, so pressing the button told somebody nothing about
+	// what they had just done — and the whole reason to press it is having lost
+	// track of where a link went.
+	const said = (await response.json().catch(() => ({}))) as { revoked?: number };
+
+	return typeof said.revoked === "number" ? said.revoked : 0;
 }
 
 /** Everybody else in the call, for a list that acts on them. */

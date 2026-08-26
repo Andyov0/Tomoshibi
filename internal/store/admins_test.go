@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"tomoshibi/internal/config"
@@ -176,4 +177,74 @@ func TestObserveIsHeldWithoutBeingGranted(t *testing.T) {
 	if viewer.Allows(config.Moderate) {
 		t.Error("an administrator with nothing granted can moderate")
 	}
+}
+
+/*
+ * Who the last-moderator guard is for.
+ *
+ * It stops a deployment being left with nobody who can change anything, which
+ * is the one edit that cannot be undone from the page that made it. What it was
+ * doing as well was refusing every removal on a deployment where nobody can
+ * change anything already — because it counted the moderators left behind
+ * without asking whether the one going was a moderator at all.
+ *
+ * That shape is not hypothetical. A monitor signs in to read the fleet and
+ * should hold nothing else; this deployment has one. A deployment part-way
+ * through being set up can have a watcher and no moderator, and could not
+ * remove the watcher.
+ */
+func TestTheLastModeratorGuardIsAboutModerators(t *testing.T) {
+	watching := []string{config.Observe}
+	both := []string{config.Observe, config.Moderate}
+
+	t.Run("a watcher goes where nobody moderates", func(t *testing.T) {
+		st := listing(t, Admin{Trip: "aaaaaaaaaa", Can: watching}, Admin{Trip: "bbbbbbbbbb", Can: watching})
+
+		if err := st.RemoveAdmin("aaaaaaaaaa"); err != nil {
+			t.Errorf("removing a watcher where nobody moderates: %v", err)
+		}
+	})
+
+	t.Run("a watcher goes where somebody moderates", func(t *testing.T) {
+		st := listing(t, Admin{Trip: "aaaaaaaaaa", Can: watching}, Admin{Trip: "bbbbbbbbbb", Can: both})
+
+		if err := st.RemoveAdmin("aaaaaaaaaa"); err != nil {
+			t.Errorf("removing a watcher: %v", err)
+		}
+	})
+
+	// The thing the guard is for, which has to go on working.
+	t.Run("the last moderator stays", func(t *testing.T) {
+		st := listing(t, Admin{Trip: "aaaaaaaaaa", Can: both}, Admin{Trip: "bbbbbbbbbb", Can: watching})
+
+		if err := st.RemoveAdmin("aaaaaaaaaa"); !errors.Is(err, ErrLastModerator) {
+			t.Errorf("removing the only moderator answered %v, want ErrLastModerator", err)
+		}
+	})
+
+	t.Run("one of two moderators goes", func(t *testing.T) {
+		st := listing(t, Admin{Trip: "aaaaaaaaaa", Can: both}, Admin{Trip: "bbbbbbbbbb", Can: both})
+
+		if err := st.RemoveAdmin("aaaaaaaaaa"); err != nil {
+			t.Errorf("removing one of two moderators: %v", err)
+		}
+	})
+}
+
+func listing(t *testing.T, admins ...Admin) *Store {
+	t.Helper()
+
+	st, err := Open(filepath.Join(t.TempDir(), "meet.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	for _, one := range admins {
+		if err := st.AddAdmin(one); err != nil {
+			t.Fatalf("AddAdmin: %v", err)
+		}
+	}
+
+	return st
 }

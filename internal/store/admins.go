@@ -300,7 +300,18 @@ func (s *Store) RemoveAdmin(trip string) error {
 			return ErrNoSuchAdmin
 		}
 
-		if lastModerator(bucket, trip) {
+		// Only where the one going is a moderator.
+		//
+		// The guard is about not leaving a deployment nobody can change
+		// anything on, and removing somebody who could never change anything
+		// cannot cause that. Asked unconditionally, it refused every removal on
+		// a deployment whose administrators are all read-only — which is not a
+		// hypothetical shape: a monitor signs in to read the fleet and should
+		// hold nothing else, and a deployment can reasonably have one of those
+		// and no moderator at all while somebody is setting it up.
+		var going Admin
+		if err := json.Unmarshal(bucket.Get([]byte(trip)), &going); err == nil &&
+			going.Allows(config.Moderate) && lastModerator(bucket, trip) {
 			return ErrLastModerator
 		}
 

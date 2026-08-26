@@ -217,17 +217,26 @@ func serve(args []string) error {
 		// configuration file. Asked here, it is still possible to tell.
 		emptied(st, conf)
 
+		// The administrators first, because the opening asks how many there
+		// are: a policy of "only administrators may open a room" with nobody
+		// listed is a rule nothing could satisfy, and it says so.
+		//
+		// This used to be the other way round, under a comment giving this
+		// same reason for the opposite order. The reason was not true then --
+		// the opening counted the configuration file, which is written before
+		// any of this runs -- so the order did not matter and nothing noticed
+		// it was backwards. It counts the store now, which is what actually
+		// decides the policy, so the order is load-bearing and this is the
+		// direction it has to be.
+		if err := adoptAdmins(st, conf); err != nil {
+			return err
+		}
+
 		if err := adoptOpening(st, conf); err != nil {
 			return err
 		}
 
 		if err := adoptRelays(st, conf); err != nil {
-			return err
-		}
-
-		// After the opening, because the opening warns about there being no
-		// administrators and would be reading a list nobody had written yet.
-		if err := adoptAdmins(st, conf); err != nil {
 			return err
 		}
 
@@ -461,26 +470,6 @@ func listRooms(args []string) error {
 	return out.Flush()
 }
 
-// announce prints where to open the client.
-//
-// The address on the network comes with a warning rather than on its own,
-// because over plain HTTP it is a link that loads and then cannot open a camera:
-// browsers withhold devices outside a secure context, and only localhost is
-// exempt. Printing it unqualified would be an invitation into that dead end.
-// adoptOpening settles who may open a room, and says so.
-//
-// The configuration file is the starting value and only that: it is written into
-// the store the first time this runs, and after that the management pages are
-// what change it. Said out loud on every start because there is no other way to
-// find out — a file that no longer matches is the likeliest reason somebody is
-// standing in front of this wondering why a room will not open.
-// adoptRelays writes the configured relays into the store the first time this
-// runs, and says what is in effect.
-//
-// The file is the starting value and only that, exactly as the opening policy
-// is: after the first start the management pages are what change this, and a
-// file that no longer matches is the likeliest reason somebody is looking at a
-// relay list that is not the one they edited.
 // enrolFrom builds what a new relay is told, or nothing where enrolment was not
 // configured.
 //
@@ -548,6 +537,13 @@ func relayRedis(conf *config.Config) string {
 	return address
 }
 
+// adoptRelays writes the configured relays into the store the first time this
+// runs, and says what is in effect.
+//
+// The file is the starting value and only that, exactly as the opening policy
+// is: after the first start the management pages are what change this, and a
+// file that no longer matches is the likeliest reason somebody is looking at a
+// relay list that is not the one they edited.
 func adoptRelays(st *store.Store, conf *config.Config) error {
 	configured := make([]store.Relay, 0, len(conf.Meet.Relays))
 	for _, relay := range conf.Meet.Relays {
@@ -621,15 +617,33 @@ func adoptAdmins(st *store.Store, conf *config.Config) error {
 	return nil
 }
 
+// adoptOpening settles who may open a room, and says so.
+//
+// The configuration file is the starting value and only that: it is written into
+// the store the first time this runs, and after that the management pages are
+// what change it. Said out loud on every start because there is no other way to
+// find out — a file that no longer matches is the likeliest reason somebody is
+// standing in front of this wondering why a room will not open.
 func adoptOpening(st *store.Store, conf *config.Config) error {
 	chosen, err := st.AdoptOpening(conf.Meet.Rooms.OpenedBy)
 	if err != nil {
 		return err
 	}
 
-	admins := len(conf.Meet.Admins)
+	// Counted from the store rather than from the file, because the store is
+	// what decides it at runtime and the file is only what the store adopted on
+	// a first start. A deployment whose administrators were all added through
+	// the management pages has an empty list in its file and a full one in its
+	// store, and this warned at every start that nobody was configured and that
+	// anybody could open a room -- while the policy it was warning about was
+	// working correctly. An operator following that warning is following it to
+	// nothing.
+	listed, err := st.Admins()
+	if err != nil {
+		return err
+	}
 
-	if opening := chosen.InEffect(admins); opening != chosen {
+	if opening := chosen.InEffect(len(listed)); opening != chosen {
 		slog.Warn(
 			"rooms are set to be opened by an administrator, and nobody is configured as one. "+
 				"Nothing could satisfy that, so anybody may open one until somebody is listed",
@@ -647,7 +661,7 @@ func adoptOpening(st *store.Store, conf *config.Config) error {
 		return nil
 	}
 
-	slog.Info("rooms", "opened by", chosen, "administrators", admins)
+	slog.Info("rooms", "opened by", chosen, "administrators", len(listed))
 
 	return nil
 }
@@ -739,6 +753,12 @@ func announceSettings(conf *config.Config) {
 		"codecs", codecs)
 }
 
+// announce prints where to open the client.
+//
+// The address on the network comes with a warning rather than on its own,
+// because over plain HTTP it is a link that loads and then cannot open a camera:
+// browsers withhold devices outside a secure context, and only localhost is
+// exempt. Printing it unqualified would be an invitation into that dead end.
 func announce(addr net.Addr, secure bool) {
 	tcp, ok := addr.(*net.TCPAddr)
 	if !ok {

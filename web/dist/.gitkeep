@@ -1,0 +1,10 @@
+Kept so that a fresh clone compiles.
+
+`//go:embed all:web/dist` in main.go is resolved by the compiler, not at run
+time, and it fails the build when the directory does not exist. Git does not
+track directories, only files, so without something in here the first thing a
+new clone does is fail at `go build` with a message about a missing pattern
+rather than about a missing build step.
+
+What to serve when nothing has been built is placeholder.html, which lives
+outside this directory where a build cannot overwrite it.

@@ -98,9 +98,18 @@ func (a *App) carry(last string) (string, bool) {
 	sum := sha256.Sum256(append(append([]byte(nil), cert...), key...))
 	mark := hex.EncodeToString(sum[:])
 
-	if mark == last {
-		return mark, true
-	}
+	// The digest decides how loudly this hour is reported. It used to decide
+	// whether the hour happened at all, and that was the whole watchdog undone:
+	// everything below — reading back what each relay is actually serving, and
+	// the warning about the ones this node cannot renew — sat behind a return
+	// taken whenever the certificate had not changed. This node's certificate
+	// changes about every ninety days. The relays it was meant to be watching
+	// hold six-day certificates. A two-day warning window inside a ninety-day
+	// check is not a window.
+	//
+	// Offering it again costs nothing: a relay handed the certificate it is
+	// already serving keeps what it has and says so, without writing a file.
+	renewed := mark != last
 
 	carried := rtc.Certificate{Cert: string(cert), Key: string(key)}
 
@@ -169,8 +178,25 @@ func (a *App) carry(last string) (string, bool) {
 		}
 	}
 
-	slog.Info("offered the renewed certificate to the relays",
-		"expires", expires.Format(time.RFC3339), "answered", taken, "unreachable", refused)
+	// Only the hour the certificate actually changed says so. The rest is the
+	// round having happened, which matters to anybody wondering whether the
+	// warnings above are absent or merely never looked for — and which is worth
+	// a line at debug rather than an hourly one at info.
+	if renewed {
+		slog.Info("offered the renewed certificate to the relays",
+			"expires", expires.Format(time.RFC3339), "answered", taken, "unreachable", refused)
+	} else {
+		slog.Debug("checked what the relays are serving",
+			"expires", expires.Format(time.RFC3339), "answered", taken, "unreachable", refused)
+	}
+
+	// A round where nothing answered is not a quiet round. The certificate this
+	// node holds is fine and every relay is unreachable from it, which is worth
+	// hearing about at the hour it starts rather than at the expiry it ends in.
+	if taken == 0 && refused > 0 {
+		slog.Warn("no relay would take the certificate this hour, so nothing here knows what any "+
+			"of them are serving", "unreachable", refused)
+	}
 
 	for name, when := range own {
 		slog.Info("a relay is serving its own certificate, which this node cannot renew",

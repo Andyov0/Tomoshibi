@@ -1,4 +1,12 @@
-package admin
+// Package guess bounds how fast a passphrase can be tried.
+//
+// Its own package because more than one door takes a passphrase and they have
+// to share a budget. A limit on the management sign-in and none on the room
+// join is not two limits, it is none: the same secret is checked at both, and
+// an attacker uses whichever is cheaper. This deployment had exactly that —
+// ten a minute at one door and ten a second with no ceiling at the other,
+// sixty times the rate, and the second door answered the same question.
+package guess
 
 import (
 	"strings"
@@ -27,12 +35,14 @@ import (
 // ten at once where a bucket returns them one at a time — and for a limit whose
 // job is to make guessing slow, returning them gradually is if anything the
 // better behaviour.
+// PerAddress and Overall are exported so a test can assert the numbers rather
+// than a behaviour that happens to follow from them.
 const (
-	perAddress    = 10
-	perAddressAll = rate.Limit(perAddress) / rate.Limit(time.Minute/time.Second)
+	PerAddress    = 10
+	perAddressAll = rate.Limit(PerAddress) / rate.Limit(time.Minute/time.Second)
 
-	overall    = 30
-	overallAll = rate.Limit(overall) / rate.Limit(time.Minute/time.Second)
+	Overall    = 30
+	overallAll = rate.Limit(Overall) / rate.Limit(time.Minute/time.Second)
 )
 
 // idle is how long a caller's bucket is kept after their last failure.
@@ -42,7 +52,7 @@ const (
 // when nobody is trying.
 const idle = 10 * time.Minute
 
-// attempts bounds failed sign-ins, by address and in total.
+// Attempts bounds failed guesses, by address and in total.
 //
 // In total as well as by address, because by address alone is not a limit. The
 // budget is per caller and an attacker chooses how many callers to be: a
@@ -52,7 +62,7 @@ const idle = 10 * time.Minute
 // The cost of that ceiling is that a determined stranger can lock out the
 // administrator. That is the right way round: this door being shut for a minute
 // is an inconvenience, and it being open is the end of every other control.
-type attempts struct {
+type Attempts struct {
 	mu       sync.Mutex
 	byCaller map[string]*budget
 	all      *rate.Limiter
@@ -64,10 +74,10 @@ type budget struct {
 	seen    time.Time
 }
 
-func newAttempts() *attempts {
-	return &attempts{
+func New() *Attempts {
+	return &Attempts{
 		byCaller: make(map[string]*budget),
-		all:      rate.NewLimiter(overallAll, overall),
+		all:      rate.NewLimiter(overallAll, Overall),
 	}
 }
 
@@ -76,7 +86,7 @@ func newAttempts() *attempts {
 // Asked rather than taken, because a successful sign-in should cost nothing:
 // somebody who proves who they are has demonstrated they were not guessing, and
 // charging them for it makes an administrator's day harder than an attacker's.
-func (a *attempts) Allow(caller string) bool {
+func (a *Attempts) Allow(caller string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -86,7 +96,7 @@ func (a *attempts) Allow(caller string) bool {
 }
 
 // Failed records a refusal, spending from both buckets.
-func (a *attempts) Failed(caller string) {
+func (a *Attempts) Failed(caller string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -95,7 +105,7 @@ func (a *attempts) Failed(caller string) {
 
 	held, known := a.byCaller[caller]
 	if !known {
-		held = &budget{limiter: rate.NewLimiter(perAddressAll, perAddress)}
+		held = &budget{limiter: rate.NewLimiter(perAddressAll, PerAddress)}
 		a.byCaller[caller] = held
 	}
 
@@ -106,7 +116,7 @@ func (a *attempts) Failed(caller string) {
 
 // sweep drops callers who have not failed in a while, so that a script cycling
 // through addresses cannot grow the map without bound.
-func (a *attempts) sweep(now time.Time) {
+func (a *Attempts) sweep(now time.Time) {
 	if now.Sub(a.swept) < time.Minute {
 		return
 	}

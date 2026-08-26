@@ -334,10 +334,40 @@ export function App() {
 		 * re-render between the warning and the disconnection would be a chance
 		 * for the two to disagree.
 		 */
-		const moving = { soon: false };
+		const moving = { soon: false, at: 0 };
 
-		const told = (_payload: Uint8Array, _who: unknown, _kind: unknown, topic?: string) => {
-			if (topic === "moving") moving.soon = true;
+		/*
+		 * Only from the server, and only for as long as it takes.
+		 *
+		 * Every participant may publish data — they have to, since this is how
+		 * the watching list and the chat travel — and this listener used to
+		 * ignore who sent what. So anybody in the room could send one empty
+		 * message on this topic and every other tab would quietly arm itself to
+		 * rejoin. Nothing visible happened at the time. It happened later, when
+		 * the host legitimately ended the meeting: instead of being told so,
+		 * everybody's client read the closure as a move and put the room back up
+		 * on the same machine, with the notice swallowed on the way past.
+		 *
+		 * The sender settles it. The media server stamps every client packet
+		 * with the identity it authenticated, and the client library resolves
+		 * that identity against the people in the room, so a packet from a
+		 * participant always arrives with one attached. The room service sends
+		 * as nobody — there is no participant called "tomoshibi" — and that is
+		 * the only way to arrive with none.
+		 *
+		 * The deadline covers the one case the sender cannot: a participant who
+		 * leaves in the instant between the media server forwarding their packet
+		 * and this running has no entry left to resolve to, and would look like
+		 * the server. A move follows its warning within about two seconds, so a
+		 * warning older than this is not the one being acted on.
+		 */
+		const MOVING_HOLDS_FOR = 15_000;
+
+		const told = (_payload: Uint8Array, who: unknown, _kind: unknown, topic?: string) => {
+			if (topic !== "moving" || who !== undefined) return;
+
+			moving.soon = true;
+			moving.at = Date.now();
 		};
 
 		live.on(RoomEvent.DataReceived, told);
@@ -346,7 +376,11 @@ export function App() {
 			// Moved rather than ended: straight back in, to the machine the room
 			// has been put on. The address still names the room and this tab is
 			// still the tab that was in it, so the ordinary rejoin does the rest.
-			if (moving.soon && reason === DISCONNECT_ROOM_CLOSED) {
+			if (
+				moving.soon &&
+				Date.now() - moving.at < MOVING_HOLDS_FOR &&
+				reason === DISCONNECT_ROOM_CLOSED
+			) {
 				setLive(undefined);
 				current.current = undefined;
 

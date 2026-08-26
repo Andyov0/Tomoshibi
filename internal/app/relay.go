@@ -188,6 +188,18 @@ func (r *relays) offered() []store.Relay {
 	return r.reach.keep(r.all())
 }
 
+// answering is how many of them answered the last round.
+//
+// Separate from offered, and deliberately without its fallback. Offering
+// everything when nothing answered is right — a control node that has lost its
+// own network should not take the fleet down with it — but counting what it
+// offered is not counting what is up. The fleet reading on the management page
+// was doing exactly that, and so it read eleven of eleven online at the one
+// moment it was being consulted to find out whether anything was.
+func (r *relays) answering() int {
+	return len(r.reach.only(r.all()))
+}
+
 // preferred splits a list into the relays to use and the ones held in reserve.
 //
 // A fallback relay is not a worse relay — it is a relay whose cost is paid in

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"tomoshibi/internal/guess"
 
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
@@ -100,7 +101,7 @@ type Sessions struct {
 
 	mu    sync.Mutex
 	open  map[string]Session
-	limit *attempts
+	limit *guess.Attempts
 }
 
 // Remember gives the sessions somewhere to survive a restart.
@@ -112,7 +113,7 @@ func NewSessions(admins func() []config.Admin, tripKey []byte) *Sessions {
 		admins:  admins,
 		tripKey: tripKey,
 		open:    make(map[string]Session),
-		limit:   newAttempts(),
+		limit:   guess.New(),
 	}
 }
 

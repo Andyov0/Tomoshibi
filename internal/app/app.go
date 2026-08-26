@@ -528,7 +528,35 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// Asked once and used twice: whether this passphrase belongs to an
 	// administrator decides both whether a room nobody has used may be opened
 	// and whether a relay reserved for administrators may be asked for.
-	_, isAdmin := config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
+	// Whether this passphrase belongs to an administrator — and every guess at
+	// that question charged to the same budget the management sign-in spends
+	// from.
+	//
+	// This door asks the identical question and answers it in a way somebody can
+	// read: a reserved relay refuses, a room nobody has used opens, and the host
+	// endpoint says "admin". Held to ten a second with no ceiling, against a
+	// sign-in held to ten a minute with one, it was the cheaper door by a factor
+	// of sixty and it was not counted as a door at all. A dictionary that takes
+	// centuries at one takes an afternoon at the other.
+	//
+	// Charged only where a passphrase was actually offered. An empty one belongs
+	// to everybody who joins an open room, and counting those would rate-limit
+	// the ordinary case to protect against a guess nobody made.
+	isAdmin := false
+	if !body.Passphrase.Empty() {
+		if guessing := a.admin.Guessing(); guessing != nil && !guessing.Allow(limit.Caller(r, a.conf.Meet.TrustProxy)) {
+			fail(w, http.StatusTooManyRequests, reasonRateLimited)
+			return
+		}
+
+		_, isAdmin = config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
+
+		if !isAdmin {
+			if guessing := a.admin.Guessing(); guessing != nil {
+				guessing.Failed(limit.Caller(r, a.conf.Meet.TrustProxy))
+			}
+		}
+	}
 
 	// A relay somebody may not use is refused rather than quietly swapped.
 	//
@@ -939,7 +967,7 @@ func (a *App) relayList(w http.ResponseWriter, r *http.Request) {
 
 	respond(w, relayListResponse{
 		Relays: entries,
-		Fleet:  fleetCount{Online: len(list), Total: len(a.relays.all())},
+		Fleet:  fleetCount{Online: a.relays.answering(), Total: len(a.relays.all())},
 		// Said rather than inferred, so a client does not have to guess from an
 		// empty list whether measuring would be listened to. Under anything but
 		// probe it would not be, and measuring would be a delay before every

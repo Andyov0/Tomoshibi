@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"tomoshibi/internal/guess"
 	"tomoshibi/internal/rtc"
 
 	"tomoshibi/internal/config"
@@ -278,7 +279,7 @@ func TestGuessingIsRefusedBeforeItIsChecked(t *testing.T) {
 
 	// Past the ceiling on the endpoint as a whole, which is what an attacker
 	// with many addresses runs into.
-	for i := 0; i < overall+perAddress; i++ {
+	for i := 0; i < guess.Overall+guess.PerAddress; i++ {
 		mux.ServeHTTP(httptest.NewRecorder(), sign(`{"passphrase":"guess"}`))
 	}
 

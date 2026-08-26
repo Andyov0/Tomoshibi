@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"tomoshibi/internal/limit"
 
 	"tomoshibi/internal/room"
 	"tomoshibi/internal/store"
@@ -74,10 +75,24 @@ func (a *App) mountAccounts(mux *http.ServeMux) {
 }
 
 func (a *App) accountSignIn(w http.ResponseWriter, r *http.Request) {
-	// The same limiter the join uses. Signing in is the other place on this
-	// deployment where somebody can try a passphrase, and a limit on one door
-	// and not the other is a limit on neither.
+	// Two limits, because this door does two jobs.
+	//
+	// The join's limiter bounds how often anybody may ask, which is what stops
+	// this from being a way to hammer the store. The guessing budget bounds how
+	// often a passphrase may be tried, and it is shared with the management
+	// sign-in — which matters here more than anywhere, because whoever() below
+	// accepts an administrator's name and passphrase and hands back a session
+	// that moderates every room for thirty days. The management sign-in holds
+	// that same credential to ten a minute; without this, the same guess was
+	// worth ten a second here.
 	if !a.limit.Allow(r) {
+		fail(w, http.StatusTooManyRequests, reasonRateLimited)
+		return
+	}
+
+	caller := limit.Caller(r, a.conf.Meet.TrustProxy)
+
+	if guessing := a.admin.Guessing(); guessing != nil && !guessing.Allow(caller) {
 		fail(w, http.StatusTooManyRequests, reasonRateLimited)
 		return
 	}
@@ -96,6 +111,12 @@ func (a *App) accountSignIn(w http.ResponseWriter, r *http.Request) {
 	account, ok := a.whoever(body.Name, trip)
 
 	if !ok || body.Passphrase.Empty() {
+		// Charged on the way out rather than on the way in, so that somebody
+		// signing in correctly does not spend from a budget meant for guesses.
+		if guessing := a.admin.Guessing(); guessing != nil {
+			guessing.Failed(caller)
+		}
+
 		fail(w, http.StatusUnauthorized, reasonNotYours)
 		return
 	}

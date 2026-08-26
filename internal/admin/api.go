@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"tomoshibi/internal/guess"
 
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
@@ -1140,4 +1141,21 @@ func (a *API) SessionOf(r *http.Request) (Session, bool) {
 	}
 
 	return a.sessions.Of(r)
+}
+
+// Guessing is the budget every door that takes a passphrase spends from.
+//
+// Shared rather than one each, because they check the same secret. The
+// management sign-in was held to ten a minute with a ceiling on the whole
+// endpoint, and the room join — which also asks whether a passphrase belongs to
+// an administrator, and says so in its answer — was held to ten a second with
+// no ceiling at all. Sixty times the rate through a door nobody had counted as
+// a door, and a dictionary that would take centuries at one of them takes an
+// afternoon at the other.
+func (a *API) Guessing() *guess.Attempts {
+	if a == nil || a.sessions == nil {
+		return nil
+	}
+
+	return a.sessions.limit
 }

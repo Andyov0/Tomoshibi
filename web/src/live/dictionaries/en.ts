@@ -314,7 +314,6 @@ const en = {
 	"Everybody will be disconnected and told the room has closed. Links to it stop working.": "Everybody will be disconnected and told the room has closed. Links to it stop working.",
 	"The host closed this room.": "The host closed this room.",
 	"That meeting has ended.": "That meeting has ended.",
-	"That invitation has already been used.": "That invitation has already been used.",
 	"That invitation is no longer good. Ask for another.": "That invitation is no longer good. Ask for another.",
 	"The connection to this room was lost.": "The connection to this room was lost.",
 	"You were removed from this room.": "You were removed from this room.",
@@ -480,6 +479,7 @@ const en = {
 	"1 day": "1 day",
 	"{count} days": "{count} days",
 	"{count} hours": "{count} hours",
+	"It stops working after a day either way.": "It stops working after a day either way.",
 } as const;
 
 export default en;

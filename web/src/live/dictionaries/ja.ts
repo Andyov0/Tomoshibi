@@ -283,7 +283,6 @@ const ja: Dictionary = {
 	"Everybody will be disconnected and told the room has closed. Links to it stop working.": "全員が切断され、部屋が解散したと表示されます。この部屋へのリンクも無効になります。",
 	"The host closed this room.": "ホストがこの部屋を解散しました。",
 	"That meeting has ended.": "その会議は終了しました。",
-	"That invitation has already been used.": "この招待はすでに使われています。",
 	"That invitation is no longer good. Ask for another.": "この招待は無効になりました。もう一度もらってください。",
 	"The connection to this room was lost.": "この部屋との接続が失われました。",
 	"You were removed from this room.": "この部屋から退出させられました。",
@@ -449,6 +448,7 @@ const ja: Dictionary = {
 	"1 day": "1 \u65e5",
 	"{count} days": "{count} \u65e5",
 	"{count} hours": "{count} \u6642\u9593",
+	"It stops working after a day either way.": "\u3044\u305a\u308c\u306b\u305b\u3088\u30011 \u65e5\u3067\u4f7f\u3048\u306a\u304f\u306a\u308a\u307e\u3059\u3002",
 };
 
 export default ja;

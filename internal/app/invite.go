@@ -25,10 +25,18 @@ redeems it gets an issued mark: a signature drawn from nothing, which says only
 that they are not the other people in the call. That is the honest description of
 a guest and it is all that should be claimed for one.
 
-How long it lasts is a day, and how many people it admits is one. Both are the
-answer to "what would somebody be surprised by", rather than to "what is most
-flexible": a link pasted into a group chat should let in the person it was meant
-for, and a link found in an old message should not work at all.
+How many people it admits is however many are sent it, and how long it lasts is
+until the meeting ends or a day, whichever comes first.
+
+Not one person, which is what this said and what half an implementation of it is
+still visible in the store. The panel that mints these offers a link and a way to
+stop it working, and describes it as one anybody may use — a host inviting three
+people should press the button once, and a link that stopped working after the
+first of them arrived would read as broken. Being able to take it back is what
+makes that safe, and that is what the revoke is for.
+
+The day is the ceiling under the real rule rather than the rule: a link found in
+a message from March should be dead however the asking went.
 */
 
 // The ceiling on an invite, which is not the rule.
@@ -240,10 +248,24 @@ func (a *App) invited(r *http.Request, name string) bool {
 	switch {
 	case err == nil:
 		return true
-	case errors.Is(err, store.ErrInviteSpent), errors.Is(err, store.ErrInviteExpired),
-		errors.Is(err, store.ErrNoSuchInvite):
+
+	// The token was no good, which is the ordinary answer and is not worth a
+	// line in a log: a link that has been revoked, or has run past its day, or
+	// was never one.
+	case errors.Is(err, store.ErrInviteExpired), errors.Is(err, store.ErrNoSuchInvite):
 		return false
+
+	// And anything else, which is the store failing.
+	//
+	// Said out loud, because the two are indistinguishable from outside and
+	// their causes are nothing alike. A store that will not answer refuses every
+	// invitation on the deployment at once, and the only evidence available to
+	// anybody was a stream of people saying their link did not work — which
+	// reads as the links being wrong.
 	default:
+		slog.Error("could not look up an invitation, so it was refused",
+			"room", name, "error", err)
+
 		return false
 	}
 }

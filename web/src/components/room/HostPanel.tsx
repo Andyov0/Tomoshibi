@@ -154,7 +154,13 @@ export function HostPanel({
 						</p>
 
 						<p className="text-[10.5px] text-fg-muted/80 leading-snug">
-							{t("Anybody with this link can join, until you end the meeting. No passphrase needed.")}
+							{t("Anybody with this link can join, until you end the meeting. No passphrase needed.")}{" "}
+							{/* The ceiling under that rule, which the panel never mentioned.
+							    Most meetings end long before it and never meet it; the one
+							    that does is a link sent on Friday for a Monday morning,
+							    which stops working overnight with nothing anywhere saying
+							    it would. */}
+							{t("It stops working after a day either way.")}
 						</p>
 
 						{/*

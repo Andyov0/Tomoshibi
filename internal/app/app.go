@@ -1176,11 +1176,9 @@ const (
 	// the person holding the link and only one of them means "ask for another".
 	reasonNoSuchInvite  = "no_such_invite"
 	reasonInviteExpired = "invite_expired"
-	reasonInviteSpent   = "invite_spent"
 	// The meeting a link was to has ended, which is not the same as the link
 	// having expired: it is a link to nothing rather than a link that ran out,
 	// and that is the difference between "ask for another" and "you missed it".
-	reasonMeetingOver     = "meeting_over"
 	reasonPassphraseShort = "passphrase_too_short"
 	reasonPassphraseSame  = "passphrase_unchanged"
 	reasonPassphraseTaken = "passphrase_in_use"

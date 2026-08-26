@@ -283,7 +283,6 @@ const zhHans: Dictionary = {
 	"Everybody will be disconnected and told the room has closed. Links to it stop working.": "所有人会被断开并收到「房间已解散」的提示,指向这个房间的链接同时失效。",
 	"The host closed this room.": "房主已解散这个房间。",
 	"That meeting has ended.": "那个会议已经结束了。",
-	"That invitation has already been used.": "这个邀请已经被用过了。",
 	"That invitation is no longer good. Ask for another.": "这个邀请已经失效了,再要一个吧。",
 	"The connection to this room was lost.": "与这个房间的连接已断开。",
 	"You were removed from this room.": "你已被移出这个房间。",
@@ -449,6 +448,7 @@ const zhHans: Dictionary = {
 	"1 day": "1 \u5929",
 	"{count} days": "{count} \u5929",
 	"{count} hours": "{count} \u5c0f\u65f6",
+	"It stops working after a day either way.": "\u65e0\u8bba\u5982\u4f55,\u4e00\u5929\u540e\u5931\u6548\u3002",
 };
 
 export default zhHans;

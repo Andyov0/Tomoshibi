@@ -283,7 +283,6 @@ const zhHant: Dictionary = {
 	"Everybody will be disconnected and told the room has closed. Links to it stop working.": "所有人會被斷開並收到「房間已解散」的提示,指向這個房間的連結同時失效。",
 	"The host closed this room.": "房主已解散這個房間。",
 	"That meeting has ended.": "那個會議已經結束了。",
-	"That invitation has already been used.": "這個邀請已經被用過了。",
 	"That invitation is no longer good. Ask for another.": "這個邀請已經失效了,再要一個吧。",
 	"The connection to this room was lost.": "與這個房間的連線已中斷。",
 	"You were removed from this room.": "你已被移出這個房間。",
@@ -449,6 +448,7 @@ const zhHant: Dictionary = {
 	"1 day": "1 \u5929",
 	"{count} days": "{count} \u5929",
 	"{count} hours": "{count} \u5c0f\u6642",
+	"It stops working after a day either way.": "\u7121\u8ad6\u5982\u4f55,\u4e00\u5929\u5f8c\u5931\u6548\u3002",
 };
 
 export default zhHant;

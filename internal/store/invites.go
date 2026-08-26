@@ -54,7 +54,6 @@ var invites = []byte("invites")
 var (
 	ErrNoSuchInvite  = errors.New("no invite by that token is here")
 	ErrInviteExpired = errors.New("that invite has run out")
-	ErrInviteSpent   = errors.New("that invite has already been used")
 )
 
 // Invite is a one-off way into one room.
@@ -68,7 +67,10 @@ type Invite struct {
 	// Created and Expires bound it in time.
 	Created time.Time `json:"created"`
 	Expires time.Time `json:"expires"`
-	// Spent is how many have come through, for whoever wants to know.
+	// Spent is how many have come through. Written on every redemption and read
+	// by nothing yet: it is what a page showing a host their outstanding links
+	// would put beside each one, and it is kept because the count cannot be
+	// recovered later if it stops being taken.
 	//
 	// Counted rather than limited. It says how far a link travelled, which is
 	// worth seeing on a page and is not a thing anything decides on.

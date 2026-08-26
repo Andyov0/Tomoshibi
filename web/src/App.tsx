@@ -108,13 +108,16 @@ export function App() {
 				// different next moves: one asks for another link, one says the
 				// meeting is over and no link will help, and one says somebody
 				// took this link back.
+				// Two sentences rather than four. The other two were for refusals
+				// the server does not make: one for an invitation used up, from
+				// when a link admitted one person, and one for a meeting reported
+				// as over, which it says a different way. Both were translated
+				// into four languages and reachable by nobody.
 				if (invitation?.error) {
 					joinFailed(
-						invitation.error === "invite_expired" || invitation.error === "meeting_over"
+						invitation.error === "invite_expired"
 							? t("That meeting has ended.")
-							: invitation.error === "invite_spent"
-								? t("That invitation has already been used.")
-								: t("That invitation is no longer good. Ask for another."),
+							: t("That invitation is no longer good. Ask for another."),
 					);
 				}
 

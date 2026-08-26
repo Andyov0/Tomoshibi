@@ -12,6 +12,24 @@ library and serves the built client from an `embed.FS`, so one process holds the
 media server, the API, and the pages. There is no second service, no shared
 secret to distribute, and one TCP port facing the network.
 
+The same binary is three things, decided by `role`. A `full` deployment is one
+machine and is what the README describes. A `control` node holds the store, the
+management pages and the client, and holds no media. A `relay` holds media and
+nothing else — no store, no pages, no administrators — and several of them share
+one cluster through redis, so a meeting can be held on whichever machine is
+nearest to the people in it.
+
+Most of the work in this fork is in that split, and none of it is in the file
+map above: `internal/admin/enrol.go` and `install.go` bring a relay up from one
+line on a new machine, `internal/app/certificate.go` and
+`internal/rtc/certificate.go` keep the fleet's certificates current from the
+control node, `internal/dns` creates and removes each relay's DNS record,
+`internal/app/reachable.go` decides which relays clients are offered, and
+`internal/app/silent.go` is what lets a relay in mainland China answer nothing
+that would identify it as a website. RELAY.md is the document for all of this.
+`dev/viahk/` is the routing that gets a mainland relay's overseas traffic onto a
+usable path, and has its own README.
+
 Go 1.26, pnpm, React, Tailwind v4, Vite. `pnpm`, never `npm` or `bun` — the
 lockfile is `pnpm-lock.yaml` and it is committed.
 
@@ -72,8 +90,9 @@ compiler and do not need a test; a rule enforced in the wrong place does.
 - Test through the router, not the handler. A handler tested directly is a
   handler tested with its gate removed.
 - Where a gate needs a concrete dependency to be exercised, the dependency is the
-  problem. `internal/admin` names three narrow interfaces for exactly this
-  reason; the API held a real media server once and sat at nothing per cent.
+  problem. `internal/admin` names a narrow interface for each thing it needs —
+  twelve of them now — for exactly this reason; the API held a real media server
+  once and sat at nothing per cent.
 - Verify against the real thing when the claim is about the real thing. Two
   headless browsers with `--use-fake-device-for-media-stream` have settled more
   arguments here than any amount of reasoning, and the media server's own debug

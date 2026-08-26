@@ -73,10 +73,34 @@ server can work out — it sees an address, and an address says where a block wa
 registered, not how long a packet takes to get there. The browser about to make
 the call can simply measure.
 
-Each relay publishes an empty `GET /api/health`, answered for any origin so it
-can be timed by a page served from the control node. The client fetches
-`/api/relays`, times all of them at once, and sends the fastest name with its
-join.
+The client fetches `/api/relays`, times all of them at once, and sends the
+fastest name with its join.
+
+**There is no health endpoint, and adding one back would be the fault it was
+removed for.** A relay in mainland China is probed by something that opens its
+TLS port, sends an ordinary HTTPS request and reads the answer; a port that
+replies is a website, and an unregistered domain may not be one. An endpoint
+answering 204 to anybody who asks is that probe's evidence, served continuously
+and by us — and every client asking for it before every join is that probe
+arriving from our own users. `meet.silent` exists for the same reason and turns
+off every answer that is not a WebSocket upgrade.
+
+So the timing is done two other ways, and the choice is made for the whole list
+rather than per relay — a relay measured the fast way would beat a nearer one
+measured the slow way, on nothing but the measurement it happened to allow:
+
+- **STUN**, where every relay in the list has `meet.probe_port` set. One round
+  trip, over the transport a call actually uses. The enrolment writes this from
+  `meet.enrol.probe_port`.
+- **The signalling socket** otherwise: opened, timed, closed, without a token,
+  so the relay refuses and the refusal is the round trip. About three of them —
+  TCP, TLS, and the upgrade — so the numbers rank correctly and read as three
+  times too slow.
+
+The control node's own check is neither. It opens a TCP connection to the
+signalling port and closes it without sending a byte, and where a relay has a
+probe port it also sends one STUN request, which is the only thing here that
+notices a relay whose signalling is reachable and whose media is not.
 
 What travels is a name from the list it was given and never an address. A forged
 one selects a different relay of the deployment's own at worst; an unknown one
@@ -100,25 +124,72 @@ region.
 
 `dev/relay.yaml` and `dev/control.yaml` are working examples.
 
-On each relay:
-
-```
-tomoshibi /etc/tomoshibi/relay.yaml
-```
-
-Open the TCP port under `meet.listen` and the UDP port under `rtc.udp_port`.
-Set `rtc.use_external_ip: true` — left false a relay hands out an address only
-it can reach, and every connection fails after appearing to succeed. The server
-warns about this at startup.
-
-On the control node:
+The control node first, since a relay enrols against it:
 
 ```
 tomoshibi /etc/tomoshibi/control.yaml
 ```
 
-Put it behind TLS. Cameras and secure WebSockets both need a secure page, and
+Put it behind TLS, or give it `meet.tls_cert` and `meet.tls_key` and let it
+serve TLS itself. Cameras and secure WebSockets both need a secure page, and
 browsers exempt only localhost.
+
+### Bringing up a relay
+
+One line on the new machine, taken from the management pages under **Relays →
+Add a relay**, where it arrives with the enrolment secret already in it:
+
+```
+curl -fsSL https://meet.example/install | ENROL=<secret> sh -s <prefix>
+```
+
+What it does, in order: downloads the binary from the control node, asks
+`/api/enrol` for its share of the deployment — the API key and secret, the redis
+address, the certificate and key, the region and node selector — creates the DNS
+record for `<prefix>.<enrol.domain>` through Cloudflare, writes
+`/etc/tomoshibi/relay.yaml`, installs a `tomoshibi-relay` systemd unit, and
+starts it. `REPLACE=1` re-runs it over an existing relay, which is also the only
+way to upgrade one's binary.
+
+Two things to know before running it:
+
+- **`SILENT=1` for a relay in mainland China**, which sets `meet.silent` and
+  stops the machine answering anything but a WebSocket upgrade. Off elsewhere,
+  where a machine that answers is a machine that can be diagnosed.
+- **The whole fleet must be the same architecture.** `/download/tomoshibi`
+  serves the control node's own running binary, so an arm64 relay enrolling
+  against an amd64 control node downloads something it cannot execute.
+
+`/install` and `/download/tomoshibi` are both unauthenticated. The script served
+at the public address carries no secret — that travels in the operator's own
+command, so nothing that logs a URL ever sees it — while the copy downloaded
+from the management pages has it embedded, because those are behind a session.
+
+Then, on the machine: open the TCP port under `meet.listen`, the UDP port under
+`rtc.udp_port`, and `meet.probe_port` if the deployment sets one. A cloud
+provider's security group counts as a firewall here and is the usual reason a
+relay answers signalling and carries no media.
+
+The relay's certificate is then this control node's business: it compares what
+it holds against what each relay serves every hour, sends a renewed one when it
+changes, and warns about any relay serving something it did not send and cannot
+renew. A relay dialled by bare address has its own short-lived certificate from
+an acme client on the machine itself; that cron job is not in this repository
+and the hourly check is what notices when it stops.
+
+### By hand
+
+Still supported, and what the examples show:
+
+```
+tomoshibi /etc/tomoshibi/relay.yaml
+```
+
+Set `rtc.use_external_ip: true` — left false a relay hands out an address only
+it can reach, and every connection fails after appearing to succeed. The server
+warns about this at startup. Then add the relay in the management pages, or list
+it under `meet.relays` before the control node's first start, which is the only
+start that reads it.
 
 ## A relay reached by address rather than by name
 

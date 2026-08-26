@@ -469,8 +469,11 @@ func Load(path string) (*Config, error) {
 
 	if !meet.Rooms.OpenedBy.Valid() {
 		return nil, fmt.Errorf(
-			"rooms.opened_by: %q is not who a room can be opened by. The two are %q and %q",
-			meet.Rooms.OpenedBy, room.ByAnyone, room.ByAdmins)
+			// All three, because there are three. This listed two and left out
+			// the middle one, so somebody who mistyped "signed" was told by the
+			// error message that the setting they wanted does not exist.
+			"rooms.opened_by: %q is not who a room can be opened by. The three are %q, %q and %q",
+			meet.Rooms.OpenedBy, room.ByAnyone, room.BySigned, room.ByAdmins)
 	}
 
 	if err := checkRole(&meet); err != nil {

@@ -5,10 +5,11 @@ are compiled together into a single file: deploying is copying it to a machine
 and running it, and there is nothing beside it to keep in step.
 
 Somebody opens a link, is shown their own camera, types a name, and is in a
-call. Nobody registers, and there is no account to lose. What it does have is a
-way of proving a name — a passphrase turns one into a name nobody else can wear
-— a management surface for whoever runs the deployment, and a switch that limits
-new rooms to the people on that list.
+call. Nobody registers, and a deployment can run without a single account on it.
+What it does have is a way of proving a name — a passphrase turns one into a
+name nobody else can wear — a management surface for whoever runs the
+deployment, a switch limiting new rooms to people who can prove one, and
+accounts for the deployments that want them.
 
 `tomoshibi` is Japanese for a small light left burning: a lamp in a window,
 enough for the people who need it and no brighter.
@@ -16,15 +17,26 @@ enough for the people who need it and no brighter.
 ```
 main.go      Command dispatch, the embedded client, graceful shutdown.
 internal/
-  app/       HTTP surface: the client, the join endpoint, the signalling proxy.
+  app/       HTTP surface: the client, the join endpoint, the signalling proxy,
+             the host's controls, and what a control node does about its fleet.
+  admin/     The management pages' API: relays, accounts, rooms, readings, the
+             audit log, and bringing a new relay up from one line on a machine.
   config/    One document split into this server's half and the media server's.
-  rtc/       The embedded media server and a proxy to its loopback listener.
+  rtc/       The embedded media server, a proxy to its loopback listener, the
+             cluster client, and the STUN responder a browser times.
   room/      Room names, identities, and the tokens that authorise them.
-  store/     A key-value file recording which rooms have been used.
+  store/     Everything this deployment remembers, and copies of it.
+  dns/       Each relay's DNS record, made and removed as relays come and go.
+  guess/     How fast a passphrase may be tried, shared by every door that
+             takes one.
   limit/     How fast rooms can be asked for.
 web/         Vite, React, Tailwind, and the LiveKit client SDK.
-dev/         Configuration for running it locally.
+dev/         Example configuration, and the tools for finding out what is
+             wrong with a fleet. See Testing.
 ```
+
+One binary, three roles. This document describes the single-machine one; a
+deployment split into a control node and several relays is RELAY.md.
 
 ## Building it
 
@@ -147,14 +159,28 @@ ssh server 'mv /usr/local/bin/tomoshibi.new /usr/local/bin/tomoshibi \
   && systemctl restart tomoshibi'
 ```
 
-Nothing in the store needs migrating between versions. A record a build cannot
-read is treated as one that is not there, which is affordable because none of it
-is authoritative: who is in a room is the media server's to know, and a token is
-signed rather than stored.
+Nothing in the store needs migrating between versions: a record a build cannot
+read is treated as one that is not there.
+
+That used to be affordable because nothing in there mattered — who is in a room
+is the media server's to know, and a token is signed rather than stored. It is
+not affordable any more. The store now holds the administrators, the relay
+definitions and every field measured about them, the accounts, the invitations
+and the opening policy, and it is the only place any of that exists. **Back it
+up.** Copies are taken daily beside it; see **Watching it**.
+
+Upgrading a fleet: the control node distributes the binary it is itself running,
+so it goes first, and each relay is then re-enrolled with `REPLACE=1`. Restarting
+a relay ends the calls it is holding. Restarting the control node does not end
+any call — it stops anybody new joining for as long as it is down.
+
+There is no version in the binary and no `--version`, so which build a machine
+is running is not a question this can answer. The one way to tell is to rebuild
+the commit and compare hashes, which the reproducible build makes possible.
 
 ## Administrators
 
-There are no accounts. An administrator is a signature listed in the
+An administrator is not an account. It is a signature listed in the
 configuration file — the same signature their passphrase already produces beside
 their name in every room they join.
 
@@ -188,6 +214,36 @@ Two levels rather than one, because binding them together makes the choice
 Restart, and `/admin` exists. Where no administrator is listed it does not: the
 address answers like any other nobody claimed, so there is no sign-in page on a
 deployment with nobody to sign in.
+
+**The file is read once.** The first start copies the list into the store, and
+from then on the store is the authority — a deployment adds and removes
+administrators through the pages, and it would be no good if a restart put back
+somebody who had been removed. So on a deployment that has already started once,
+editing this list does nothing at all: no error, no warning, and a sign-in that
+answers 401. `meet.relays` and `meet.rooms.opened_by` work the same way.
+
+Which means the file is not the way back in if the pages are unreachable. The
+way back in is `dev/roster`, which writes to the store directly. It needs the
+service stopped, because the store admits one process:
+
+```bash
+systemctl stop tomoshibi
+go build -o /tmp/roster ./dev/roster
+tomoshibi admin trip /etc/tomoshibi/meet.yaml 'the passphrase'   # prints a trip
+/tmp/roster /var/lib/tomoshibi/meet.db add <trip> <name>
+systemctl start tomoshibi
+```
+
+Stopping the control node does not end calls in progress. It stops anybody new
+joining, for as long as it is down.
+
+The other way to be locked out is worse and has no recovery: `meet.tripcode_key`
+is what every signature is derived from, so a lost or replaced key invalidates
+every administrator, every account and every host claim at once. A missing file
+is silently replaced with a new one — the service starts, nothing is logged, and
+nobody's passphrase works any more. Back it up with the store, and keep it
+somewhere the store's copies are not, since one file compromises the signatures
+and the other holds them.
 
 To sign in, type the passphrase. `adam#7mrdz-nlq32` is accepted too, because that
 is the form this application teaches everywhere else.
@@ -241,6 +297,35 @@ startup.
 An administrator opens a new room by joining it with their passphrase, in the
 passphrase field on the join page. Everybody else is told the room has not been
 opened and to ask whoever is holding the meeting for the link.
+
+## Accounts
+
+Optional, and a deployment that wants none has none: nothing above this line
+needs them. What they add is a name that is remembered rather than proved each
+time — somebody signs in once, and their name, their avatar and their chosen
+relay are theirs on every visit without a passphrase being typed into a join
+screen.
+
+There is no self-service registration, deliberately. An administrator makes an
+account in the management pages, and the person is given a name and a passphrase
+the way they would be given any other credential. A meeting server that anybody
+on the internet can create an account on is a meeting server that anybody on the
+internet is inside.
+
+An account is worth having where `rooms.opened_by` is `signed`: it is what makes
+somebody able to start a meeting without keeping a passphrase in their head.
+Under `anyone` it buys a remembered name and nothing else.
+
+The session is a cookie, good for thirty days of not being used and ninety in
+total, and it survives a restart because it is kept in the store. Signing out
+ends it everywhere. An account can be blocked, which refuses its next sign-in
+and its next join without ending a call it is already in.
+
+Accounts and administrators are separate lists, and an administrator's
+credentials work at the account sign-in as well — the same passphrase, the same
+signature. Everything that tries a passphrase, at any of those doors, spends
+from one budget: ten a minute per address with a ceiling on the endpoint. A
+limit on one door and not the others is not three limits.
 
 ## How it works
 
@@ -438,12 +523,16 @@ Behind a proxy, set `meet.trust_proxy` so that `X-Forwarded-For` and
 typed, and believing them would let anybody claim a fresh rate-limit budget per
 request.
 
-`meet.rooms.opened_by` is who may use a name nobody has used before — `anyone`,
-which is the default and what an anonymous meeting link means, or `admins`,
-which refuses one unless the passphrase sent with the join belongs to somebody
-listed under `meet.admins`. A name already in use is untouched by either: a
-meeting in progress is never interrupted by this, and everybody who has the name
-still gets in.
+`meet.rooms.opened_by` is who may use a name nobody has used before. Three
+values:
+
+- `anyone` — the default, and what an anonymous meeting link means.
+- `signed` — anybody who joined with a passphrase, which is to say anybody who
+  can prove a name. The middle setting, and the one most deployments want.
+- `admins` — only a passphrase belonging to somebody listed under `meet.admins`.
+
+A name already in use is untouched by any of them: a meeting in progress is
+never interrupted by this, and everybody who has the name still gets in.
 
 It is the starting value only. The management pages change it, and cannot edit a
 file, so the choice is kept in the store and the file is what the store adopts on
@@ -453,6 +542,45 @@ value beside the one in force so the difference is visible rather than puzzling.
 Asking for `admins` where nobody is listed as one is a rule nothing could satisfy
 and every new name would be refused for good, so it is read as `anyone` and said
 so at startup.
+
+### The rest of the `meet` section
+
+Everything above is what most deployments touch. These are the ones that make a
+fleet work, and none of them had been written down anywhere:
+
+| | |
+| --- | --- |
+| `tls_cert`, `tls_key` | Serve TLS from this process rather than from a proxy. A renewed certificate is picked up without a restart. |
+| `public_url` | What this deployment calls itself in links it hands out. |
+| `public_addresses` | Addresses that are this machine. Without it, a node behind NAT resolves its own name for every management call — measured at twelve seconds each on the deployment that prompted it, and eleven milliseconds with it. |
+| `silent` | **Relays only.** Answer nothing but a WebSocket upgrade. For a machine on a network that decides what it is by asking it; an unregistered domain that answers an HTTPS request is a website and is taken off the air. Off elsewhere, where a machine that answers can be diagnosed. |
+| `probe_port` | **Relays only.** Where this machine answers STUN, so a browser can time one round trip rather than three. Zero is off. Not 3478, which is scanned continuously. |
+| `web_root` | Serve the client from a directory instead of from inside the binary. |
+| `token_ttl` | How long a join token is good for. |
+| `join_rate`, `join_burst` | How often anybody may ask to join. Separate from the budget that bounds passphrase guesses, which is fixed and shared between the join, the account sign-in and the management sign-in. |
+| `rooms.remember` | How long a name is remembered after nobody has used it. |
+
+`role` is `full`, `control` or `relay`, and two of the sections below are read
+only under one of them: `meet.enrol` on a control node, `meet.silent` on a
+relay. Written under the wrong role they are accepted and do nothing, which for
+`silent` is the most expensive silent failure here.
+
+### `meet.enrol`, on a control node
+
+What a relay receives when it runs the install line. Absent, the enrolment
+endpoints do not exist and relays are added by hand.
+
+| | |
+| --- | --- |
+| `secret` | What a machine must present to enrol. It travels in the operator's own command. |
+| `domain` | New relays become `<prefix>.<domain>`. |
+| `public_url` | Where a relay reaches this node. |
+| `listen_port`, `udp_port`, `tcp_port` | The ports every relay in the deployment uses, so nobody has to remember. |
+| `probe_port` | Written into each new relay's `meet.probe_port`. Unset means enrolled relays answer no STUN and are timed the slow way. |
+| `cert_file`, `key_file` | The certificate handed to a new relay and pushed hourly thereafter. Falls back to `meet.tls_cert`, so a control node behind a proxy that terminates TLS has neither and distributes nothing — set these explicitly there. |
+| `redis_addr` | Where relays reach redis, which is how they see one cluster. |
+| `binary` | What `/download/tomoshibi` serves. Defaults to this process's own, so the fleet must share its architecture. |
+| `cloudflare_token`, `cloudflare_zone` | Used to create the DNS record for a new relay, and to remove it when one is dropped. |
 
 ## Commands
 
@@ -478,25 +606,93 @@ cd web && pnpm run check && pnpm test
 
 The interesting behaviour needs two browsers and a running server, so it is
 driven through headless Chrome with fake media devices rather than unit-tested.
-Those scripts are not checked in; the flags that matter are
-`--use-fake-device-for-media-stream` and `--use-fake-ui-for-media-stream`, and
-each run should use a fresh room name so that a session which has not timed out
-yet is not counted twice.
+`dev/twobrowsers/` holds those: `call.mjs` puts two people in a room, turns on a
+camera, checks frames arrive at both ends and that the button on the
+one-person-left screen is not underneath the control island; `doorway.mjs`
+checks which screen somebody holding a room name lands on, against a deployment
+configured with `rooms.opened_by: signed`.
+
+The flags that matter are `--use-fake-device-for-media-stream` and
+`--use-fake-ui-for-media-stream`, and each run should use a fresh room name so
+that a session which has not timed out yet is not counted twice.
+
+`dev/` also holds the tools worth knowing about before something goes wrong,
+since the day to find them is not the day something has:
+
+| | |
+| --- | --- |
+| `roster` | Add or remove an administrator directly in the store. The way back in when nobody can sign in; see **Administrators**. |
+| `udpcheck` | Send STUN binding requests to a relay's probe port. Answers "is media reaching this machine", which the management pages cannot. |
+| `turncheck` | Whether a relay will accept a TURN allocation. |
+| `snicheck` | Whether a path refuses a name in the TLS handshake, which is the failure a relay dialled by bare address exists for. |
+| `peekroom` | What the media server thinks is in a room. |
+| `crossrelay` | Whether two relays can carry a call between them, which is what `apart` records. |
+| `viahk` | Routing a mainland relay's overseas traffic through Hong Kong. Its own README. |
+
+## Watching it
+
+Everything this notices is written to the log, and nothing is sent anywhere. On
+a fleet this is the part most likely to be missing when it matters, so it is
+worth knowing what is said and what nobody will hear:
+
+| Said | When |
+| --- | --- |
+| `a relay stopped answering and is no longer offered to clients` | Its signalling port went quiet. Once on the change, not every sweep. |
+| `a relay answers signalling but its media port does not answer` | Calls sent there will connect and have no sound or picture. Only for relays with `probe_port` set. |
+| `most of the fleet did not answer this sweep` | Almost always this machine's own line rather than the fleet. The readings are held rather than acted on. |
+| `a relay is serving a certificate that expires soon` | Within two days, and this node cannot renew it — look at the acme client on that machine. |
+| `no relay would take the certificate this hour` | Nothing here knows what any of them are serving. |
+| `the store is empty and there are copies of it beside it` | This deployment held something and no longer does. See below. |
+| `could not copy the store` | There will be nothing to restore from. |
+
+The store is copied once a day to `<database>.YYYY-MM-DD` beside itself, seven
+kept. This matters more than it looks: the store holds the relay definitions and
+every field measured about them, the accounts, the administrators, the
+invitations and the opening policy, and the configuration file holds three of a
+relay's nineteen fields and is read only on a first start. A store truncated to
+nothing opens without an error and reports no buckets, so the service starts,
+adopts what little the file has, and answers normally with everything else gone.
+
+To restore: stop the service, move a copy over the store, start it.
+
+`meet.tripcode_key` is not copied and should be, separately — see
+**Administrators** for what losing it costs.
 
 ## What is not here
 
-- **End-to-end encryption.** The SDK supports it; nothing here turns it on.
-- **Chat, recording, and telephony.** All available from the media server, none
-  wired up.
-- **Accounts.** Everybody is a guest. An identity lasts as long as the tab, and a
-  signed name is the closest thing to a persistent one: it survives because the
-  passphrase does, not because anything was stored.
-- **TLS.** Put a proxy in front for the web port; the UDP port needs none, since
-  media is encrypted end to end regardless. Until that is done the server is
-  only usable from the machine it runs on: browsers withhold cameras and
-  microphones outside a secure context, and only localhost is exempt. The client
-  says so rather than failing, and the startup log qualifies the network address
-  for the same reason.
+- **End-to-end encryption.** The SDK supports it; nothing here turns it on. This
+  is the one worth reconsidering, because media crosses machines that are rented
+  rather than owned and the server decrypts it on each of them. Nothing here
+  needs the plaintext — there is no recording and no transcription — so it would
+  cost less than it does in most meeting software.
+- **Recording and telephony.** Both are available from the media server and
+  neither is wired up. Recording needs a second service, which is the property
+  this deployment is built around not having.
+- **Self-service registration.** There are accounts — see below — but nobody
+  signs themselves up. An administrator makes them, or a deployment runs without
+  any and everybody is a guest.
+- **Alerting.** Everything this notices, it writes to the log. There is no
+  webhook, no mail, and no metrics endpoint. A certificate two days from expiry,
+  a relay whose media port has stopped answering, a store that has been emptied:
+  all of them say so, to a journal nobody is watching. See "Watching it" below.
+
+Three things this section used to list are here now, and were listed as missing
+for long enough that the list is worth correcting explicitly rather than quietly:
+
+- **Chat** was built. `web/src/live/chat.ts` and `ChatPanel.tsx`; the section
+  above describes it at length.
+- **Accounts** were built. `internal/store/accounts.go`, `internal/app/account.go`,
+  a separate `/account` page, sessions that survive a restart, avatars, blocking.
+  What is missing is only the self-service half.
+- **TLS** is here, and the claim was backwards: this binary terminates TLS
+  itself, from `meet.tls_cert` and `meet.tls_key`, and reloads a renewed
+  certificate without a restart. A proxy in front still works and is what a
+  deployment already running one should do.
+
+  Without either, the server is usable only from the machine it runs on:
+  browsers withhold cameras and microphones outside a secure context, and only
+  localhost is exempt. The client says so rather than failing, and the startup
+  log qualifies the network address for the same reason.
 
 ## Licence
 

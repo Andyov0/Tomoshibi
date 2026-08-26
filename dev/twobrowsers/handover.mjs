@@ -68,6 +68,42 @@ function cdp(port) {
 	};
 }
 
+// The server under test must be running the client on disk.
+//
+// A backgrounded process outlived the pkill meant to end it, so for thirteen
+// minutes every reading here came from a binary thirteen minutes old. The
+// measurements were consistent, repeatable and about the wrong build, and they
+// said the fix under test made no difference — which was very nearly believed.
+//
+// Content-hashed bundle names make this cheap to check: the page names the one
+// it wants and the build wrote the one it made, and if those differ then
+// nothing below is about the code in the working tree.
+//
+// This catches a stale client and not a stale server. A run where only Go
+// changed serves the same bundle and passes here, so the binary's own build is
+// worth reading too — `tomoshibi version` prints it, and the startup log
+// carries it.
+async function serving(at) {
+	const { readdirSync } = await import("node:fs");
+	const { join, dirname } = await import("node:path");
+	const { fileURLToPath } = await import("node:url");
+
+	const dist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "web", "dist", "assets");
+	const built = readdirSync(dist).find((name) => /^index-.*\.js$/.test(name));
+
+	const page = await (await fetch(`${at}/`)).text();
+	const asked = /assets\/(index-[A-Za-z0-9_-]+\.js)/.exec(page)?.[1];
+
+	if (!built || !asked || built !== asked) {
+		console.log(`FAIL  the server is not serving the client on disk`);
+		console.log(`        page wants ${asked}, the build made ${built}`);
+		console.log(`        an old process is probably still holding the port`);
+		process.exit(1);
+	}
+}
+
+await serving(AT);
+
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The name field carries no type attribute, so input[type="text"] does not match

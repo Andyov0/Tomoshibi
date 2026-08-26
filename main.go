@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -73,6 +74,9 @@ func run(args []string) error {
 		return listRooms(rest)
 	case "admin":
 		return adminCommand(rest)
+	case "version", "-v", "--version":
+		fmt.Println(version())
+		return nil
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 		return nil
@@ -93,7 +97,7 @@ func split(args []string) (string, []string) {
 	}
 
 	switch args[0] {
-	case "serve", "keygen", "rooms", "admin", "help", "-h", "--help":
+	case "serve", "keygen", "rooms", "admin", "version", "-v", "--version", "help", "-h", "--help":
 		return args[0], args[1:]
 	default:
 		// Anything else is taken as the configuration file, so
@@ -106,6 +110,7 @@ func usage(w *os.File) {
 	fmt.Fprint(w, `tomoshibi: a video meeting server in one binary
 
   tomoshibi [serve] [config.yaml]   Serve the client, the API, and the media
+  tomoshibi version                 Print which build this is
   tomoshibi keygen                  Print a fresh API key and secret
   tomoshibi rooms <database>        List the rooms a store has seen
   tomoshibi admin new [config.yaml] Make an administrator's passphrase and trip
@@ -728,7 +733,11 @@ func announceRole(conf *config.Config) {
 // deployment. Anybody who can read this log can already read the file it came
 // from, but a log is the thing that gets pasted into a chat window.
 func announceSettings(conf *config.Config) {
+	// The build, beside the settings, because the two questions asked when a
+	// deployment behaves unexpectedly are what it is configured to do and which
+	// binary is doing it, and only one of them had an answer.
 	slog.Info("settings: this deployment",
+		"build", version(),
 		"listen", conf.Meet.Listen,
 		"public url", conf.Meet.PublicURL,
 		"token ttl", conf.Meet.TokenTTL.String(),
@@ -849,4 +858,56 @@ func emptied(st *store.Store, conf *config.Config) {
 		"something and no longer does: the relay addresses, the accounts and the administrators "+
 		"live only here, and a truncated store opens without an error",
 		"store", conf.Meet.Database, "newest copy", copies[0], "copies", len(copies))
+}
+
+// version says which build this is.
+//
+// There was no way to ask. A fleet is upgraded by re-enrolling each relay
+// against a control node that serves its own running binary, so "which build is
+// that machine on" is the first question of every upgrade and of every report
+// that something behaves differently on one relay -- and the only answer
+// available was to rebuild a commit and compare hashes, which needs the right
+// commit guessed first.
+//
+// Read out of the build itself rather than stamped in by a linker flag, so it
+// is right without anybody having to remember to pass one. A working tree with
+// uncommitted changes says so, because a revision that names a commit the
+// binary was not built from is worse than no revision.
+func version() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown (built without module information)"
+	}
+
+	var revision, when string
+	modified := false
+
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			revision = setting.Value
+		case "vcs.time":
+			when = setting.Value
+		case "vcs.modified":
+			modified = setting.Value == "true"
+		}
+	}
+
+	if revision == "" {
+		return "unknown (built outside a repository)"
+	}
+
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+
+	if modified {
+		revision += "+changes"
+	}
+
+	if when != "" {
+		return revision + " " + when
+	}
+
+	return revision
 }

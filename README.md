@@ -174,9 +174,10 @@ so it goes first, and each relay is then re-enrolled with `REPLACE=1`. Restartin
 a relay ends the calls it is holding. Restarting the control node does not end
 any call — it stops anybody new joining for as long as it is down.
 
-There is no version in the binary and no `--version`, so which build a machine
-is running is not a question this can answer. The one way to tell is to rebuild
-the commit and compare hashes, which the reproducible build makes possible.
+`tomoshibi version` says which build a machine is on, and the startup log
+carries the same string. It is read out of the build rather than stamped in, so
+it is right without anybody remembering to pass a flag, and a binary built from
+a working tree with uncommitted changes says so.
 
 ## Administrators
 
@@ -586,6 +587,7 @@ endpoints do not exist and relays are added by hand.
 
 ```bash
 tomoshibi [serve] [config.yaml]   Serve the client, the API, and the media
+tomoshibi version                 Print which build this is
 tomoshibi keygen                  Print a fresh API key and secret
 tomoshibi rooms <database>        List the rooms a store has seen
 tomoshibi admin new [config.yaml] Make an administrator's passphrase and trip

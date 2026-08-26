@@ -2,6 +2,7 @@ package rtc
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -69,15 +70,24 @@ func (l *loopback) addresses() map[string]bool {
 	l.once.Do(func() {
 		l.local = map[string]bool{}
 
-		addrs, err := net.InterfaceAddrs()
-		if err != nil {
-			return
-		}
-
-		for _, addr := range addrs {
-			if ipnet, ok := addr.(*net.IPNet); ok {
-				l.local[ipnet.IP.String()] = true
+		// The interfaces, where they can be read, and then the declared
+		// addresses either way.
+		//
+		// This used to return on the error, which skipped the loop below it —
+		// and the loop below it is the one that adds what the operator wrote
+		// down. So the single setting that exists for the case where a machine
+		// cannot work out its own address was thrown away by the failure of the
+		// thing it is the answer to. Behind a sync.Once, so it was thrown away
+		// for the life of the process.
+		if addrs, err := net.InterfaceAddrs(); err == nil {
+			for _, addr := range addrs {
+				if ipnet, ok := addr.(*net.IPNet); ok {
+					l.local[ipnet.IP.String()] = true
+				}
 			}
+		} else {
+			slog.Warn("could not read this machine's own addresses, so only the ones declared in "+
+				"meet.public_addresses are known to be local", "error", err)
 		}
 
 		for addr := range l.declared {

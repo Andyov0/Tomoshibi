@@ -453,6 +453,8 @@ const zhHans: Dictionary = {
 	"Microphone level": "\u9ea6\u514b\u98ce\u7535\u5e73",
 	"Hearing you": "\u542c\u5f97\u5230\u4f60",
 	"No sound from it": "\u6ca1\u6709\u58f0\u97f3\u8fdb\u6765",
+	"Where it is": "\u4f4d\u7f6e",
+	"Latitude, longitude. Puts it on the globe and lets the fleet judge distance": "\u7eac\u5ea6, \u7ecf\u5ea6\u3002\u7528\u4e8e\u5730\u7403\u4eea\u663e\u793a,\u4e5f\u8ba9\u96c6\u7fa4\u80fd\u5224\u65ad\u8fdc\u8fd1",
 };
 
 export default zhHans;

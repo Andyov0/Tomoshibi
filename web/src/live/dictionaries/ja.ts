@@ -453,6 +453,8 @@ const ja: Dictionary = {
 	"Microphone level": "\u30de\u30a4\u30af\u306e\u5165\u529b\u30ec\u30d9\u30eb",
 	"Hearing you": "\u805e\u3053\u3048\u3066\u3044\u307e\u3059",
 	"No sound from it": "\u97f3\u304c\u5165\u3063\u3066\u3044\u307e\u305b\u3093",
+	"Where it is": "\u6240\u5728\u5730",
+	"Latitude, longitude. Puts it on the globe and lets the fleet judge distance": "\u7def\u5ea6, \u7d4c\u5ea6\u3002\u5730\u7403\u5100\u306b\u8868\u793a\u3055\u308c\u3001\u8ddd\u96e2\u306e\u5224\u65ad\u306b\u3082\u4f7f\u308f\u308c\u307e\u3059",
 };
 
 export default ja;

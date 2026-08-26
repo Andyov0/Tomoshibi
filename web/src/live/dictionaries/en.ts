@@ -484,6 +484,8 @@ const en = {
 	"Microphone level": "Microphone level",
 	"Hearing you": "Hearing you",
 	"No sound from it": "No sound from it",
+	"Where it is": "Where it is",
+	"Latitude, longitude. Puts it on the globe and lets the fleet judge distance": "Latitude, longitude. Puts it on the globe and lets the fleet judge distance",
 } as const;
 
 export default en;

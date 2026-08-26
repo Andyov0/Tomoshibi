@@ -654,6 +654,13 @@ function Settings({
 	const [turn, setTurn] = useState(relay.turn ?? "");
 	const [apart, setApart] = useState((relay.apart ?? []).join(", "));
 
+	// One field for two numbers, because they are one answer to one question and
+	// nobody has a latitude without a longitude. Kept as the text somebody typed
+	// until it is saved: parsing on every keystroke turns "51.5, -" into a
+	// longitude of nothing and moves the machine to the meridian while they are
+	// still typing.
+	const [place, setPlace] = useState(placeOf(relay));
+
 	// Reloaded when the relay changes underneath this form.
 	//
 	// It did not, and that lost work. The fields are filled once when the row is
@@ -674,7 +681,18 @@ function Settings({
 		setProbe(relay.probe ?? "");
 		setTurn(relay.turn ?? "");
 		setApart((relay.apart ?? []).join(", "));
-	}, [relay.name, relay.url, relay.region, relay.label, relay.probe, relay.turn, relay.apart]);
+		setPlace(placeOf(relay));
+	}, [
+		relay.name,
+		relay.url,
+		relay.region,
+		relay.label,
+		relay.probe,
+		relay.turn,
+		relay.apart,
+		relay.lat,
+		relay.lon,
+	]);
 
 	const dirty =
 		name !== relay.name ||
@@ -683,7 +701,8 @@ function Settings({
 		label !== (relay.label ?? "") ||
 		probe !== (relay.probe ?? "") ||
 		turn !== (relay.turn ?? "") ||
-		apart !== (relay.apart ?? []).join(", ");
+		apart !== (relay.apart ?? []).join(", ") ||
+		place !== placeOf(relay);
 
 	return (
 		<div className="flex flex-col gap-3 border-border border-t px-4 py-3">
@@ -741,6 +760,18 @@ function Settings({
 						value={apart}
 						onChange={(event) => setApart(event.target.value)}
 						placeholder={t("None")}
+						className="readout w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
+					/>
+				</Field>
+
+				<Field
+					label={t("Where it is")}
+					hint={t("Latitude, longitude. Puts it on the globe and lets the fleet judge distance")}
+				>
+					<input
+						value={place}
+						onChange={(event) => setPlace(event.target.value)}
+						placeholder="22.32, 114.17"
 						className="readout w-full rounded-md border border-border bg-surface-hi px-2.5 py-1.5 text-[12.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
 					/>
 				</Field>
@@ -833,6 +864,7 @@ function Settings({
 								.split(",")
 								.map((one) => one.trim())
 								.filter(Boolean),
+							...degrees(place),
 						})
 					}
 					className="ml-auto rounded-md border border-border px-2.5 py-1.5 text-[12px] hover:bg-surface-hi disabled:opacity-40"
@@ -1067,4 +1099,36 @@ function AddByScript({
 			</div>
 		</div>
 	);
+}
+
+/** A relay's place, as the field shows it. */
+function placeOf(relay: Relay): string {
+	if (relay.lat === undefined || relay.lon === undefined) return "";
+
+	return `${relay.lat}, ${relay.lon}`;
+}
+
+/**
+ * What to send for a place somebody typed.
+ *
+ * Nothing at all where it cannot be read, rather than zeroes: nought and nought
+ * is a point in the Atlantic, and a relay drawn confidently in the sea looks
+ * exactly as authoritative as the ones that are right. An empty field is how a
+ * machine is taken off the globe, so that has to reach the server as a pair of
+ * zeroes, which is what the store treats as unplaced.
+ */
+function degrees(said: string): { lat?: number; lon?: number } {
+	const trimmed = said.trim();
+	if (trimmed === "") return { lat: 0, lon: 0 };
+
+	const parts = trimmed.split(",");
+	if (parts.length !== 2) return {};
+
+	const lat = Number(parts[0]);
+	const lon = Number(parts[1]);
+
+	if (!Number.isFinite(lat) || !Number.isFinite(lon)) return {};
+	if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return {};
+
+	return { lat, lon };
 }

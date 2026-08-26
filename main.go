@@ -733,6 +733,23 @@ func announceRole(conf *config.Config) {
 // deployment. Anybody who can read this log can already read the file it came
 // from, but a log is the thing that gets pasted into a chat window.
 func announceSettings(conf *config.Config) {
+	// Said once, and not fatal.
+	//
+	// Section 13 of the licence obliges whoever offers this over a network to
+	// offer its source to the people using it that way, and the link on the join
+	// page is how that is discharged. Where nothing is configured the client
+	// draws no link -- an offer of somebody else's source looks discharged and
+	// is not -- so the only place this can be noticed is here.
+	//
+	// The default used to be the upstream repository, which made every
+	// deployment that never set this quietly point its visitors at code it was
+	// not running.
+	if conf.Meet.SourceURL == "" {
+		slog.Warn("meet.source_url is not set, so the join page offers nobody the source of what "+
+			"is running here: the licence asks for that of anybody offering this over a network",
+			"set it to", "wherever this deployment's code can be read")
+	}
+
 	// The build, beside the settings, because the two questions asked when a
 	// deployment behaves unexpectedly are what it is configured to do and which
 	// binary is doing it, and only one of them had an answer.

@@ -422,9 +422,21 @@ var defaults = Meet{
 	TrustProxy:  false,
 	// Thirty days: long enough that a fortnightly meeting keeps its room, short
 	// enough that a name nobody has used since is not still holding one.
-	Rooms:     Rooms{OpenedBy: room.ByAnyone, Remember: 30 * 24 * time.Hour},
-	Enrol:     Enrol{ListenPort: 13377, UDPPort: 13378, TCPPort: 13379},
-	SourceURL: "https://github.com/5t-RawBeRry/Tomoshibi",
+	Rooms: Rooms{OpenedBy: room.ByAnyone, Remember: 30 * 24 * time.Hour},
+	Enrol: Enrol{ListenPort: 13377, UDPPort: 13378, TCPPort: 13379},
+	// Empty rather than a repository somebody else runs.
+	//
+	// Section 13 is the reason this field exists: whoever offers this over a
+	// network owes its source to the people using it that way, and the join page
+	// carries a link to satisfy that. A default pointing at the upstream project
+	// makes that link an offer of code the deployment is not running, which is
+	// worse than no link -- it looks like compliance and is not, and nobody
+	// reading their own page would notice, because the link works.
+	//
+	// Empty, the startup check says so and the page says the source has not been
+	// named. A deployment that has not been told where its code is cannot be
+	// made to answer that question correctly by guessing.
+	SourceURL: "",
 }
 
 // Load reads the configuration from path, or returns the defaults if path is

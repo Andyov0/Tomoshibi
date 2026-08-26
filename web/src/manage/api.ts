@@ -414,6 +414,23 @@ export interface Relay {
 	 * their call can go rather than not going at all.
 	 */
 	bridge?: boolean;
+	/**
+	 * Where the machine is, in degrees.
+	 *
+	 * Two things read it and both were dead until it could be set. The globe on
+	 * the join screen draws a point per relay and filters out any without a
+	 * place, so it drew nothing at all; and the enrolment writes a distance-aware
+	 * node selector only where at least two relays have one, so every machine
+	 * brought up by the script fell back to picking a media node at random --
+	 * which is the fault recorded in internal/store/relays.go as having put
+	 * people into meetings on machines they could not reach.
+	 *
+	 * The server has accepted these since the field existed. Nothing sent them:
+	 * the panel had no box and the type did not name them, so the only way to
+	 * set one was curl.
+	 */
+	lat?: number;
+	lon?: number;
 	enabled: boolean;
 	added?: string;
 	/** Whether it answered when this page was drawn, from the control node. */
@@ -525,6 +542,8 @@ export const api = {
 			bridge?: boolean;
 			fallback?: boolean;
 			adminOnly?: boolean;
+			lat?: number;
+			lon?: number;
 		},
 	) =>
 		call<{ updated: string }>(`/relays/${encodeURIComponent(name)}`, {

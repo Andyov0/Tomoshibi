@@ -135,9 +135,29 @@ func adminCommand(args []string) error {
 
 	action, rest := args[0], args[1:]
 
+	// A configuration file, if one was named.
+	//
+	// Recognised by being a file that exists rather than by its extension. The
+	// test used to be a ".yaml" suffix, so `admin trip control.yml <passphrase>`
+	// silently took the filename as the passphrase and fell back to the built-in
+	// defaults — which name a different tripcode key, so the trip printed was
+	// derived from the wrong secret and valid on no deployment. It is ten
+	// characters of the right shape either way; nothing about it says which.
+	//
+	// `serve` has never cared about the extension, so this was also a difference
+	// between two commands in the same binary for no reason anybody could see.
 	path := ""
-	if len(rest) > 0 && strings.HasSuffix(rest[0], ".yaml") {
-		path, rest = rest[0], rest[1:]
+	if len(rest) > 0 {
+		if _, err := os.Stat(rest[0]); err == nil {
+			path, rest = rest[0], rest[1:]
+		} else if strings.ContainsAny(rest[0], "/\\") || strings.HasSuffix(rest[0], ".yaml") ||
+			strings.HasSuffix(rest[0], ".yml") {
+			// Named something that is plainly meant to be a file and is not one.
+			// Refused rather than taken as a passphrase: somebody who mistypes a
+			// path should be told, and the alternative is a trip they will paste
+			// into a configuration file and wonder about.
+			return fmt.Errorf("%s: %w", rest[0], err)
+		}
 	}
 
 	conf, err := config.Load(path)

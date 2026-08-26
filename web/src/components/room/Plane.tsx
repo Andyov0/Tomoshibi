@@ -98,7 +98,19 @@ export function Plane({
 						<ChevronRight />
 					</PageButton>
 
-					<div className="-translate-x-1/2 absolute bottom-3 left-1/2 rounded-full bg-black/50 px-2.5 py-1 text-white/80 text-xs">
+					{/*
+					 * At the top rather than the bottom, and that is not a
+					 * preference.
+					 *
+					 * It was centred at the bottom, which is exactly where the
+					 * control island is — same centring, lower down, wider, and
+					 * z-20 against nothing. So the only thing on the screen saying
+					 * which page somebody is on was underneath the controls on
+					 * every size, from the moment there were enough people to have
+					 * a second page. The arrows either side loop, so there is no
+					 * other way to tell.
+					 */}
+					<div className="-translate-x-1/2 absolute top-3 left-1/2 rounded-full bg-black/50 px-2.5 py-1 text-white/80 text-xs">
 						{(page ?? 0) + 1} / {pages}
 					</div>
 				</>

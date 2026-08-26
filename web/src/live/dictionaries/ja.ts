@@ -449,6 +449,10 @@ const ja: Dictionary = {
 	"{count} days": "{count} \u65e5",
 	"{count} hours": "{count} \u6642\u9593",
 	"It stops working after a day either way.": "\u3044\u305a\u308c\u306b\u305b\u3088\u30011 \u65e5\u3067\u4f7f\u3048\u306a\u304f\u306a\u308a\u307e\u3059\u3002",
+	"Speakers": "\u30b9\u30d4\u30fc\u30ab\u30fc",
+	"Microphone level": "\u30de\u30a4\u30af\u306e\u5165\u529b\u30ec\u30d9\u30eb",
+	"Hearing you": "\u805e\u3053\u3048\u3066\u3044\u307e\u3059",
+	"No sound from it": "\u97f3\u304c\u5165\u3063\u3066\u3044\u307e\u305b\u3093",
 };
 
 export default ja;

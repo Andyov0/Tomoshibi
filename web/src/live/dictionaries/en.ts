@@ -480,6 +480,10 @@ const en = {
 	"{count} days": "{count} days",
 	"{count} hours": "{count} hours",
 	"It stops working after a day either way.": "It stops working after a day either way.",
+	"Speakers": "Speakers",
+	"Microphone level": "Microphone level",
+	"Hearing you": "Hearing you",
+	"No sound from it": "No sound from it",
 } as const;
 
 export default en;

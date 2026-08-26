@@ -449,6 +449,10 @@ const zhHans: Dictionary = {
 	"{count} days": "{count} \u5929",
 	"{count} hours": "{count} \u5c0f\u65f6",
 	"It stops working after a day either way.": "\u65e0\u8bba\u5982\u4f55,\u4e00\u5929\u540e\u5931\u6548\u3002",
+	"Speakers": "\u626c\u58f0\u5668",
+	"Microphone level": "\u9ea6\u514b\u98ce\u7535\u5e73",
+	"Hearing you": "\u542c\u5f97\u5230\u4f60",
+	"No sound from it": "\u6ca1\u6709\u58f0\u97f3\u8fdb\u6765",
 };
 
 export default zhHans;

@@ -8,7 +8,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useT } from "@/hooks/useT";
-import type { Room } from "livekit-client";
+import { type Room, supportsAudioOutputSelection } from "livekit-client";
 import { ChevronUp } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -20,6 +20,12 @@ import { useEffect, useState } from "react";
  * not shipping a model of its own. They are not exposed as switches because the
  * defaults are right for a meeting, and the one case where they are wrong
  * (playing music) is better served by sharing a tab with its audio.
+ *
+ * Where sound comes out is here too, and was not. Somebody who plugs in
+ * headphones part-way through a call had no way to move the call onto them from
+ * inside the application: the only route was to leave, change the machine's
+ * setting, and come back. Offered only where the browser can act on it — Safari
+ * cannot, and a control that silently does nothing is worse than its absence.
  */
 export function DeviceMenu({ room }: { room: Room }) {
 	const t = useT();
@@ -35,6 +41,14 @@ export function DeviceMenu({ room }: { room: Room }) {
 			<DropdownMenuContent align="center" side="top">
 				<DropdownMenuLabel>{t("Microphone")}</DropdownMenuLabel>
 				<Devices room={room} kind="audioinput" />
+
+				{supportsAudioOutputSelection() && (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuLabel>{t("Speakers")}</DropdownMenuLabel>
+						<Devices room={room} kind="audiooutput" />
+					</>
+				)}
 
 				<DropdownMenuSeparator />
 				<DropdownMenuLabel>{t("Camera")}</DropdownMenuLabel>

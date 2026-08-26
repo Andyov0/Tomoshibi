@@ -1,5 +1,6 @@
 import { Identity } from "@/components/room/Identity";
 import { LanguagePicker } from "@/components/room/LanguagePicker";
+import { MicLevel } from "@/components/room/MicLevel";
 import { RoomTitle } from "@/components/room/RoomTitle";
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
@@ -442,6 +443,19 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 							</Button>
 						</div>
 					</SelfView>
+
+					{/*
+					 * Under the picture rather than inside it, because it answers a
+					 * different question from the switch above it. The switch says
+					 * whether the microphone will be on; this says whether it works,
+					 * which nothing on this screen said until now — and this screen
+					 * exists to answer exactly those two things about the two
+					 * devices, which is what the comment beside the form says it is
+					 * for.
+					 */}
+					<div className="mt-2.5 px-1">
+						<MicLevel on={devices.microphone} />
+					</div>
 				</div>
 
 				<form

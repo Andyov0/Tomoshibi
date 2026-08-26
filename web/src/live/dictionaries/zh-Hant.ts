@@ -449,6 +449,10 @@ const zhHant: Dictionary = {
 	"{count} days": "{count} \u5929",
 	"{count} hours": "{count} \u5c0f\u6642",
 	"It stops working after a day either way.": "\u7121\u8ad6\u5982\u4f55,\u4e00\u5929\u5f8c\u5931\u6548\u3002",
+	"Speakers": "\u5587\u53ed",
+	"Microphone level": "\u9ea5\u514b\u98a8\u96fb\u5e73",
+	"Hearing you": "\u807d\u5f97\u5230\u4f60",
+	"No sound from it": "\u6c92\u6709\u8072\u97f3\u9032\u4f86",
 };
 
 export default zhHant;

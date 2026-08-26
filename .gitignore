@@ -40,3 +40,6 @@ node_modules/
 .DS_Store
 /roster
 /peekroom
+
+# Worktrees a subagent opened. Not part of the project.
+.claude/

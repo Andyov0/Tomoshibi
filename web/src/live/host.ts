@@ -92,15 +92,38 @@ export function useStanding(room: Room): Standing {
 	useEffect(() => {
 		refresh();
 
-		// A handover is written on the server and nothing pushes it here, so this
-		// asks again on the events that could mean it happened: somebody leaving
-		// is the ordinary reason a room changes hands.
+		// Somebody leaving is the ordinary reason a room changes hands, and the
+		// connection changing state means this client may have missed whatever
+		// happened while it was away.
 		const events = [RoomEvent.ParticipantDisconnected, RoomEvent.ConnectionStateChanged];
 
+		// And a handover, which is neither of those and used to be caught by
+		// neither. The person giving a room away kept a panel full of controls
+		// that had all begun answering 403, the person receiving it saw nothing
+		// at all, and the two of them found out when an unrelated third person
+		// left the call.
+		//
+		// Only from the server. Every participant may publish data, so a message
+		// on this topic from one of them would be a way to make everybody else
+		// re-ask — harmless in itself, since the answer comes from the server
+		// either way, and refused anyway because the rule that a topic like this
+		// is the server's should not have an exception nobody can see the edge
+		// of. The media server stamps client packets with the identity it
+		// authenticated and the library resolves it against the room, so a
+		// participant's packet always arrives with one attached and the room
+		// service's never does.
+		const told = (_payload: Uint8Array, who: unknown, _kind: unknown, topic?: string) => {
+			if (topic === "host" && who === undefined) refresh();
+		};
+
 		for (const event of events) room.on(event, refresh);
+		room.on(RoomEvent.DataReceived, told);
+		// removed
 
 		return () => {
 			for (const event of events) room.off(event, refresh);
+			room.off(RoomEvent.DataReceived, told);
+			room.off(RoomEvent.DataReceived, told);
 		};
 	}, [room, refresh]);
 

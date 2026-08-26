@@ -261,6 +261,24 @@ func (a *App) handOver(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("room handed over", "room", name, "from", who.Mark.Trip, "to", mark.Trip)
 
+	// Everybody in the room is told, because nothing else would tell them.
+	//
+	// The standing is asked for once on joining and again on the events that
+	// might mean it changed, and the list of those events is somebody leaving
+	// and the connection changing state. A handover is neither. So the person
+	// giving it away kept a panel full of controls that had all begun answering
+	// 403, the person receiving it saw nothing at all, and the two of them found
+	// out when an unrelated third person left the call.
+	//
+	// Not fatal. The handover is written down and is what every later request
+	// will be answered against; this only decides whether two screens catch up
+	// now or in a minute.
+	if a.control != nil {
+		if err := a.control.Announce(r.Context(), name, "host", []byte(mark.Trip)); err != nil {
+			slog.Warn("handed a room over but could not tell the room", "room", name, "error", err)
+		}
+	}
+
 	respond(w, map[string]any{"host": mark.Trip})
 }
 

@@ -108,8 +108,23 @@ export function RoomsPanel({
 									>
 										<span className="flex w-full items-baseline gap-2">
 											<span className="truncate text-[13px]">{one.name}</span>
+											{/* How many are in it, and how many of those are
+											    sending anything.
+											    Eight people with one of them publishing is a
+											    presentation; eight publishing is a meeting;
+											    eight with none publishing is eight people
+											    whose media never started, which is the one
+											    an operator is looking for. The second number
+											    has always been sent and only the first was
+											    drawn, so all three read the same.
+											    Only where they differ — on a room where
+											    everybody is publishing, which is most rooms,
+											    a second identical number is noise. */}
 											<span className="ml-auto shrink-0 text-fg-muted text-xs tabular-nums">
-												{one.participants} · {since(one.createdAt)}
+												{one.publishers !== undefined && one.publishers !== one.participants
+													? `${one.participants} (${one.publishers} sending)`
+													: one.participants}{" "}
+												· {since(one.createdAt)}
 											</span>
 										</span>
 

@@ -499,6 +499,8 @@ const en = {
 	"One link stopped working.": "One link stopped working.",
 	"{count} links stopped working.": "{count} links stopped working.",
 	"That label is too long.": "That label is too long.",
+	"Add a note": "Add a note",
+	"Note": "Note",
 } as const;
 
 export default en;

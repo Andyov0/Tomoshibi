@@ -2,8 +2,8 @@ import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import { actionFailed } from "@/live/notices";
 import { Ban, KeyRound, Loader2, Plus, Trash2, Undo2, X } from "lucide-react";
-import { useCallback, useState } from "react";
-import { api } from "./api";
+import { useCallback, useEffect, useState } from "react";
+import { type Account, api } from "./api";
 import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
 import { since } from "./units";
@@ -147,6 +147,13 @@ export function AccountsPanel({
 								</span>
 
 								<span className="readout text-fg-muted text-[12px]">{account.trip}</span>
+
+								{/* Whatever whoever made this account wrote about it.
+								    The store has held it, the API has sent it and taken
+								    it back, and nothing drew it — so an account was a
+								    name and a signature, and "which of the two Chens is
+								    this" had no answer anywhere. */}
+								<Note account={account} canModerate={canModerate} onSaved={refresh} />
 							</div>
 
 							<div className="ml-auto flex items-center gap-3">
@@ -388,4 +395,91 @@ function suggest(): string {
 	const raw = crypto.getRandomValues(new Uint8Array(16));
 
 	return Array.from(raw, (byte) => alphabet[byte % alphabet.length]).join("");
+}
+
+/**
+ * A line about an account, for whoever has to recognise it later.
+ *
+ * A name and a signature say who somebody is to the deployment and nothing
+ * about who they are to the person running it. Empty on nearly every account
+ * and drawn as a place to write rather than as a field, so a list of accounts
+ * nobody has annotated looks like a list of accounts.
+ */
+function Note({
+	account,
+	canModerate,
+	onSaved,
+}: { account: Account; canModerate: boolean; onSaved: () => Promise<void> | void }) {
+	const t = useT();
+	const [editing, setEditing] = useState(false);
+	const [said, setSaid] = useState(account.note ?? "");
+	const [saving, setSaving] = useState(false);
+
+	// Reloaded when the record changes underneath, which this page polls for.
+	// Without it, saving a note on one account and then editing another shows
+	// the first one's text.
+	useEffect(() => setSaid(account.note ?? ""), [account.note]);
+
+	if (!canModerate) {
+		return account.note ? (
+			<span className="truncate text-fg-muted text-[11.5px]">{account.note}</span>
+		) : null;
+	}
+
+	if (!editing) {
+		return (
+			<button
+				type="button"
+				onClick={() => setEditing(true)}
+				className={cn(
+					"self-start truncate rounded-sm text-left text-[11.5px]",
+					account.note ? "text-fg-muted" : "text-fg-muted/50 italic",
+					"hover:text-fg",
+				)}
+			>
+				{account.note || t("Add a note")}
+			</button>
+		);
+	}
+
+	const save = async () => {
+		setSaving(true);
+		try {
+			await api.changeAccount(account.name, { note: said.trim() });
+			await onSaved();
+			setEditing(false);
+		} catch (err) {
+			// The sentence the API layer already made from the server's code,
+			// which is what every other failure on this page reports. Writing one
+			// here would be a second place for the same message to drift.
+			actionFailed(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<input
+			// biome-ignore lint/a11y/noAutofocus: opened by a press, and the press is the request to type
+			autoFocus
+			value={said}
+			disabled={saving}
+			onChange={(event) => setSaid(event.target.value)}
+			onBlur={() => void save()}
+			onKeyDown={(event) => {
+				if (event.key === "Enter") void save();
+				// Away without saving, which a field opened by a misclick needs.
+				if (event.key === "Escape") {
+					setSaid(account.note ?? "");
+					setEditing(false);
+				}
+			}}
+			aria-label={t("Note")}
+			maxLength={200}
+			className={cn(
+				"w-full rounded-md border border-border bg-surface-hi px-2 py-1",
+				"text-[11.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40",
+			)}
+		/>
+	);
 }

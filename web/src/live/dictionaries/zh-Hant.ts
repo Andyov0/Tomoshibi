@@ -468,6 +468,8 @@ const zhHant: Dictionary = {
 	"One link stopped working.": "\u5df2\u505c\u7528 1 \u689d\u9023\u7d50\u3002",
 	"{count} links stopped working.": "\u5df2\u505c\u7528 {count} \u689d\u9023\u7d50\u3002",
 	"That label is too long.": "\u9019\u500b\u986f\u793a\u540d\u592a\u9577\u4e86\u3002",
+	"Add a note": "\u52a0\u500b\u5099\u8a3b",
+	"Note": "\u5099\u8a3b",
 };
 
 export default zhHant;

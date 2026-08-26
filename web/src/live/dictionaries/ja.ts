@@ -468,6 +468,8 @@ const ja: Dictionary = {
 	"One link stopped working.": "\u30ea\u30f3\u30af\u3092 1 \u672c\u6b62\u3081\u307e\u3057\u305f\u3002",
 	"{count} links stopped working.": "\u30ea\u30f3\u30af\u3092 {count} \u672c\u6b62\u3081\u307e\u3057\u305f\u3002",
 	"That label is too long.": "\u305d\u306e\u8868\u793a\u540d\u306f\u9577\u3059\u304e\u307e\u3059\u3002",
+	"Add a note": "\u30e1\u30e2\u3092\u4ed8\u3051\u308b",
+	"Note": "\u30e1\u30e2",
 };
 
 export default ja;

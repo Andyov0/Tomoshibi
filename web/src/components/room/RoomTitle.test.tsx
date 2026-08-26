@@ -88,3 +88,51 @@ describe("RoomTitle", () => {
 		expect(screen.queryByText(/only administrators/i)).toBeNull();
 	});
 });
+
+/*
+ * And the name somebody was given rather than one they chose.
+ *
+ * An invitation names one room. Renaming it walks the holder to a different one
+ * carrying a key for this one, which the server refuses — so the control is not
+ * a choice they have, and PreJoin's own documentation of the guest case says the
+ * passphrase field goes "and so does the ability to rename the room out from
+ * under the invitation". Only the first half was written; this is the second.
+ */
+describe("a room somebody was invited to", () => {
+	it("cannot be renamed", async () => {
+		const changed = vi.fn();
+		render(<RoomTitle room="team-standup" onChange={changed} fixed />);
+
+		await waitFor(() => expect(screen.getByText("team-standup")).toBeTruthy());
+
+		expect(screen.queryByLabelText("Change room")).toBeNull();
+
+		// Not merely hidden. The name itself opens the field on every other
+		// screen, so leaving it pressable would be the same control by another
+		// route.
+		screen.getByText("team-standup").click();
+
+		expect(screen.queryByLabelText("Room name")).toBeNull();
+		expect(changed).not.toHaveBeenCalled();
+	});
+
+	it("is still there to be copied", async () => {
+		render(<RoomTitle room="team-standup" onChange={vi.fn()} fixed />);
+
+		await waitFor(() => expect(screen.getByText("team-standup")).toBeTruthy());
+
+		// The link is the thing this screen is for confirming, and somebody who
+		// was invited is the likeliest person to pass it on.
+		expect(screen.getByLabelText("Copy link")).toBeTruthy();
+	});
+});
+
+describe("a room somebody chose", () => {
+	it("can still be renamed", async () => {
+		render(<RoomTitle room="team-standup" onChange={vi.fn()} />);
+
+		await waitFor(() => expect(screen.getByText("team-standup")).toBeTruthy());
+
+		expect(screen.getByLabelText("Change room")).toBeTruthy();
+	});
+});

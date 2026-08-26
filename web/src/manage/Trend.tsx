@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import type { Point } from "./api";
-import { LINK_BITS, rate } from "./units";
+import { linkBits, rate } from "./units";
 
 /**
  * The uplink over whatever stretch of time was asked for.
@@ -139,7 +139,7 @@ function options(width: number, hovered: (index: number | null) => void): uPlot.
 			// reach. A plot that rescales to its own maximum always looks the
 			// same, and the one thing this exists to show — how near the ceiling
 			// an evening came — is exactly what that normalises away.
-			y: { auto: false, range: [0, LINK_BITS] },
+			y: { auto: false, range: [0, linkBits()] },
 		},
 		axes: [
 			{

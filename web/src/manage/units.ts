@@ -113,11 +113,37 @@ export function width(seconds: number): string {
 }
 
 /**
- * What this deployment's link is thought to carry.
+ * What this deployment's link is thought to carry, in bits per second.
  *
  * Used only to draw how full the pipe is. The figure is not measured and cannot
  * be: the server knows what it is sending, not what the wire beneath it can
- * hold. A gigabit is what the interface on this deployment negotiates, and the
- * bar is honest only as far as that is.
+ * hold. It is what somebody types because they know what they are paying for,
+ * and the bars are honest only as far as it is.
+ *
+ * It was a constant here, and therefore right on exactly one kind of link.
+ * Three things read it — the "busy" mark on a relay, the bandwidth bar, and the
+ * fixed axis of the six-month plot — so on a 200-megabit deployment the plot
+ * sat against the bottom and the mark never appeared, and on a ten-gigabit one
+ * the bar was always full and the mark never went out.
+ *
+ * A gigabit until the deployment says otherwise, which is what it was.
  */
-export const LINK_BITS = 1e9;
+const GIGABIT = 1e9;
+
+let link = GIGABIT;
+
+/** What the pages should draw against. */
+export function linkBits(): number {
+	return link;
+}
+
+/**
+ * Told once, from the runtime reading.
+ *
+ * A function rather than a value passed down, because the three readers are in
+ * three components at three depths and the figure belongs to the deployment
+ * rather than to any of them.
+ */
+export function linkIs(mbits: number | undefined): void {
+	link = mbits && mbits > 0 ? mbits * 1e6 : GIGABIT;
+}

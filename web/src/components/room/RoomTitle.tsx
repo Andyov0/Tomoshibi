@@ -22,7 +22,22 @@ import { useEffect, useRef, useState } from "react";
  * One control still does the work of two: it arrives holding a generated name,
  * which is a new meeting, and typing over it is joining somebody else's.
  */
-export function RoomTitle({ room, onChange }: { room: string; onChange: (room: string) => void }) {
+/**
+ * The room somebody is about to walk into, and — where it is still a question —
+ * a way to change it.
+ *
+ * `fixed` is somebody holding an invitation. The room was decided by whoever
+ * sent it and the link is what admits them, so renaming it is not a choice they
+ * have: it walks them to a different room with a key for this one, and the
+ * server refuses. PreJoin's own documentation says the passphrase field goes for
+ * a guest "and so does the ability to rename the room out from under the
+ * invitation" — only the first half was ever written.
+ */
+export function RoomTitle({
+	room,
+	onChange,
+	fixed = false,
+}: { room: string; onChange: (room: string) => void; fixed?: boolean }) {
 	const t = useT();
 	const [editing, setEditing] = useState(false);
 	const [copied, setCopied] = useState(false);
@@ -98,8 +113,9 @@ export function RoomTitle({ room, onChange }: { room: string; onChange: (room: s
 				<div className="flex items-start gap-1">
 					<button
 						type="button"
-						onClick={() => setEditing(true)}
-						title={t("Change room")}
+						onClick={() => !fixed && setEditing(true)}
+						disabled={fixed}
+						title={fixed ? undefined : t("Change room")}
 						className={cn(
 							"readout min-w-0 flex-1 text-left text-[17px] leading-tight tracking-tight sm:text-[19px]",
 							"rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-fg/70",
@@ -115,15 +131,20 @@ export function RoomTitle({ room, onChange }: { room: string; onChange: (room: s
 						{room}
 					</button>
 
-					<Button
-						variant="ghost"
-						size="icon"
-						className="-mt-0.5 size-7 shrink-0"
-						aria-label={t("Change room")}
-						onClick={() => setEditing(true)}
-					>
-						<Pencil className="size-3.5" />
-					</Button>
+					{/* Gone rather than disabled: a control somebody cannot use is a
+					    question they will ask, and there is no answer that helps
+					    them. The name is a heading for this person. */}
+					{!fixed && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="-mt-0.5 size-7 shrink-0"
+							aria-label={t("Change room")}
+							onClick={() => setEditing(true)}
+						>
+							<Pencil className="size-3.5" />
+						</Button>
+					)}
 
 					<Button
 						variant="ghost"

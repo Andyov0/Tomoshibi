@@ -559,6 +559,7 @@ fleet work, and none of them had been written down anywhere:
 | `web_root` | Serve the client from a directory instead of from inside the binary. |
 | `token_ttl` | How long a join token is good for. |
 | `join_rate`, `join_burst` | How often anybody may ask to join. Separate from the budget that bounds passphrase guesses, which is fixed and shared between the join, the account sign-in and the management sign-in. |
+| `link_mbits` | What a relay's network link is thought to carry. Drives the bandwidth bars, the "busy" mark and the trend plot's axis, none of which can be measured from here. A gigabit if unset. |
 | `rooms.remember` | How long a name is remembered after nobody has used it. |
 
 `role` is `full`, `control` or `relay`, and two of the sections below are read

@@ -126,6 +126,26 @@ type Meet struct {
 	// RelayPolicy is how a control node chooses between them.
 	RelayPolicy string `yaml:"relay_policy"`
 
+	// LinkMbits is what a relay's network link is thought to carry, in megabits
+	// per second.
+	//
+	// Not measured and not measurable from here: this server knows what it is
+	// sending, not what the wire beneath it can hold. It is a figure somebody
+	// types because they know what they are paying for.
+	//
+	// Three things on the management pages read it, and all three were wrong on
+	// any deployment that is not a gigabit, because it was written into the
+	// client as a constant. The "busy" mark on a relay never appeared on a
+	// slower link and never went out on a faster one, the bandwidth bar was a
+	// fraction of the wrong number, and the six-month plot's fixed axis -- which
+	// is fixed on purpose, so that "how near the ceiling an evening came" is
+	// visible rather than normalised away by rescaling -- had a ceiling that was
+	// not the ceiling.
+	//
+	// Zero keeps the gigabit that was assumed, so nothing changes for a
+	// deployment that has not thought about it.
+	LinkMbits int `yaml:"link_mbits"`
+
 	// Enrol lets a new relay bring itself up from a script.
 	Enrol Enrol `yaml:"enrol"`
 

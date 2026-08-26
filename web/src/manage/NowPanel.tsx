@@ -8,7 +8,7 @@ import { type Now, type Point, api } from "./api";
 import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
 import { Trend } from "./Trend";
-import { LINK_BITS, count, moment, rate, since, size, width } from "./units";
+import { linkBits, count, moment, rate, since, size, width } from "./units";
 
 /**
  * How the server is doing, and how it got here.
@@ -491,7 +491,7 @@ function Fleet({ now }: { now: Now }) {
 							  */}
 							<Light
 								ok={one.reachable}
-								busy={(one.load ?? 0) > 0.8 || (one.outPerSec ?? 0) * 8 > LINK_BITS * 0.66}
+								busy={(one.load ?? 0) > 0.8 || (one.outPerSec ?? 0) * 8 > linkBits() * 0.66}
 							/>
 							<span className="text-fg text-sm">{one.name}</span>
 						</span>
@@ -581,7 +581,7 @@ function Light({ ok, busy }: { ok: boolean; busy: boolean }) {
 function Ceiling({ bitsPerSecond }: { bitsPerSecond: number }) {
 	const t = useT();
 
-	const share = Math.min(1, bitsPerSecond / LINK_BITS);
+	const share = Math.min(1, bitsPerSecond / linkBits());
 
 	return (
 		<div className="px-3 pb-2 sm:px-4">

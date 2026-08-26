@@ -886,6 +886,10 @@ func (a *API) runtime(_ Session, w http.ResponseWriter, _ *http.Request) {
 			"trustProxy": a.conf.Meet.TrustProxy,
 			"database":   a.conf.Meet.Database,
 			"admins":     len(a.Administrators()),
+			// What the pages draw their bandwidth bars and their "busy" mark
+			// against. Sent rather than assumed: it was a constant in the client
+			// and therefore right on exactly one kind of link.
+			"linkMbits": a.conf.Meet.LinkMbits,
 		},
 		"rooms": a.currentPolicy(),
 		"rtc": map[string]any{

@@ -518,7 +518,7 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 							</h1>
 						</div>
 					) : (
-						<RoomTitle room={room} onChange={onRoomChange} />
+						<RoomTitle room={room} onChange={onRoomChange} fixed={guest} />
 					)}
 
 					{/*

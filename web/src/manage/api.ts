@@ -1,3 +1,4 @@
+import { linkIs } from "./units";
 import { t } from "@/live/i18n";
 
 /**
@@ -473,7 +474,21 @@ export const api = {
 	rooms: () => call<{ live: LiveRoom[]; known: KnownRoom[] | null }>("/rooms"),
 	participants: (room: string) =>
 		call<Participant[]>(`/rooms/${encodeURIComponent(room)}/participants`),
-	runtime: () => call<Runtime>("/runtime"),
+	/**
+	 * The settings this deployment is running under.
+	 *
+	 * Also where the pages learn what the network link is thought to carry, which
+	 * three of them draw against. Told here rather than threaded down through
+	 * three components at three depths: the figure belongs to the deployment
+	 * rather than to any of them, and every page that draws a bandwidth bar has
+	 * already asked for this.
+	 */
+	runtime: async () => {
+		const said = await call<Runtime>("/runtime");
+		linkIs(said.meet?.linkMbits as number | undefined);
+
+		return said;
+	},
 	policy: () => call<Policy>("/policy"),
 
 	/**

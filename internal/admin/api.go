@@ -712,6 +712,18 @@ func (a *API) rooms(_ Session, w http.ResponseWriter, r *http.Request) {
 	// looks like it should hold this holds the machine that was asked. This
 	// server chose the machine at the join and wrote it down, which is the only
 	// record of it anywhere.
+	//
+	// So this is the relay people *enter* by, which is not necessarily the node
+	// holding the media: the cluster picks that when the room is created. The
+	// two used to drift apart, and an operator reading "Nanjing" off this page
+	// while the meeting was on Hong Kong reasonably concluded the page was
+	// lying. It was not, quite — it was answering a different question than the
+	// one being asked of it.
+	//
+	// They agree now because a move pins the node as well as writing this down,
+	// and because every relay forwards, so the entry is the machine whose line
+	// the media is actually on. The count on the fleet page is what to compare
+	// against when they ever look like disagreeing again.
 	respond(w, map[string]any{
 		"live":  liveRooms(live, a.wherever()),
 		"known": knownRooms(seen),

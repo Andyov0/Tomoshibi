@@ -24,7 +24,12 @@ Two pieces, on two machines, because the token stays where it already was.
 | `watch.sh` → `/usr/local/bin/tomoshibi-watch` on the control node | Reads the fleet and the journal every five minutes. Decides whether anything is worth saying. Holds no token. |
 | `hermes-relay.py` → `/usr/local/bin/tomoshibi-hermes-relay` on the Hermes machine | Takes text on the private network and says it as Hermes, in the channel Hermes already uses. |
 
-The two share `192.0.2.0/24` and nothing else reaches it. The listener is bound
+`SAY` and `WORD` both come from `/etc/tomoshibi/watch.env` — the address in
+this repository is a documentation one, because the repository is public and a
+script carrying the real address of the machine that speaks as the bot would be
+publishing it. Set `SAY=http://<hermes>:49771/say` there.
+
+The two share a private subnet and nothing else reaches it. The listener is bound
 to the private address only, and a shared word in
 `/etc/tomoshibi/watch.env` keeps a stray probe on that subnet from becoming a
 message.

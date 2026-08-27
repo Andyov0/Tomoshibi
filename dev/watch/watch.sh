@@ -25,7 +25,17 @@
 set -uo pipefail
 
 AT=${AT:-http://127.0.0.1:8080}
-SAY=${SAY:-http://192.0.2.11:49771/say}
+# Where to post, which is a property of the deployment rather than of this
+# script. Read from the same file as the credential, because the address in this
+# repository is a documentation one — the repository is public, and a script
+# carrying the real address of the machine that speaks as the bot would be
+# publishing it.
+#
+# This bit me: the substitution went into the copy already installed on the
+# control node, so its alerts were being posted to an address nobody answers,
+# and the next thing worth saying would have gone nowhere. Reading it from the
+# environment file is what makes the two independent.
+SAY=${SAY:-}
 WORD=${WORD:-}
 
 STATE=${STATE:-/var/lib/tomoshibi-watch}
@@ -44,8 +54,15 @@ ENV_FILE=${ENV_FILE:-/etc/tomoshibi/watch.env}
 
 # The word this and the relay on the Hermes machine share, kept beside the
 # management credential rather than in the crontab, where a `ps` would show it.
-if [ -z "$WORD" ] && [ -f "$ENV_FILE" ]; then
-    WORD=$(grep -m1 '^WORD=' "$ENV_FILE" | cut -d= -f2-)
+if [ -f "$ENV_FILE" ]; then
+    [ -z "$WORD" ] && WORD=$(grep -m1 '^WORD=' "$ENV_FILE" | cut -d= -f2-)
+    [ -z "$SAY" ] && SAY=$(grep -m1 '^SAY=' "$ENV_FILE" | cut -d= -f2-)
+fi
+
+# Documented rather than defaulted, because a default here would be a real
+# address in a public repository or an unreachable one on a real machine.
+if [ -z "$SAY" ]; then
+    log "SAY is not set in $ENV_FILE, so nothing can be sent"
 fi
 
 mkdir -p "$STATE"

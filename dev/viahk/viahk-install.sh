@@ -55,6 +55,19 @@ case "$1" in
         echo
         systemctl --no-pager --lines=0 status viahk.service 2>&1 | head -3 || true
 
+        # Counted from whichever the machine actually uses. Some of these
+        # relays have no nftables at all and the script falls back to iptables;
+        # counting only `nft` reported those as having nothing, which is a
+        # reading that sends somebody to fix a machine that is fine.
+        echo "rules:"
+        if nft list table ip viahk >/dev/null 2>&1; then
+            printf '  nftables %s\n' "$(nft list table ip viahk | grep -cE 'dnat to|masquerade')"
+        elif iptables -t nat -S VIAHK_OUT >/dev/null 2>&1 || iptables -t nat -S VIAHK_PRE >/dev/null 2>&1; then
+            printf '  iptables %s\n' "$(( $(iptables -t nat -S VIAHK_OUT 2>/dev/null | grep -c DNAT) + $(iptables -t nat -S VIAHK_PRE 2>/dev/null | grep -c DNAT) ))"
+        else
+            printf '  (none)\n'
+        fi
+
         exit 0
         ;;
 
@@ -91,7 +104,15 @@ for one in viahk.sh viahk-hub.sh; do
 done
 
 install -d "$WHERE"
-install -m 0755 "$here/viahk.sh" "$here/viahk-hub.sh" "$WHERE/"
+
+# Skipped where this is already running from the place it installs to, which is
+# what happens every time somebody re-runs it on a machine to change the
+# mapping. `install` refuses to copy a file onto itself, and under `set -e` that
+# ended the script before it wrote the arguments — so the unit kept the old
+# mapping and the summary printed nothing to say so.
+if [ "$here" != "$WHERE" ]; then
+    install -m 0755 "$here/viahk.sh" "$here/viahk-hub.sh" "$WHERE/"
+fi
 
 # Quoted, so an argument with anything surprising in it survives the round trip
 # through the file. Only this role's file is touched.

@@ -450,6 +450,7 @@ export async function share(
 	wanted: boolean,
 	frameRate: ShareFrameRate,
 	quality: ShareQuality = "auto",
+	hold = true,
 ): Promise<LocalTrackPublication | undefined> {
 	const profile = settingsFor(frameRate, quality);
 
@@ -536,15 +537,25 @@ export async function share(
 		},
 	);
 
-	// The ceiling above is what the picture is worth. What follows is what the
-	// line will actually take.
-	//
 	// Only one at a time: a share started while another is being followed would
 	// leave the first watcher writing to a sender that has gone.
 	following?.stop();
 	following = undefined;
 
-	if (published && wanted) {
+	// Held at the ceiling unless somebody asks for the other thing.
+	//
+	// Lowering the bitrate to what the line will take is the right answer to a
+	// line that cannot carry the picture, and it is the wrong default here. A
+	// share is looked at rather than glanced at: text that has gone soft is not
+	// a degraded version of the thing being shared, it is a different and
+	// useless thing, and somebody who chose 1440p chose it. The stutter that
+	// comes of holding the ceiling is at least legible between the stutters.
+	//
+	// So the default holds, and giving ground is a choice. That is the same
+	// principle as the size and rate above — every named quality is a person
+	// saying what they want and is sent at the ceiling for it — and this now
+	// follows it rather than quietly undoing it.
+	if (published && wanted && !hold) {
 		following = follow(published, profile.maxBitrate);
 	}
 

@@ -20,7 +20,7 @@
 // an unused name never. A single attempt would have found any of those three
 // answers and reported it as the whole truth.
 //
-//	go run ./dev/snicheck 118.196.31.233:39217 old.example.com new.example.com
+//	go run ./dev/snicheck 203.0.113.25:39217 old.example.com new.example.com
 //
 // An empty name is written as "-", which offers no SNI at all and is what a
 // client dialling a bare address does.

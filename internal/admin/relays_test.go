@@ -204,16 +204,16 @@ func TestWhichAddressesNameAHost(t *testing.T) {
 		host string
 	}{
 		// Names, which have records.
-		{"wss://hk.api.shota.sg", "hk.api.shota.sg"},
-		{"wss://hk.api.shota.sg:443", "hk.api.shota.sg"},
-		{"wss://hk.api.shota.sg:39217/rtc", "hk.api.shota.sg"},
+		{"wss://hk.relays.example", "hk.relays.example"},
+		{"wss://hk.relays.example:443", "hk.relays.example"},
+		{"wss://hk.relays.example:39217/rtc", "hk.relays.example"},
 		{"https://relay.example", "relay.example"},
-		{"hk.api.shota.sg:39217", "hk.api.shota.sg"},
+		{"hk.relays.example:39217", "hk.relays.example"},
 
 		// Addresses, which have none. Two relays here are dialled this way,
 		// because the path filters the name in the handshake.
-		{"wss://194.114.138.245", ""},
-		{"wss://194.114.138.245:39217", ""},
+		{"wss://198.51.100.31", ""},
+		{"wss://198.51.100.31:39217", ""},
 		{"wss://[2001:db8::1]", ""},
 		{"wss://[2001:db8::1]:443", ""},
 		{"wss://::1", ""},

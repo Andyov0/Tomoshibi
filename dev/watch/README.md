@@ -8,6 +8,15 @@ noticing.
 
 Two pieces, on two machines, because the token stays where it already was.
 
+> **The addresses below are documentation addresses.** RFC 5737 reserves
+> `192.0.2.0/24`, `198.51.100.0/24` and `203.0.113.0/24` for exactly this, and
+> the names end in `.example`. What a deployment actually runs is in its
+> management pages, and this repository is public.
+>
+> The two machines really do share a private subnet and the port really is
+> the one below; only the addresses are stand-ins.
+
+
 ## What runs where
 
 | | |
@@ -15,7 +24,7 @@ Two pieces, on two machines, because the token stays where it already was.
 | `watch.sh` → `/usr/local/bin/tomoshibi-watch` on the control node | Reads the fleet and the journal every five minutes. Decides whether anything is worth saying. Holds no token. |
 | `hermes-relay.py` → `/usr/local/bin/tomoshibi-hermes-relay` on the Hermes machine | Takes text on the private network and says it as Hermes, in the channel Hermes already uses. |
 
-The two share `114.51.4.0/24` and nothing else reaches it. The listener is bound
+The two share `192.0.2.0/24` and nothing else reaches it. The listener is bound
 to the private address only, and a shared word in
 `/etc/tomoshibi/watch.env` keeps a stray probe on that subnet from becoming a
 message.
@@ -85,7 +94,7 @@ would arrive:
 
 ```bash
 # The relay, end to end. Says {"sent": true} and a message appears.
-curl -s -X POST http://114.51.4.11:49771/say \
+curl -s -X POST http://192.0.2.11:49771/say \
   -H 'Content-Type: application/json' \
   -d '{"text":"test","word":"<the word from watch.env>"}'
 

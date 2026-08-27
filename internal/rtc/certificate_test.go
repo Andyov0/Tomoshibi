@@ -413,8 +413,8 @@ func TestTakingTheFileAwayLetsTheNextPushLand(t *testing.T) {
 func TestWhichRefusalsAreRoutine(t *testing.T) {
 	for _, why := range []string{
 		"the offer expires no later than what is held",
-		"the offer does not answer to 118.196.31.233",
-		"the offer does not answer to hk.api.shota.sg",
+		"the offer does not answer to 203.0.113.25",
+		"the offer does not answer to hk.relays.example",
 	} {
 		if !routineRefusal(why) {
 			t.Errorf("warned about the ordinary case: %q", why)

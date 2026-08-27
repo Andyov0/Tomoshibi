@@ -443,7 +443,7 @@ func (a *API) dropRelay(session Session, w http.ResponseWriter, r *http.Request)
 	// anybody renames the relay — and renaming is ordinary, because the name
 	// somebody types on a machine being set up is short and the name a page
 	// shows is not. Removing "GZ Volcano" asked the zone to delete
-	// "GZ Volcano.api.shota.sg", which is not a name, while the record it
+	// "GZ Volcano.relays.example", which is not a name, while the record it
 	// actually had went on resolving.
 	//
 	// The address is the one thing that cannot drift: it is what clients dial.

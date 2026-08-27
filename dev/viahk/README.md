@@ -121,10 +121,10 @@ of those is invisible until something is forwarded.
 Two scripts, one per end, one destination at a time.
 
     # On the Hong Kong machine, once per overseas relay:
-    viahk-hub.sh 39501 194.114.138.245 39218
+    viahk-hub.sh 39501 198.51.100.31 39218
 
     # On each mainland relay, the same pairing from the other side:
-    viahk.sh 103.73.220.249 194.114.138.245 39218 39501
+    viahk.sh 198.51.100.10 198.51.100.31 39218 39501
 
 Both are idempotent and both take `off`. There is no tunnel and nothing is
 installed: nftables rewrites the destination on the way out and the source on

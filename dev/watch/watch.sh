@@ -25,7 +25,7 @@
 set -uo pipefail
 
 AT=${AT:-http://127.0.0.1:8080}
-SAY=${SAY:-http://114.51.4.11:49771/say}
+SAY=${SAY:-http://192.0.2.11:49771/say}
 WORD=${WORD:-}
 
 STATE=${STATE:-/var/lib/tomoshibi-watch}

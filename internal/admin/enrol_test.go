@@ -565,7 +565,7 @@ func TestReinstallingARelayKeepsWhatSomebodyConfiguredOnIt(t *testing.T) {
 // those are the same thing only until somebody renames the relay — and renaming
 // is ordinary: the name typed on a machine being set up is short, and the name a
 // page shows is not. Removing a relay called "GZ Volcano" asked the zone to
-// delete "GZ Volcano.api.shota.sg", which is not a name, and left the record it
+// delete "GZ Volcano.relays.example", which is not a name, and left the record it
 // really had resolving to a machine that was gone.
 func TestTheNameRemovedIsTheOneTheRelayAnswersTo(t *testing.T) {
 	api, relays, names, mux := enrolling(t)

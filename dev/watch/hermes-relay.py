@@ -12,7 +12,7 @@ alert file that happened to sit on the same machine, which would have made this
 deployment's alerts depend on a credential belonging to something else — and
 put them in front of whoever that project had decided to tell.
 
-Bound to the private address only. The two machines share 114.51.4.0/24 and
+Bound to the private address only. The two machines share 192.0.2.0/24 and
 nothing else reaches it; a listener on the public address would be an
 unauthenticated way to make the bot say anything.
 
@@ -29,7 +29,7 @@ import sys
 import urllib.parse
 import urllib.request
 
-LISTEN = os.environ.get("LISTEN", "114.51.4.11")
+LISTEN = os.environ.get("LISTEN", "192.0.2.11")
 PORT = int(os.environ.get("PORT", "49771"))
 
 # Hermes's own configuration: its bot, and the channel it already talks in.

@@ -9,14 +9,23 @@ record at the same time.
 `viahk-install.sh` is what makes them survive a reboot. Everything below is the
 argument list to give it.
 
+> **The addresses below are documentation addresses.** RFC 5737 reserves
+> `192.0.2.0/24`, `198.51.100.0/24` and `203.0.113.0/24` for exactly this, and
+> the names end in `.example`. What a deployment actually runs is in its
+> management pages, and this repository is public.
+>
+> The shape is the real one — which machine forwards to which, on which port —
+> because the shape is what is worth reading. Only the identities are stand-ins.
+
+
 ## The shape
 
 Three legs, and the middle one is a hub in the opposite direction from the other
 two, which is the part worth reading twice.
 
 ```
-mainland relay ──► Hong Kong (103.73.220.249) ──► Singapore / Tokyo / Los Angeles / HK Dmit
-Hong Kong      ──► Shanghai Tencent (122.51.197.228) ──► Shanghai Telecom (180.153.83.93)
+mainland relay ──► Hong Kong (198.51.100.10) ──► Singapore / Tokyo / Los Angeles / HK Dmit
+Hong Kong      ──► Shanghai Tencent (203.0.113.21) ──► Shanghai Telecom (203.0.113.23)
 ```
 
 Nothing in the scripts assumes which side is which. A machine is a hub because
@@ -40,23 +49,23 @@ The hub ports are chosen so the destination is readable from the number:
 | `3951x` | Media traffic, the same order. |
 | `3954x` | Hong Kong's own traffic for Shanghai Telecom, through Shanghai Tencent. |
 
-## Hong Kong — 103.73.220.249 (`Gomami-HK-AIO`)
+## Hong Kong — 198.51.100.10 (`Gomami-HK-AIO`)
 
 Takes what the mainland relays send and puts it on the wire, and separately
 sends its own Shanghai Telecom traffic through Shanghai Tencent.
 
 ```bash
 viahk-install.sh hub \
-  39501:194.114.138.245:39218 \
-  39502:154.31.113.55:39218 \
-  39503:38.175.108.159:39218 \
-  39504:154.12.179.72:39218 \
-  39511:194.114.138.245:13378 \
-  39512:154.31.113.55:13378 \
-  39513:38.175.108.159:13378 \
-  39514:154.12.179.72:13378 \
-  39541:122.51.197.228:39521 \
-  39542:122.51.197.228:39531
+  39501:198.51.100.31:39218 \
+  39502:198.51.100.32:39218 \
+  39503:198.51.100.33:39218 \
+  39504:198.51.100.34:39218 \
+  39511:198.51.100.31:13378 \
+  39512:198.51.100.32:13378 \
+  39513:198.51.100.33:13378 \
+  39514:198.51.100.34:13378 \
+  39541:203.0.113.21:39521 \
+  39542:203.0.113.21:39531
 ```
 
 The last two are the second leg. A packet arriving here for Shanghai Telecom is
@@ -65,61 +74,61 @@ mapping rather than as a rule in the `output` chain, because forwarded packets
 never reach `output` and putting it there took three relays from 348 ms to
 answering nothing at all. The README records that at length.
 
-## Shanghai Tencent — 122.51.197.228 (`sh.api.shota.sg`)
+## Shanghai Tencent — 203.0.113.21 (`sh.relays.example`)
 
 Both a spoke and a hub. Its own overseas traffic goes through Hong Kong; it also
 carries Hong Kong's Shanghai Telecom traffic the last 6 ms.
 
 ```bash
-viahk-install.sh spoke 103.73.220.249 \
-  194.114.138.245:39218:39501 \
-  154.31.113.55:39218:39502 \
-  38.175.108.159:39218:39503 \
-  154.12.179.72:39218:39504 \
-  194.114.138.245:13378:39511 \
-  154.31.113.55:13378:39512 \
-  38.175.108.159:13378:39513 \
-  154.12.179.72:13378:39514
+viahk-install.sh spoke 198.51.100.10 \
+  198.51.100.31:39218:39501 \
+  198.51.100.32:39218:39502 \
+  198.51.100.33:39218:39503 \
+  198.51.100.34:39218:39504 \
+  198.51.100.31:13378:39511 \
+  198.51.100.32:13378:39512 \
+  198.51.100.33:13378:39513 \
+  198.51.100.34:13378:39514
 ```
 
 and, for the leg it is the hub of:
 
 ```bash
 viahk-install.sh hub \
-  39521:180.153.83.93:39218 \
-  39531:180.153.83.93:13378
+  39521:203.0.113.23:39218 \
+  39531:203.0.113.23:13378
 ```
 
 Both are installed on the same machine and both are replayed at boot. The two
 scripts own different chains of the same table, so installing one leaves the
 other alone; `viahk-install.sh show` prints what a machine has.
 
-## Guangzhou Tencent — 134.175.127.210 (`gz.api.shota.sg`)
+## Guangzhou Tencent — 203.0.113.22 (`gz.relays.example`)
 
 The same spoke arguments as Shanghai Tencent. This is the machine the 7.9x
 figure in the README was measured on.
 
 ```bash
-viahk-install.sh spoke 103.73.220.249 \
-  194.114.138.245:39218:39501 \
-  154.31.113.55:39218:39502 \
-  38.175.108.159:39218:39503 \
-  154.12.179.72:39218:39504 \
-  194.114.138.245:13378:39511 \
-  154.31.113.55:13378:39512 \
-  38.175.108.159:13378:39513 \
-  154.12.179.72:13378:39514
+viahk-install.sh spoke 198.51.100.10 \
+  198.51.100.31:39218:39501 \
+  198.51.100.32:39218:39502 \
+  198.51.100.33:39218:39503 \
+  198.51.100.34:39218:39504 \
+  198.51.100.31:13378:39511 \
+  198.51.100.32:13378:39512 \
+  198.51.100.33:13378:39513 \
+  198.51.100.34:13378:39514
 ```
 
 ## The destinations
 
 | | | |
 | --- | --- | --- |
-| `194.114.138.245` | `sg.api.shota.sg` | Singapore Misaka |
-| `154.31.113.55` | `jp.api.shota.sg` | Tokyo Dmit |
-| `38.175.108.159` | `lax.api.shota.sg` | Los Angeles Misaka |
-| `154.12.179.72` | `hkd.api.shota.sg` | Hong Kong Dmit |
-| `180.153.83.93` | `shct.api.shota.sg` | Shanghai Telecom |
+| `198.51.100.31` | `sg.relays.example` | Singapore Misaka |
+| `198.51.100.32` | `jp.relays.example` | Tokyo Dmit |
+| `198.51.100.33` | `lax.relays.example` | Los Angeles Misaka |
+| `198.51.100.34` | `hkd.relays.example` | Hong Kong Dmit |
+| `203.0.113.23` | `shct.relays.example` | Shanghai Telecom |
 
 Addresses rather than names throughout, and deliberately: a name here would be
 resolved on a mainland machine, and the whole reason several of these are dialled
@@ -150,7 +159,7 @@ working right up until somebody says the meeting is bad.
 From a mainland relay, before and after:
 
 ```bash
-udpcheck 194.114.138.245:39218 154.31.113.55:39218 38.175.108.159:39218
+udpcheck 198.51.100.31:39218 198.51.100.32:39218 198.51.100.33:39218
 ```
 
 `compare.py` measures both paths at once and is the honest version of this — one

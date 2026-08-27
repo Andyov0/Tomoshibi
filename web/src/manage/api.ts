@@ -136,6 +136,16 @@ export interface LiveRoom {
 	 * machine that answered.
 	 */
 	relay?: string;
+	/**
+	 * Whether somebody chose that machine, or a join left it behind.
+	 *
+	 * A placement stands until it is cleared: it does not expire and is not
+	 * spent by being obeyed. That is what makes it worth showing — one that went
+	 * away on its own could be left unmentioned, and one that does not would
+	 * otherwise be a room quietly ignoring every later choice with nothing on
+	 * any page to say why.
+	 */
+	placed?: boolean;
 }
 
 export interface KnownRoom {
@@ -505,6 +515,19 @@ export const api = {
 		call<{ room: string; relay: string; moved: boolean }>(
 			`/rooms/${encodeURIComponent(room)}/relay`,
 			{ method: "PUT", body: JSON.stringify({ relay, now }) },
+		),
+
+	/**
+	 * Hand a room back to whatever would have chosen for it.
+	 *
+	 * The only thing that undoes a placement — not a timer, not the join that
+	 * carries it out, not the call ending. Nothing moves: the meeting in
+	 * progress stays where it is, and this is about where the next one goes.
+	 */
+	freeRoom: (room: string) =>
+		call<{ room: string; relay: string; moved: boolean }>(
+			`/rooms/${encodeURIComponent(room)}/relay`,
+			{ method: "DELETE" },
 		),
 
 	/**

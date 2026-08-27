@@ -471,6 +471,27 @@ func (s *Store) hold(name, relay string, placed bool) error {
 			return nil
 		}
 
+		// A join may not demote an instruction to a guess.
+		//
+		// The two callers write the same field for different reasons: one is
+		// somebody saying where the room goes, the other is a join recording
+		// where it went. The second runs on every arrival, and while it cleared
+		// the flag the instruction survived exactly until the first person
+		// walked in — which is the same "works once, ignored afterwards" fault
+		// as the one the join path used to cause deliberately, reached by a
+		// route nobody was looking at.
+		//
+		// Only PlaceRoom sets this, and only ReleaseRoom clears it — and the
+		// name goes with the flag. Keeping the flag while letting the join
+		// overwrite the name would be worse than the fault it replaces: the
+		// record would read as a placement onto a machine nobody chose, which
+		// is a lie with a confident face on it. It happens whenever a join
+		// lands somewhere other than the placement, which is exactly the case
+		// where the placement matters.
+		if !placed && tally.Placed {
+			return nil
+		}
+
 		if tally.Relay == relay && tally.Placed == placed {
 			return nil
 		}
@@ -501,10 +522,16 @@ func (s *Store) hold(name, relay string, placed bool) error {
 // too patient, and a room that ended hours ago sends the next meeting of the
 // same name back to a machine it need not use.
 //
-// What must not happen is the note lasting forever, which is what it did when
+// What must not happen is a *guess* lasting forever, which is what it did when
 // it was first written: every room would return to whichever relay it first
 // landed on, for good, and choosing a server would stop meaning anything the
 // second time a name was used.
+//
+// A placement is not a guess and does not age at all. Somebody chose it, and it
+// stands until somebody chooses otherwise — an expiry on it would be this server
+// overruling an operator on a timer, which is the same fault seen from the other
+// side. The price is that a pin is invisible unless it is shown, so it is shown:
+// the rooms page marks a placed room and offers to hand it back to the policy.
 const heldFor = 2 * time.Hour
 
 // HeldOn says which relay a room is being held on, and whether somebody chose
@@ -534,8 +561,12 @@ func (s *Store) HeldOn(name string) (string, bool) {
 			return nil
 		}
 
-		// An instruction does not age out. It is read once, by the join that
-		// carries it out, and cleared there.
+		// An instruction does not age out, and is not spent by being obeyed.
+		// It stood for one join once — the join that carried it out cleared it
+		// — so a room came back to the chosen machine and every later meeting
+		// of that name went wherever the policy pointed. An operator who has
+		// said where a room goes has said it about the room, not about the next
+		// person through the door.
 		if !tally.Placed && time.Since(tally.HeldAt) > heldFor {
 			return nil
 		}
@@ -557,51 +588,14 @@ func (s *Store) PlaceRoom(name, relay string) error {
 	return s.hold(name, relay, true)
 }
 
-// Carried marks an instruction as carried out, so it moves a room once.
-//
-// Left in place it would pin the name for good, and every later choice anybody
-// made about where to hold a meeting of that name would do nothing, with nothing
-// on any screen to say why.
-func (s *Store) Carried(name string) error {
-	return s.db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(rooms)
-		if bucket == nil {
-			return nil
-		}
-
-		raw := bucket.Get([]byte(name))
-		if raw == nil {
-			return nil
-		}
-
-		var tally Room
-		if err := json.Unmarshal(raw, &tally); err != nil {
-			return nil
-		}
-
-		if !tally.Placed {
-			return nil
-		}
-
-		tally.Placed = false
-		tally.HeldAt = time.Now().UTC()
-
-		encoded, err := json.Marshal(tally)
-		if err != nil {
-			return err
-		}
-
-		return bucket.Put([]byte(name), encoded)
-	})
-}
-
 // ReleaseRoom forgets where a room was being held.
 //
 // The timed expiry in HeldOn is what covers the ordinary case — a meeting that
-// ends leaves nobody to say so — and this is for the two cases a clock cannot
+// ends leaves nobody to say so — and this is for the cases a clock cannot
 // answer. An operator taking a relay out of service wants the rooms on it picked
-// again now rather than in two hours; and a test needs to arrange a room that
-// has gone quiet without waiting for it to.
+// again now rather than in two hours; a placement is given back to the policy
+// only here, because nothing else may undo one; and a test needs to arrange a
+// room that has gone quiet without waiting for it to.
 func (s *Store) ReleaseRoom(name string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(rooms)
@@ -620,6 +614,11 @@ func (s *Store) ReleaseRoom(name string) error {
 		}
 
 		tally.Relay = ""
+
+		// And the flag with it. Left standing, the record reads as a placement
+		// onto nowhere: HeldOn answers ("", true), which is inert today only
+		// because every caller checks the name first.
+		tally.Placed = false
 
 		encoded, err := json.Marshal(tally)
 		if err != nil {

@@ -356,6 +356,7 @@ const zhHans: Dictionary = {
 	"Media": "媒体",
 	"Move": "迁移",
 	"Move now, ending this call": "立刻迁移,结束这通通话",
+	"Choose automatically again": "改回自动选择",
 	"Mute this": "静音这一路",
 	"New rooms": "新房间",
 	"No administrators are configured, so anyone can start a room.": "没有配置管理员,所以任何人都能开房间。",

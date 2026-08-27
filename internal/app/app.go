@@ -723,13 +723,14 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	if held != "" && held != entry.Name && placed {
 		if there, ok := a.relays.named(held); ok {
 			holding = there
-
-			// Once. Left standing it would pin the name for good and every later
-			// choice about where to hold a meeting of that name would do nothing,
-			// with nothing on any screen to say why.
-			if err := a.store.Carried(name); err != nil {
-				slog.Error("failed to mark a move as carried out", "room", name, "error", err)
-			}
+		} else {
+			// The chosen machine is not one this deployment has any more. Said
+			// out loud rather than shrugged off, because the alternative is a
+			// room quietly going somewhere nobody asked for while the page still
+			// names the machine that was chosen — which is the whole class of
+			// fault this placement exists to end.
+			slog.Error("a room is placed on a relay this deployment does not have",
+				"room", name, "relay", held)
 		}
 	} else if held != "" && held != entry.Name {
 		if a.meeting(r, name) {

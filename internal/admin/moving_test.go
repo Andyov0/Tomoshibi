@@ -112,6 +112,7 @@ type placed struct{}
 func (placed) HoldRoom(string, string) error         { return nil }
 func (placed) HeldOn(string) (string, bool)          { return "", false }
 func (placed) PlaceRoom(string, string) error        { return nil }
+func (placed) ReleaseRoom(string) error              { return nil }
 func (placed) PinEntry(string, string, string) error { return nil }
 
 // A fleet that answers which node each relay is, which is what a move has to
@@ -309,7 +310,7 @@ func TestAMoveForLaterHoldsNothing(t *testing.T) {
 }
 
 /*
- * A move that could not put the room anywhere says so.
+ * A move that could not put the room anywhere says so, and says it as a failure.
  *
  * The node identifier is assigned when a media server starts, so it changes on
  * every restart and nothing written down survives an upgrade. The first version
@@ -318,11 +319,17 @@ func TestAMoveForLaterHoldsNothing(t *testing.T) {
  * settle, and the only evidence was a meeting in the wrong place. Moved to
  * Shanghai, landed on Hong Kong.
  *
- * It still moves: the record is still written and the room still closes, which
- * is the behaviour it had before any of this. What must not happen again is it
- * doing that quietly.
+ * It answered 200 for a while after that, on the argument that the placement was
+ * written and the room would go to the right machine at the next join. True, and
+ * not what was asked for: what was asked for was the room put up there, and
+ * without it whoever reconnects first decides which node holds the media. A
+ * control that reports a coin toss as success is how the first fault stayed
+ * hidden for a week.
+ *
+ * So it refuses, and the placement stands, and pressing it again once the relay
+ * is answering does the rest.
  */
-func TestAMoveThatCannotHoldTheRoomSaysSo(t *testing.T) {
+func TestAMoveThatCannotHoldTheRoomRefuses(t *testing.T) {
 	admin := config.Admin{
 		Trip: room.Trip(key, "moderator"), Name: "adam",
 		Can: []string{config.Observe, config.Moderate},
@@ -354,9 +361,8 @@ func TestAMoveThatCannotHoldTheRoomSaysSo(t *testing.T) {
 	recorder := place(t, mux, cookieName+"="+token,
 		"/api/admin/rooms/standup/relay", `{"relay":"tokyo","now":true}`)
 
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("a move that could not hold the room answered %d, want 200 — it still moves",
-			recorder.Code)
+	if recorder.Code != http.StatusBadGateway {
+		t.Errorf("a move that could not hold the room answered %d, want 502", recorder.Code)
 	}
 
 	var said bool

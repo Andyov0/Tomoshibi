@@ -11,6 +11,7 @@ import {
 	LogIn,
 	MicOff,
 	Move,
+	Pin,
 	Server,
 	UserMinus,
 } from "lucide-react";
@@ -135,7 +136,13 @@ export function RoomsPanel({
 										    holds the machine that was asked rather than
 										    the machine holding the call. */}
 										{one.relay && (
-											<span className="truncate text-[11px] text-fg-muted">
+											<span className="flex items-center gap-1 truncate text-[11px] text-fg-muted">
+												{/* A placement does not expire and is not
+												    spent by being obeyed, so it has to be
+												    visible: a pin nobody remembers making
+												    is a room that ignores every later
+												    choice with nothing to say why. */}
+												{one.placed && <Pin className="size-2.5 shrink-0" />}
 												<Flagged text={one.relay} />
 											</span>
 										)}
@@ -181,10 +188,20 @@ export function RoomsPanel({
 					acting={acting}
 					relays={relays}
 					onSignedOut={onSignedOut}
+					// Read off the listing rather than asked for again: the room
+					// being looked at is one of the rows behind this panel, and
+					// a second request for a boolean already on screen is a
+					// second thing that can be out of date with the first.
+					placed={live.find((one) => one.name === open)?.placed ?? false}
 					onClose={() => act(() => api.closeRoom(open))}
 					onPlace={(relay, now) => {
 						void act(async () => {
 							await api.placeRoom(open, relay, now);
+						});
+					}}
+					onFree={() => {
+						void act(async () => {
+							await api.freeRoom(open);
 						});
 					}}
 					onPlacePerson={(identity, relay) => {
@@ -212,7 +229,9 @@ function People({
 	relays,
 	onSignedOut,
 	onClose,
+	placed,
 	onPlace,
+	onFree,
 	onPlacePerson,
 	onRemove,
 	onMute,
@@ -224,7 +243,9 @@ function People({
 	relays: Relay[];
 	onSignedOut: () => void;
 	onClose: () => void;
+	placed: boolean;
 	onPlace: (relay: string, now: boolean) => void;
+	onFree: () => void;
 	onPlacePerson: (identity: string, relay: string) => void;
 	onRemove: (identity: string) => void;
 	onMute: (identity: string, track: string) => void;
@@ -298,7 +319,9 @@ function People({
 					<Moving
 						relays={relays}
 						acting={acting}
+						placed={placed}
 						onPlace={(relay, now) => onPlace(relay, now)}
+						onFree={onFree}
 					/>
 				)}
 
@@ -617,11 +640,15 @@ function source(name: string): string {
 function Moving({
 	relays,
 	acting,
+	placed,
 	onPlace,
+	onFree,
 }: {
 	relays: Relay[];
 	acting: boolean;
+	placed: boolean;
 	onPlace: (relay: string, now: boolean) => void;
+	onFree: () => void;
 }) {
 	const t = useT();
 
@@ -688,6 +715,24 @@ function Moving({
 							"transition-colors hover:bg-danger/20 disabled:opacity-40",
 						)}
 					>{t("Move now, ending this call")}</button>
+
+					{/* Only where there is a choice to give back. Offered on a
+					    room nobody has placed, it would read as a third way of
+					    moving one. */}
+					{placed && (
+						<button
+							type="button"
+							disabled={acting}
+							onClick={() => {
+								onFree();
+								setOpen(false);
+							}}
+							className={cn(
+								"rounded-md px-2 py-1.5 text-left text-[11.5px] text-fg-muted",
+								"transition-colors hover:bg-surface-hi hover:text-fg disabled:opacity-40",
+							)}
+						>{t("Choose automatically again")}</button>
+					)}
 				</div>
 			)}
 		</span>

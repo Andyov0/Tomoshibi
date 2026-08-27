@@ -546,3 +546,95 @@ func TestWhereARoomIsHeldIsForgottenOnceItGoesQuiet(t *testing.T) {
 			"server would never mean anything again", got)
 	}
 }
+
+/*
+ * A placement is not a guess and does not expire.
+ *
+ * The two records share a field and are not the same thing. A join leaves behind
+ * where the meeting happened to be, which is worth believing for as long as the
+ * meeting is plausibly still running and no longer — the test above is that. An
+ * operator saying where a room goes is an instruction, and an instruction that
+ * quietly stopped applying after two hours, or after being obeyed once, would be
+ * this server overruling the person who runs it on a timer.
+ *
+ * It stood for exactly one join once: the join that carried it out cleared it,
+ * so the room went to the chosen machine and every meeting of that name
+ * afterwards went wherever the policy pointed. From the outside that is a
+ * setting that works the first time and is ignored from then on.
+ *
+ * The cost is that a pin nobody remembers making is invisible, which is a real
+ * cost and is paid on the page rather than by a clock: the rooms page marks a
+ * placed room and offers to hand it back.
+ */
+func TestAPlacementOutlivesTheJoinThatObeysIt(t *testing.T) {
+	st := open(t)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.PlaceRoom("standup", "shanghai"); err != nil {
+		t.Fatal(err)
+	}
+
+	// What a join leaves behind, written over the top. This is the ordinary
+	// case: somebody arrives, the room is held where it was placed, and the
+	// join records that — and it must not demote the instruction to a guess.
+	if err := st.HoldRoom("standup", "shanghai"); err != nil {
+		t.Fatal(err)
+	}
+
+	relay, placed := st.HeldOn("standup")
+	if relay != "shanghai" || !placed {
+		t.Fatalf("after one join the placement reads %q placed=%v, want shanghai and placed", relay, placed)
+	}
+
+	// And a join that landed somewhere else does not drag the placement with
+	// it. This is the case the placement exists for — the join disagreeing —
+	// and a record that kept the flag while taking the join's name would read
+	// as an operator having chosen a machine they never chose.
+	if err := st.HoldRoom("standup", "hongkong"); err != nil {
+		t.Fatal(err)
+	}
+
+	if relay, placed := st.HeldOn("standup"); relay != "shanghai" || !placed {
+		t.Fatalf("a join elsewhere moved the placement to %q placed=%v, want shanghai", relay, placed)
+	}
+
+	// Aged well past the window a guess would die in.
+	if err := st.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+
+		var tally Room
+		if err := json.Unmarshal(bucket.Get([]byte("standup")), &tally); err != nil {
+			return err
+		}
+
+		tally.HeldAt = time.Now().Add(-heldFor * 100)
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte("standup"), encoded)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	relay, placed = st.HeldOn("standup")
+	if relay != "shanghai" || !placed {
+		t.Errorf("a placement aged by a week reads %q placed=%v; an operator's choice "+
+			"is not something this server may forget on its own", relay, placed)
+	}
+
+	// And the one thing that does undo it, which is somebody saying so.
+	if err := st.ReleaseRoom("standup"); err != nil {
+		t.Fatal(err)
+	}
+
+	if relay, placed := st.HeldOn("standup"); relay != "" || placed {
+		t.Errorf("a released room reads %q placed=%v, want nothing — a placement onto "+
+			"nowhere is a record no caller can act on", relay, placed)
+	}
+}

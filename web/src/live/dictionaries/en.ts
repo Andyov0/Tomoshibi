@@ -387,6 +387,7 @@ const en = {
 	"Media": "Media",
 	"Move": "Move",
 	"Move now, ending this call": "Move now, ending this call",
+	"Choose automatically again": "Choose automatically again",
 	"Mute this": "Mute this",
 	"New rooms": "New rooms",
 	"No administrators are configured, so anyone can start a room.": "No administrators are configured, so anyone can start a room.",

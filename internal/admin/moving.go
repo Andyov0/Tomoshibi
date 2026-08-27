@@ -39,6 +39,7 @@ type Placing interface {
 	HoldRoom(room, relay string) error
 	HeldOn(room string) (string, bool)
 	PlaceRoom(room, relay string) error
+	ReleaseRoom(room string) error
 	PinEntry(room, identity, relay string) error
 }
 
@@ -158,10 +159,28 @@ func (a *API) placeRoom(session Session, w http.ResponseWriter, r *http.Request)
 	// nothing is what this whole change is about. The move itself still stands:
 	// the room is closed and the placement is written, which is what it did
 	// before any of this, and it is announced as having moved because it has.
-	if node, err := a.nodeOf(r.Context(), relay); err != nil {
+	node, err := a.nodeOf(r.Context(), relay)
+	if err == nil {
+		err = a.control.Hold(r.Context(), name, node)
+	}
+
+	if err != nil {
 		a.record(session, "hold room", name, relay, err)
-	} else if err := a.control.Hold(r.Context(), name, node); err != nil {
-		a.record(session, "hold room", name, relay, err)
+
+		// Answered as a failure, not as a move with a footnote.
+		//
+		// The call has already ended by this point and the placement is already
+		// written, so the room does go to the chosen machine at the next join —
+		// this is not a rollback and there is nothing to undo. What it is not is
+		// the thing that was asked for: the room was to be put up there and it
+		// was not, so whoever comes back first decides which node holds the
+		// media, and that is a coin toss.
+		//
+		// Reported because a control that says it worked when it half worked is
+		// how the original fault stayed hidden for a week. The operator can
+		// press it again once whatever is wrong with that relay is fixed.
+		refuse(w, http.StatusBadGateway, "not_held_there")
+		return
 	}
 
 	a.record(session, "move room", name, relay, nil)
@@ -285,4 +304,37 @@ func (a *API) nodeOf(ctx context.Context, relay string) (string, error) {
 	}
 
 	return stats.Node, nil
+}
+
+// freeRoom hands a room back to the policy that would otherwise have chosen for
+// it.
+//
+// A placement stands until somebody says otherwise, and this is somebody saying
+// otherwise. It is the only way one is undone: not a timer, not the join that
+// carries it out, not the call ending. An operator who pinned a room to Shanghai
+// six weeks ago and has forgotten doing it is better served by a page that says
+// so and a control that clears it than by a pin that quietly stopped meaning
+// anything on its own.
+//
+// Nothing is moved. The meeting in progress stays where it is — this is about
+// where the next one goes — and saying so is left to the page, because a control
+// that ended a call to stop preferring a machine would be a surprising way to
+// find out what it does.
+func (a *API) freeRoom(session Session, w http.ResponseWriter, r *http.Request) {
+	if a.placing == nil {
+		a.detached(w)
+		return
+	}
+
+	name := strings.ToLower(r.PathValue("room"))
+
+	if err := a.placing.ReleaseRoom(name); err != nil {
+		a.record(session, "free room", name, "", err)
+		refuse(w, http.StatusInternalServerError, "store_unavailable")
+		return
+	}
+
+	a.record(session, "free room", name, "", nil)
+
+	respond(w, map[string]any{"room": name, "relay": "", "moved": false})
 }

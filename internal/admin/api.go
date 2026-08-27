@@ -461,6 +461,7 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}/participants/{identity}", a.moderate(a.removeOne))
 	mux.HandleFunc("POST /api/admin/rooms/{room}/participants/{identity}/mute", a.moderate(a.muteOne))
 	mux.HandleFunc("PUT /api/admin/rooms/{room}/relay", a.moderate(a.placeRoom))
+	mux.HandleFunc("DELETE /api/admin/rooms/{room}/relay", a.moderate(a.freeRoom))
 	mux.HandleFunc("PUT /api/admin/rooms/{room}/participants/{identity}/relay", a.moderate(a.placePerson))
 }
 
@@ -757,7 +758,7 @@ func knownRooms(seen []store.Named) []map[string]any {
 // rather than in the store because the store holds the room record and knows
 // nothing about labels, and resolved once per listing rather than per room so a
 // page with forty calls does not read the relay list forty times.
-func (a *API) wherever() func(string) string {
+func (a *API) wherever() func(string) (string, bool) {
 	if a.store == nil {
 		return nil
 	}
@@ -772,24 +773,30 @@ func (a *API) wherever() func(string) string {
 		}
 	}
 
-	return func(name string) string {
-		held, _ := a.store.HeldOn(name)
+	return func(name string) (string, bool) {
+		held, placed := a.store.HeldOn(name)
 		if held == "" {
-			return ""
+			return "", false
 		}
 
 		// The key where the relay has since been removed, which is worth saying:
 		// a call held on a machine that is no longer in the list is exactly the
 		// situation somebody needs to be told about.
 		if label, ok := shown[held]; ok {
-			return label
+			return label, placed
 		}
 
-		return held
+		return held, placed
 	}
 }
 
-func liveRooms(rooms []*livekit.Room, held func(string) string) []map[string]any {
+// The second half of what `held` answers is whether somebody chose the machine
+// or a join left it behind, and it is on the page for one reason: a placement
+// now stands until it is cleared. It used to expire, which meant a pin nobody
+// remembered making went away on its own — invisible, and harmless because it
+// was temporary. Standing for good, invisible would be a room that ignores every
+// later choice with nothing anywhere to say why.
+func liveRooms(rooms []*livekit.Room, held func(string) (string, bool)) []map[string]any {
 	out := make([]map[string]any, 0, len(rooms))
 	for _, one := range rooms {
 		row := map[string]any{
@@ -801,8 +808,9 @@ func liveRooms(rooms []*livekit.Room, held func(string) string) []map[string]any
 		}
 
 		if held != nil {
-			if where := held(one.GetName()); where != "" {
+			if where, placed := held(one.GetName()); where != "" {
 				row["relay"] = where
+				row["placed"] = placed
 			}
 		}
 

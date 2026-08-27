@@ -356,6 +356,7 @@ const ja: Dictionary = {
 	"Media": "メディア",
 	"Move": "移す",
 	"Move now, ending this call": "今すぐ移す（この通話は終わります）",
+	"Choose automatically again": "また自動で選ぶ",
 	"Mute this": "これをミュート",
 	"New rooms": "新しい部屋",
 	"No administrators are configured, so anyone can start a room.": "管理者が設定されていないため、誰でも部屋を開けます。",

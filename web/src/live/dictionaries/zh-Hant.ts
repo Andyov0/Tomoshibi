@@ -356,6 +356,7 @@ const zhHant: Dictionary = {
 	"Media": "媒體",
 	"Move": "遷移",
 	"Move now, ending this call": "立刻遷移,結束這通通話",
+	"Choose automatically again": "改回自動選擇",
 	"Mute this": "靜音這一路",
 	"New rooms": "新房間",
 	"No administrators are configured, so anyone can start a room.": "沒有設定管理員,所以任何人都能開房間。",

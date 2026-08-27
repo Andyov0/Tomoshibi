@@ -9,6 +9,7 @@ import {
 } from "livekit-client";
 import type { Join } from "./api";
 import { installNoValidate } from "./novalidate";
+import { type Uplink, follow } from "./uplink";
 import { seal, sealing } from "./secrecy";
 
 /**
@@ -142,16 +143,17 @@ function bitrateFor(width: number, height: number, frameRate: number): number {
 /**
  * What to send, given both choices.
  *
- * The codec is H.264 everywhere except a still 1080p picture. H.264 has
- * hardware encoding on essentially every machine, and above 1080p or above
- * thirty frames the alternative is not a softer picture but an encoder falling
- * behind — which arrives as a share that stutters and drifts, and never
- * announces itself.
+ * H.264 throughout. It has hardware encoding on essentially every machine, and
+ * above 1080p or above thirty frames the alternative is not a softer picture
+ * but an encoder falling behind — which arrives as a share that stutters and
+ * drifts, and never announces itself.
  *
- * VP8 is kept for 1080p at fifteen or thirty because it honours the `text`
- * content hint, and a hardware H.264 encoder tuned for faces makes small type
- * the first thing to go soft. That is a real difference on a page of code, and
- * it is affordable at that size and rate and at no other.
+ * VP8 used to be kept for 1080p at fifteen or thirty, because it honours the
+ * `text` content hint and a hardware H.264 encoder tuned for faces makes small
+ * type the first thing to go soft. It is not any more, and this paragraph said
+ * it still was for long enough to be worth correcting rather than deleting: a
+ * comment describing a branch that is not there sends the next reader looking
+ * for it.
  *
  * Nothing here is a promise. The heights are what the browser is asked to
  * capture: a smaller display gives its own size, and a machine that cannot
@@ -534,7 +536,34 @@ export async function share(
 		},
 	);
 
+	// The ceiling above is what the picture is worth. What follows is what the
+	// line will actually take.
+	//
+	// Only one at a time: a share started while another is being followed would
+	// leave the first watcher writing to a sender that has gone.
+	following?.stop();
+	following = undefined;
+
+	if (published && wanted) {
+		following = follow(published, profile.maxBitrate);
+	}
+
 	return published;
+}
+
+/**
+ * The watcher on the share currently being sent, if there is one.
+ *
+ * Module state rather than something the caller holds, because the caller is a
+ * button: it turns sharing on and off and has nowhere to keep this, and a
+ * watcher left running against a stopped share would go on calling getStats on
+ * a track nobody has.
+ */
+let following: Uplink | undefined;
+
+/** What the share has settled on, for anything that wants to say so. */
+export function sharingAt(): number | undefined {
+	return following?.at();
 }
 
 /**

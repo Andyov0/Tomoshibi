@@ -1,6 +1,7 @@
 import { type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
 import { doorway } from "@/live/doorway";
 import { forget as forgetTimings } from "@/live/relays";
+import { sharpShares } from "@/live/sharpness";
 import { chosenRelay, leftRoom, rememberRelay, wasIn } from "@/live/api";
 import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
@@ -285,6 +286,11 @@ export function App() {
 				// be granted.
 				await made.localParticipant.setMicrophoneEnabled(microphone);
 				await made.localParticipant.setCameraEnabled(camera);
+
+				// A shared screen is not a face: it stays at full quality however
+				// small its tile is. See live/sharpness.ts.
+				const sharp = sharpShares(made);
+				made.once(RoomEvent.Disconnected, sharp);
 
 				current.current = made;
 				setLive(made);

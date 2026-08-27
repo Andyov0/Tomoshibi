@@ -245,6 +245,35 @@ func (r *relays) reserved(name string) bool {
 // Out of service counts as not usable: a room recorded as held on a machine
 // that has since been taken down should go wherever the policy sends it, not to
 // the machine somebody stopped.
+// everywhere finds a relay by name among every one this deployment has, whether
+// it is taking calls or not.
+//
+// Separate from named for one caller: a room somebody placed. Every other
+// lookup is choosing where to send a call and must not consider a machine that
+// has been taken out of service; a placement is not a choice being made, it is
+// one that was already made, and the only question left is which machine was
+// meant.
+//
+// Reachability is not consulted either, and that is deliberate. The control
+// node's reading is one vantage point on one network and is documented in
+// reachable.go as a suspicion rather than a fact — one relay on this fleet
+// answers UDP from everywhere except the control node while carrying calls
+// perfectly. Letting a suspicion quietly overrule somebody who said where the
+// room goes is the whole of what this is not allowed to do.
+func (r *relays) everywhere(name string) (store.Relay, bool) {
+	if r == nil || name == "" {
+		return store.Relay{}, false
+	}
+
+	for _, relay := range r.all() {
+		if relay.Name == name {
+			return relay, true
+		}
+	}
+
+	return store.Relay{}, false
+}
+
 func (r *relays) named(name string) (store.Relay, bool) {
 	if r == nil || name == "" {
 		return store.Relay{}, false
@@ -448,6 +477,7 @@ func (a *App) UseCluster(cluster *rtc.Cluster) {
 	// is the connection that already reaches every relay, and the relays hold
 	// nothing that says where to reach back.
 	a.cluster = cluster
+	a.fleet = cluster
 	go a.carrying()
 
 	// And the host's own actions, which reach the same relays through the same

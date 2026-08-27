@@ -8,6 +8,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -45,6 +46,11 @@ type App struct {
 	// The same object as control, kept typed for the one thing that needs more
 	// than the Control interface: handing every relay a renewed certificate.
 	cluster *rtc.Cluster
+
+	// fleet answers which node a relay is. The cluster, on a control node, and
+	// nil on a deployment holding its own media — which has one node and never
+	// asks.
+	fleet wondering
 	// relays is where a control node sends clients. Empty everywhere else.
 	relays *relays
 	// enrolment is set where a relay may bring itself up from a script.
@@ -721,8 +727,32 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// wherever the measurement pointed. The difference is not what was written
 	// but who wrote it and why.
 	if held != "" && held != entry.Name && placed {
-		if there, ok := a.relays.named(held); ok {
+		// Looked up among every relay this deployment has rather than among the
+		// ones currently taking calls, and nothing about the machine's state is
+		// allowed to change the answer.
+		//
+		// A placement is not this server choosing where to hold a meeting; it is
+		// a record of somebody having chosen, and the only thing left to work
+		// out is which machine they meant. Read through the ordinary lookup it
+		// went through a filter for enabled relays and another for reachable
+		// ones, so a placement onto a machine that had been taken out of service
+		// — or that the control node was briefly unable to open a socket to —
+		// fell through to the automatic choice with nothing said. That is the
+		// server deciding, on a suspicion, against somebody who had already
+		// decided.
+		if there, ok := a.relays.everywhere(held); ok {
 			holding = there
+
+			// Said once per join rather than never. The room goes where it was
+			// put — that is the rule — and an operator who took the machine out
+			// of service and forgot a room was pinned to it should find that out
+			// from a log rather than from a meeting.
+			if !there.Enabled {
+				slog.Warn("a room is placed on a relay that is not taking calls, and is going there anyway",
+					"room", name, "relay", held)
+			}
+
+			a.pinTo(r.Context(), name, there)
 		} else {
 			// The chosen machine is not one this deployment has any more. Said
 			// out loud rather than shrugged off, because the alternative is a
@@ -1218,5 +1248,65 @@ func (a *App) takesCertificates(mux *http.ServeMux) {
 func (a *App) Watching() {
 	if a.admin != nil {
 		a.admin.Watching()
+	}
+}
+
+// pinTo puts a placed room on the machine it was placed on, before anybody is
+// authorised to join it.
+//
+// Without this a placement decided almost nothing. Signalling goes to the relay
+// the client dialled, and where the room does not yet exist that relay's node
+// creates it — wherever the cluster's own selector says, which is the automatic
+// choice the placement exists to replace. What the placement did on its own was
+// arrange forwarding towards a machine the meeting was not on and put that
+// machine's name on the page, so the record and the screen agreed with each
+// other and disagreed with the meeting. That is the fault that had somebody
+// reading Nanjing off a panel while the call was in Hong Kong.
+//
+// Idempotent, and cheap after the first time: creating a room that is already
+// assigned to a node keeps the assignment and returns success. Which is also
+// why this does not move a meeting already in progress — a room that exists
+// stays where it is, and ending it so everybody comes back is a separate action
+// somebody has to ask for.
+//
+// The node is asked for rather than remembered. A media server's identifier is
+// minted when its process starts, so a cached one is wrong from the next restart
+// until it is noticed, and pinning a room to a node that no longer exists is a
+// room nobody can join at all — a worse failure than the one being fixed, and a
+// silent one.
+// wondering is the one question the join path has for the fleet: which node a
+// relay is, right now.
+//
+// Named rather than taking the cluster whole, for the reason the management API
+// names twelve of these — a gate that can only be exercised with a real cluster
+// behind it is a gate nothing tests, and this one decides where every meeting on
+// a placed room is held.
+type wondering interface {
+	AskStats(ctx context.Context, relay string) (rtc.Stats, error)
+}
+
+func (a *App) pinTo(ctx context.Context, room string, there store.Relay) {
+	if a.fleet == nil || a.control == nil || there.URL == "" {
+		return
+	}
+
+	// Bounded, because this is on the path of somebody waiting to be let into a
+	// call. A relay that has stopped answering must cost them a moment, not the
+	// join: the placement is still written, the forwarding is still arranged,
+	// and the room goes where the cluster puts it — which is exactly where it
+	// went before any of this existed.
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	stats, err := a.fleet.AskStats(ctx, there.URL)
+	if err != nil || stats.Node == "" {
+		slog.Warn("could not ask a relay which node it is, so a placed room goes wherever the cluster puts it",
+			"room", room, "relay", there.Name, "error", err)
+		return
+	}
+
+	if err := a.control.Hold(ctx, room, stats.Node); err != nil {
+		slog.Warn("could not put a placed room on the machine it was placed on",
+			"room", room, "relay", there.Name, "node", stats.Node, "error", err)
 	}
 }

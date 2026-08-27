@@ -9,8 +9,11 @@ import (
 	"sync"
 	"testing"
 
+	"errors"
+
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
+	"tomoshibi/internal/rtc"
 	"tomoshibi/internal/store"
 )
 
@@ -111,6 +114,20 @@ func (placed) HeldOn(string) (string, bool)          { return "", false }
 func (placed) PlaceRoom(string, string) error        { return nil }
 func (placed) PinEntry(string, string, string) error { return nil }
 
+// A fleet that answers which node each relay is, which is what a move has to
+// ask before it can put a room anywhere.
+type nodes struct{}
+
+func (nodes) Relays() []string { return []string{"wss://jp.example"} }
+
+func (nodes) AskStats(_ context.Context, relay string) (rtc.Stats, error) {
+	if relay == "wss://jp.example" {
+		return rtc.Stats{Node: "ND_tokyo"}, nil
+	}
+
+	return rtc.Stats{}, errors.New("no such relay")
+}
+
 func moving(t *testing.T) (*listening, http.Handler, string) {
 	t.Helper()
 
@@ -131,6 +148,7 @@ func moving(t *testing.T) (*listening, http.Handler, string) {
 			{Name: "tokyo", URL: "wss://jp.example", Node: "ND_tokyo"},
 		}},
 		placing: placed{},
+		fleet:   nodes{},
 		history: NewHistory(nil),
 		stop:    make(chan struct{}),
 	}
@@ -278,5 +296,69 @@ func TestAMoveForLaterHoldsNothing(t *testing.T) {
 
 	if did := heard.order(); len(did) != 0 {
 		t.Errorf("a move for later did %v, want nothing", did)
+	}
+}
+
+/*
+ * A move that could not put the room anywhere says so.
+ *
+ * The node identifier is assigned when a media server starts, so it changes on
+ * every restart and nothing written down survives an upgrade. The first version
+ * of this read it from the relay's record — where it is never written — so the
+ * hold silently did not happen, the move fell back to the race it was meant to
+ * settle, and the only evidence was a meeting in the wrong place. Moved to
+ * Shanghai, landed on Hong Kong.
+ *
+ * It still moves: the record is still written and the room still closes, which
+ * is the behaviour it had before any of this. What must not happen again is it
+ * doing that quietly.
+ */
+func TestAMoveThatCannotHoldTheRoomSaysSo(t *testing.T) {
+	admin := config.Admin{
+		Trip: room.Trip(key, "moderator"), Name: "adam",
+		Can: []string{config.Observe, config.Moderate},
+	}
+	heard := &listening{}
+	audit, written := auditing()
+
+	api := &API{
+		conf:     &config.Config{Meet: config.Meet{Admins: []config.Admin{admin}}, LiveKit: livekitDefaults()},
+		sessions: NewSessions(func() []config.Admin { return []config.Admin{admin} }, key),
+		media:    absent{},
+		control:  heard,
+		log:      audit,
+		store:    unwritten{},
+		relays: &listed{relays: []store.Relay{
+			{Name: "tokyo", URL: "wss://jp.example"},
+		}},
+		placing: placed{},
+		// No fleet, which is a control node that cannot ask the relays anything.
+		history: NewHistory(nil),
+		stop:    make(chan struct{}),
+	}
+
+	mux := http.NewServeMux()
+	api.Mount(mux)
+
+	_, token, _ := api.sessions.Open("", "moderator")
+
+	recorder := place(t, mux, cookieName+"="+token,
+		"/api/admin/rooms/standup/relay", `{"relay":"tokyo","now":true}`)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("a move that could not hold the room answered %d, want 200 — it still moves",
+			recorder.Code)
+	}
+
+	var said bool
+	for _, entry := range written.recorded() {
+		if entry.Action == "hold room" && entry.Failed {
+			said = true
+		}
+	}
+
+	if !said {
+		t.Error("a move put the room nowhere and wrote nothing down, which is the failure " +
+			"that took an afternoon to find the first time")
 	}
 }

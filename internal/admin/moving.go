@@ -1,8 +1,10 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -112,16 +114,21 @@ func (a *API) placeRoom(session Session, w http.ResponseWriter, r *http.Request)
 	// chosen. That is a control that reports success and does nothing, which is
 	// worse than one that fails.
 	//
-	// Not fatal, and deliberately so. A deployment whose relays predate the node
-	// being recorded has nothing to name here, and a move that falls back to the
-	// old behaviour is the behaviour it had yesterday.
-	if there, ok := a.relayNamed(relay); ok && there.Node != "" {
-		if err := a.control.Hold(r.Context(), name, there.Node); err != nil {
-			a.record(session, "hold room", name, relay, err)
-		}
-	} else {
-		a.record(session, "hold room", name, relay,
-			errors.New("that relay has no node recorded, so the room cannot be put there first"))
+	// The node is asked for now rather than read from the record.
+	//
+	// A media server's node identifier is assigned when the process starts, so
+	// it changes on every restart and anything written down is stale by the next
+	// upgrade. The first version of this read it from the relay's record, where
+	// it is not written at all — so the hold never happened, the move fell back
+	// to the old race, and nothing said so. Moved to Shanghai, landed on Hong
+	// Kong, and the only evidence was the meeting being in the wrong place.
+	//
+	// Said out loud when it cannot be done, because a move that quietly does
+	// nothing is what this whole change is about.
+	if node, err := a.nodeOf(r.Context(), relay); err != nil {
+		a.record(session, "hold room", name, relay, err)
+	} else if err := a.control.Hold(r.Context(), name, node); err != nil {
+		a.record(session, "hold room", name, relay, err)
 	}
 
 	if err := a.control.Announce(r.Context(), name, "moving", []byte(relay)); err != nil {
@@ -231,4 +238,31 @@ func (a *API) knownRelay(name string) bool {
 	}
 
 	return false
+}
+
+// nodeOf asks a relay what its media server is calling itself today.
+//
+// Live rather than remembered. The identifier is assigned at process start, so
+// a relay that has been restarted — which is every relay, after every upgrade —
+// has a different one from whatever was written down.
+func (a *API) nodeOf(ctx context.Context, relay string) (string, error) {
+	there, ok := a.relayNamed(relay)
+	if !ok {
+		return "", fmt.Errorf("%s is not a relay this deployment has", relay)
+	}
+
+	if a.fleet == nil {
+		return "", errors.New("this node cannot reach the relays to ask which is which")
+	}
+
+	stats, err := a.fleet.AskStats(ctx, there.URL)
+	if err != nil {
+		return "", fmt.Errorf("ask %s which node it is: %w", relay, err)
+	}
+
+	if stats.Node == "" {
+		return "", fmt.Errorf("%s did not say which node it is", relay)
+	}
+
+	return stats.Node, nil
 }

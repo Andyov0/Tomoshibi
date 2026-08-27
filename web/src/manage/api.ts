@@ -152,6 +152,17 @@ export interface KnownRoom {
 	name: string;
 	firstSeen: string;
 	lastSeen: string;
+	/**
+	 * Where the next meeting of this name will be held, where somebody has said.
+	 *
+	 * Only ever set for a placement — a name nobody is using has no meeting to
+	 * be anywhere, so the guess a join leaves behind is not worth showing. This
+	 * is the pin that gets forgotten: nothing is happening in the room, so
+	 * nobody is looking at it, and it is still waiting to decide where the next
+	 * one goes.
+	 */
+	relay?: string;
+	placed?: boolean;
 }
 
 export interface Layer {

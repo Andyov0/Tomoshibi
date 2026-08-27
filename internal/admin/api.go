@@ -727,7 +727,7 @@ func (a *API) rooms(_ Session, w http.ResponseWriter, r *http.Request) {
 	// against when they ever look like disagreeing again.
 	respond(w, map[string]any{
 		"live":  liveRooms(live, a.wherever()),
-		"known": knownRooms(seen),
+		"known": knownRooms(seen, a.wherever()),
 	})
 }
 
@@ -736,15 +736,32 @@ func (a *API) rooms(_ Session, w http.ResponseWriter, r *http.Request) {
 // Its own shape nests the record inside a wrapper carrying the name, which is
 // how it is keyed rather than how it reads. Handed over as it stands, every
 // caller would have to know that.
-func knownRooms(seen []store.Named) []map[string]any {
+//
+// Placements are marked here as well as on the live list, and this is the half
+// that matters more. A pin on a meeting somebody is in is visible by being
+// looked at; a pin on a name nobody has used for a month is the one that gets
+// forgotten, and it is waiting to send the next meeting of that name somewhere
+// nobody remembers choosing. Marked on the live list alone, the only rooms whose
+// placement could be seen would be the ones whose placement was least likely to
+// surprise anybody.
+func knownRooms(seen []store.Named, held func(string) (string, bool)) []map[string]any {
 	out := make([]map[string]any, 0, len(seen))
 	for _, one := range seen {
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"name":      one.Name,
 			"firstSeen": one.Room.Created,
 			"lastSeen":  one.Room.Seen,
 			"joins":     one.Room.Joins,
-		})
+		}
+
+		if held != nil {
+			if where, placed := held(one.Name); placed && where != "" {
+				row["relay"] = where
+				row["placed"] = true
+			}
+		}
+
+		out = append(out, row)
 	}
 
 	return out

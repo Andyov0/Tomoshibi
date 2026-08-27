@@ -164,6 +164,14 @@ export function RoomsPanel({
 									className="flex items-baseline gap-2 border-border border-b px-4 py-2 last:border-0"
 								>
 									<span className="truncate text-[13px]">{one.name}</span>
+
+									{one.placed && one.relay && (
+										<span className="flex shrink-0 items-center gap-1 text-[11px] text-fg-muted">
+											<Pin className="size-2.5 shrink-0" />
+											<Flagged text={one.relay} />
+										</span>
+									)}
+
 									<span className="ml-auto shrink-0 text-fg-muted text-xs">
 										{day(one.lastSeen)}
 									</span>

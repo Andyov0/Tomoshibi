@@ -259,11 +259,17 @@ func TestMovingSomebodyToANonexistentRelayTellsNobody(t *testing.T) {
  * That is a control which reports success and does nothing, and it is what
  * "moving the room in the panel does not work" was.
  *
- * The order settles it: put the room up on the new machine, then tell the room,
- * then take the old one down. Everybody who reconnects finds a room that is
- * already there.
+ * The order settles it, and this test exists because the first order tried was
+ * the wrong one. Putting the room up on the target *before* closing looks right
+ * and is not: closing is by name and reaches every node, so it takes down the
+ * room that was just put up, and the move falls straight back into the race.
+ * That version shipped and reproduced the original fault exactly.
+ *
+ * Close, then create the empty room pinned to the chosen node. Everybody who
+ * reconnects finds a room that is already there, and a room that already exists
+ * is not created a second time somewhere else.
  */
-func TestAMoveCreatesTheRoomBeforeClosingIt(t *testing.T) {
+func TestAMoveHoldsTheRoomAfterClosingIt(t *testing.T) {
 	heard, mux, cookie := moving(t)
 
 	recorder := place(t, mux, cookie, "/api/admin/rooms/standup/relay", `{"relay":"tokyo","now":true}`)
@@ -275,15 +281,18 @@ func TestAMoveCreatesTheRoomBeforeClosingIt(t *testing.T) {
 	did := heard.order()
 
 	if len(did) != 2 {
-		t.Fatalf("a move did %v, want a hold and a close", did)
+		t.Fatalf("a move did %v, want a close and a hold", did)
 	}
 
-	if did[0] != "hold standup on ND_tokyo" {
-		t.Errorf("the first thing a move did was %q, want the room held on the new node", did[0])
+	if did[0] != "close standup" {
+		t.Errorf("the first thing a move did was %q, want the old room closed", did[0])
 	}
 
-	if did[1] != "close standup" {
-		t.Errorf("the second thing a move did was %q, want the old room closed", did[1])
+	// The one that matters. Held first, this reads "hold standup on ND_tokyo"
+	// as well — and the room still ends up wherever the race sends it, because
+	// the close in between destroyed it. Only the order tells the two apart.
+	if did[1] != "hold standup on ND_tokyo" {
+		t.Errorf("the second thing a move did was %q, want the room held on the new node", did[1])
 	}
 }
 

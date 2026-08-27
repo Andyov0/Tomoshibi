@@ -105,32 +105,33 @@ func (a *API) placeRoom(session Session, w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// The room is put up on the new machine before the old one is taken down.
+	// Everybody is told, then the room is destroyed, and only then is it put
+	// back up on the machine it was moved to.
 	//
-	// Without this the move was a race it usually lost. Closing a room destroys
-	// it everywhere, and the next person to connect creates it again on their
-	// own entry's node — so the meeting landed wherever whoever reconnected
-	// fastest happened to be, and the record said the machine the operator had
-	// chosen. That is a control that reports success and does nothing, which is
-	// worse than one that fails.
+	// The order is the whole of it, and the first two attempts got it wrong in
+	// opposite directions.
 	//
-	// The node is asked for now rather than read from the record.
+	// Closing a room destroys it everywhere. The next person to connect creates
+	// it again, on whichever node their own entry relay hands them to — so the
+	// meeting landed wherever whoever reconnected fastest happened to be, while
+	// the record said the machine the operator had chosen. A control that
+	// reports success and does nothing is worse than one that fails.
 	//
-	// A media server's node identifier is assigned when the process starts, so
-	// it changes on every restart and anything written down is stale by the next
-	// upgrade. The first version of this read it from the relay's record, where
-	// it is not written at all — so the hold never happened, the move fell back
-	// to the old race, and nothing said so. Moved to Shanghai, landed on Hong
-	// Kong, and the only evidence was the meeting being in the wrong place.
+	// Putting the room up on the target first does not fix that, because the
+	// close that follows takes down the room that was just put up: `Close` is by
+	// name and reaches every node, including the one being moved to. That is
+	// what shipped, and it looked exactly like the original fault, because it
+	// was the original fault.
 	//
-	// Said out loud when it cannot be done, because a move that quietly does
-	// nothing is what this whole change is about.
-	if node, err := a.nodeOf(r.Context(), relay); err != nil {
-		a.record(session, "hold room", name, relay, err)
-	} else if err := a.control.Hold(r.Context(), name, node); err != nil {
-		a.record(session, "hold room", name, relay, err)
-	}
-
+	// So the empty room is created after the close, and it is what everybody
+	// rejoins into. A room that already exists is not created again, and the
+	// node it exists on is the one it was pinned to.
+	//
+	// The gap between destroying and recreating is two calls in one handler,
+	// against a browser that has to notice it was disconnected before it can
+	// try again. Should one ever win that race, the placement written down a
+	// moment ago still sends it to the right entry, which is where this stood
+	// before any of it.
 	if err := a.control.Announce(r.Context(), name, "moving", []byte(relay)); err != nil {
 		// Not fatal. A move nobody was warned about is still a move, and
 		// refusing here would leave the room where it is for the sake of a
@@ -142,6 +143,25 @@ func (a *API) placeRoom(session Session, w http.ResponseWriter, r *http.Request)
 		a.record(session, "move room", name, relay, err)
 		refuse(w, statusOf(err), reasonOf(err))
 		return
+	}
+
+	// The node is asked for now rather than read from the record.
+	//
+	// A media server's node identifier is assigned when the process starts, so
+	// it changes on every restart and anything written down is stale by the next
+	// upgrade. The first version of this read it from the relay's record, where
+	// it is not written at all — so the hold never happened and nothing said so.
+	// Moved to Shanghai, landed on Hong Kong, and the only evidence was the
+	// meeting being in the wrong place.
+	//
+	// Said out loud when it cannot be done, because a move that quietly does
+	// nothing is what this whole change is about. The move itself still stands:
+	// the room is closed and the placement is written, which is what it did
+	// before any of this, and it is announced as having moved because it has.
+	if node, err := a.nodeOf(r.Context(), relay); err != nil {
+		a.record(session, "hold room", name, relay, err)
+	} else if err := a.control.Hold(r.Context(), name, node); err != nil {
+		a.record(session, "hold room", name, relay, err)
 	}
 
 	a.record(session, "move room", name, relay, nil)

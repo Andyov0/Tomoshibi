@@ -232,7 +232,12 @@ func (r *reach) look(ctx context.Context, list []store.Relay) {
 		// and dropping it from the list on a reading this node takes from one
 		// vantage point would turn a reported fault into a fleet with nowhere to
 		// hold a call. The same asymmetry as above, for the same reason.
-		r.carrying(ctx, one.relay)
+		//
+		// And only where signalling answered, which is what the warning says.
+		// A relay this node cannot reach at all is already reported by the line
+		// above it, and reporting the media port as well would be two warnings
+		// about one machine saying the same thing twice.
+		r.carrying(ctx, one.relay, one.ok)
 
 		// Said once on the change rather than every half minute, so that a relay
 		// which has been down all night is one line in the log and not two
@@ -254,7 +259,14 @@ func (r *reach) look(ctx context.Context, list []store.Relay) {
 // Only where the deployment gave the relay a probe port. Most have not, and a
 // check that reported those as unreachable would fill the log with a setting
 // nobody had filled in.
-func (r *reach) carrying(ctx context.Context, relay store.Relay) {
+func (r *reach) carrying(ctx context.Context, relay store.Relay, signalling bool) {
+	// Nothing to say about the media path of a machine this node could not
+	// reach at all: the sweep above already said so, and the interesting case is
+	// precisely the one where the two disagree.
+	if !signalling {
+		return
+	}
+
 	asked, ok, took := rtc.Carrying(ctx, relay.Probe)
 	if !asked {
 		return
@@ -267,9 +279,18 @@ func (r *reach) carrying(ctx context.Context, relay store.Relay) {
 
 	switch {
 	case !ok && !was:
-		slog.Warn("a relay answers signalling but its media port does not answer, so calls sent "+
-			"there will connect and then have no sound or picture: look at what is allowed "+
-			"through to that port",
+		// Said as a disagreement rather than as a verdict, because it is one
+		// vantage point.
+		//
+		// This node's own path to a relay is not every client's. One relay here
+		// answers signalling from everywhere and answers UDP from this node not
+		// at all — the same one-directional path the cross-border routing exists
+		// to work around — and it carries calls perfectly for the people who use
+		// it. Reading the first version of this as "the relay is broken" would
+		// have sent somebody to look at a machine that is fine.
+		slog.Warn("this node reaches a relay's signalling port but not its media port: either "+
+			"what is allowed through to that port changed, or the path from here does not "+
+			"carry UDP. Ask from somewhere else before touching the machine",
 			"relay", relay.Name, "probe", relay.Probe)
 	case ok && was:
 		slog.Info("a relay's media port is answering again", "relay", relay.Name, "took", took)

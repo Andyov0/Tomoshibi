@@ -170,7 +170,7 @@ recent() {
 CERT=$(recent 'serving a certificate that expires soon')
 EMPTY=$(recent 'the store is empty and there are copies')
 NOCOPY=$(recent 'could not copy the store')
-NOMEDIA=$(recent 'its media port does not answer')
+NOMEDIA=$(recent 'but not its media port')
 
 # ---------- deciding ----------
 trouble=0
@@ -187,7 +187,7 @@ else
 fi
 
 if [ "${NOMEDIA:-0}" -gt 0 ]; then
-    worth_saying media 1 && add "🔴 <b>A relay answers signalling but not media</b> — calls sent there connect and have no sound or picture. Look at what is allowed through to its probe port."
+    worth_saying media 1 && add "🟠 <b>The control node reaches a relay's signalling port but not its media port</b> — either what is allowed through to that port changed, or the path from the control node does not carry UDP. Ask from another machine before touching it: one relay here is reachable from everywhere except this node, and carries calls perfectly."
     log "media port unreachable on some relay"
 else
     worth_saying media 0

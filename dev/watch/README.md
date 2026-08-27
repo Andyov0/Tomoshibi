@@ -55,7 +55,7 @@ wrong messages.
 | Sent | From |
 | --- | --- |
 | Relays not answering | `/api/admin/relays`, and only relays that are enabled — one taken out of service was taken out by somebody. |
-| A relay answers signalling but not media | The journal. The most common way a relay here breaks, and invisible to every other check. |
+| The control node reaches a relay's signalling but not its media port | The journal. The most common way a relay here breaks and invisible to every other check — but it is one vantage point, and one relay on this fleet answers UDP from everywhere except the control node while carrying calls perfectly. Ask from another machine before touching anything. |
 | A certificate runs out within two days | The journal. No quiet window: it is already a warning about something two days ahead that will not fix itself. |
 | The store opened empty and there are copies beside it | The journal. Sent immediately and every time, because it means the deployment has lost its relays, accounts and administrators. |
 | The store could not be copied | The journal. There will be nothing to restore from. |

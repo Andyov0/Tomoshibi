@@ -59,15 +59,21 @@ if [ -f "$ENV_FILE" ]; then
     [ -z "$SAY" ] && SAY=$(grep -m1 '^SAY=' "$ENV_FILE" | cut -d= -f2-)
 fi
 
-# Documented rather than defaulted, because a default here would be a real
-# address in a public repository or an unreachable one on a real machine.
-if [ -z "$SAY" ]; then
-    log "SAY is not set in $ENV_FILE, so nothing can be sent"
-fi
-
 mkdir -p "$STATE"
 
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
+
+# Documented rather than defaulted, because a default here would be a real
+# address in a public repository or an unreachable one on a real machine.
+#
+# Below the definition of log, which it used to be above: shell functions have
+# to exist before they are called, so this warning went to "command not found"
+# on stderr and never reached the log it names. A script that cannot send
+# anything, silently — which is the same shape of fault as the one the block
+# further down was added for.
+if [ -z "$SAY" ]; then
+    log "SAY is not set in $ENV_FILE, so nothing can be sent"
+fi
 
 # The log is written every five minutes for ever.
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 1048576 ]; then
@@ -141,6 +147,33 @@ PY
 }
 
 COOKIE=$(session) || COOKIE=""
+
+# ---------- this script's own eyesight ----------
+#
+# Said out loud, and it is the one fault here that had to be found by a person.
+#
+# The credential in watch.env stopped working — the account behind it was
+# renamed, and signing in checks the name as well as the passphrase — and this
+# went on for five hours across sixty runs. Every one of them wrote the line
+# below to a log nobody reads and then reported "well", because everything it
+# could still check was fine. What it could still check was the journal; the
+# whole fleet was invisible to it and it said so to nobody.
+#
+# A watchdog that cannot see is worse than no watchdog, because the silence
+# reads as good news. It cannot fix itself and it is not a blip, so it goes
+# through the same three rounds as everything else and is then said.
+#
+# It can still be said: the machine that speaks holds its own token and knows
+# nothing about this deployment's management API, so losing one has no bearing
+# on the other.
+blind=0
+[ -z "$COOKIE" ] && blind=1
+
+worth_saying blind "$blind"
+case $? in
+    0) say "Tomoshibi: the watchdog cannot sign in to the management API. It is reading the journal only, so nothing about the relays is being checked." ;;
+    2) say "Tomoshibi: the watchdog can sign in again." ;;
+esac
 
 if [ -z "$COOKIE" ]; then
     log "could not sign in to the management API; only the log is being read"

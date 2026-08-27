@@ -64,6 +64,7 @@ wrong messages.
 | A certificate runs out within two days | The journal. No quiet window: it is already a warning about something two days ahead that will not fix itself. |
 | The store opened empty and there are copies beside it | The journal. Sent immediately and every time, because it means the deployment has lost its relays, accounts and administrators. |
 | The store could not be copied | The journal. There will be nothing to restore from. |
+| The watchdog itself cannot sign in | Its own attempt. The one fault here that had to be found by a person: the account behind the credential was renamed, signing in checks the name as well as the passphrase, and sixty runs across five hours wrote a line to a log nobody reads and then reported "well" — because everything they could still check was fine, and what they could still check was the journal. A watchdog that has gone blind reads as good news. It can still say so: the machine that speaks holds its own token and knows nothing about this deployment's management API. |
 
 Recovery is said once, for the faults that were said once. Being told something
 is broken and never told it is better is how a person learns to distrust both.
@@ -73,6 +74,15 @@ is broken and never told it is better is how a person learns to distrust both.
 A read-only administrator, in `/etc/tomoshibi/watch.env`, mode 600. Nothing here
 changes anything, and a credential on a cron job that could close every meeting
 on the deployment is a credential worth stealing.
+
+It stopped being read-only once, by accident and from the other end: the account
+was given `moderate` because a person needed it for something else, and the cron
+job silently inherited that. Whoever this credential belongs to should belong to
+nothing else — a second account costs one `roster` line, and sharing one means
+every later change to it arrives here without anybody deciding that it should.
+Checked by trying rather than by reading the roster: signing in works, the three
+reads work, and closing a room, moving one, freeing one and taking a relay out of
+service all answer 403.
 
 `dev/roster` mints one:
 

@@ -769,7 +769,13 @@ func announceSettings(conf *config.Config) {
 	// The default used to be the upstream repository, which made every
 	// deployment that never set this quietly point its visitors at code it was
 	// not running.
-	if conf.Meet.SourceURL == "" {
+	//
+	// Not on a relay, which serves no join page and therefore offers nobody
+	// anything. The obligation belongs to whoever offers the program over a
+	// network, and on this deployment that is the control node; a relay carries
+	// media for it. Warning on every relay would be nine machines reporting a
+	// duty that is not theirs, which is how a real one gets scrolled past.
+	if conf.Meet.SourceURL == "" && conf.Meet.Role != config.RoleRelay {
 		slog.Warn("meet.source_url is not set, so the join page offers nobody the source of what "+
 			"is running here: the licence asks for that of anybody offering this over a network",
 			"set it to", "wherever this deployment's code can be read")

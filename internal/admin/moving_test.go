@@ -42,6 +42,17 @@ type listening struct {
 	mu        sync.Mutex
 	announced []string
 	told      []string
+	// In order, because the order is the whole of what makes a move move.
+	did []string
+}
+
+func (l *listening) Hold(_ context.Context, room, node string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.did = append(l.did, "hold "+room+" on "+node)
+
+	return nil
 }
 
 func (l *listening) Announce(_ context.Context, room, topic string, data []byte) error {
@@ -67,7 +78,22 @@ func (l *listening) Tell(_ context.Context, room, identity, topic string, data [
 // what is under test is what is said on the way to the disconnection, and a
 // disconnection that never happens says nothing.
 func (l *listening) Remove(context.Context, string, string) error { return nil }
-func (l *listening) Close(context.Context, string) error          { return nil }
+
+func (l *listening) Close(_ context.Context, room string) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	l.did = append(l.did, "close "+room)
+
+	return nil
+}
+
+func (l *listening) order() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return append([]string(nil), l.did...)
+}
 
 func (l *listening) said() ([]string, []string) {
 	l.mu.Lock()
@@ -101,10 +127,12 @@ func moving(t *testing.T) (*listening, http.Handler, string) {
 		control:  heard,
 		log:      NewLog(),
 		store:    unwritten{},
-		relays:   &listed{relays: []store.Relay{{Name: "tokyo", URL: "wss://jp.example"}}},
-		placing:  placed{},
-		history:  NewHistory(nil),
-		stop:     make(chan struct{}),
+		relays: &listed{relays: []store.Relay{
+			{Name: "tokyo", URL: "wss://jp.example", Node: "ND_tokyo"},
+		}},
+		placing: placed{},
+		history: NewHistory(nil),
+		stop:    make(chan struct{}),
 	}
 
 	mux := http.NewServeMux()
@@ -198,5 +226,57 @@ func TestMovingSomebodyToANonexistentRelayTellsNobody(t *testing.T) {
 	announced, told := heard.said()
 	if len(announced) != 0 || len(told) != 0 {
 		t.Errorf("a refused move still said something: %v %v", announced, told)
+	}
+}
+
+/*
+ * A move that moves the room, rather than closing it and hoping.
+ *
+ * Rooms here are never created deliberately: the first person to connect makes
+ * one, on whichever node the media server picks for the machine they dialled.
+ * So closing a room and letting everybody reconnect creates it again wherever
+ * whoever got back first happened to be — and the record said the machine the
+ * operator chose, while the meeting was somewhere else entirely.
+ *
+ * That is a control which reports success and does nothing, and it is what
+ * "moving the room in the panel does not work" was.
+ *
+ * The order settles it: put the room up on the new machine, then tell the room,
+ * then take the old one down. Everybody who reconnects finds a room that is
+ * already there.
+ */
+func TestAMoveCreatesTheRoomBeforeClosingIt(t *testing.T) {
+	heard, mux, cookie := moving(t)
+
+	recorder := place(t, mux, cookie, "/api/admin/rooms/standup/relay", `{"relay":"tokyo","now":true}`)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("moving a room answered %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	did := heard.order()
+
+	if len(did) != 2 {
+		t.Fatalf("a move did %v, want a hold and a close", did)
+	}
+
+	if did[0] != "hold standup on ND_tokyo" {
+		t.Errorf("the first thing a move did was %q, want the room held on the new node", did[0])
+	}
+
+	if did[1] != "close standup" {
+		t.Errorf("the second thing a move did was %q, want the old room closed", did[1])
+	}
+}
+
+// A move that is not immediate does not disturb anybody, so there is nothing to
+// put up first: the room goes to the new machine at the next call.
+func TestAMoveForLaterHoldsNothing(t *testing.T) {
+	heard, mux, cookie := moving(t)
+
+	place(t, mux, cookie, "/api/admin/rooms/standup/relay", `{"relay":"tokyo"}`)
+
+	if did := heard.order(); len(did) != 0 {
+		t.Errorf("a move for later did %v, want nothing", did)
 	}
 }

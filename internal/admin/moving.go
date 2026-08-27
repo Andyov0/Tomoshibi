@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -100,6 +101,27 @@ func (a *API) placeRoom(session Session, w http.ResponseWriter, r *http.Request)
 	if !a.attached() {
 		a.detached(w)
 		return
+	}
+
+	// The room is put up on the new machine before the old one is taken down.
+	//
+	// Without this the move was a race it usually lost. Closing a room destroys
+	// it everywhere, and the next person to connect creates it again on their
+	// own entry's node — so the meeting landed wherever whoever reconnected
+	// fastest happened to be, and the record said the machine the operator had
+	// chosen. That is a control that reports success and does nothing, which is
+	// worse than one that fails.
+	//
+	// Not fatal, and deliberately so. A deployment whose relays predate the node
+	// being recorded has nothing to name here, and a move that falls back to the
+	// old behaviour is the behaviour it had yesterday.
+	if there, ok := a.relayNamed(relay); ok && there.Node != "" {
+		if err := a.control.Hold(r.Context(), name, there.Node); err != nil {
+			a.record(session, "hold room", name, relay, err)
+		}
+	} else {
+		a.record(session, "hold room", name, relay,
+			errors.New("that relay has no node recorded, so the room cannot be put there first"))
 	}
 
 	if err := a.control.Announce(r.Context(), name, "moving", []byte(relay)); err != nil {

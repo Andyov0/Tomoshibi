@@ -376,6 +376,13 @@ func (c *Cluster) Tell(ctx context.Context, room, identity, topic string, data [
 	})
 }
 
+// Hold creates a room on one node. See Control.Hold.
+func (c *Cluster) Hold(ctx context.Context, room, node string) error {
+	return c.ask(ctx, func(control *Control) error {
+		return control.Hold(ctx, room, node)
+	})
+}
+
 func (c *Cluster) Close(ctx context.Context, room string) error {
 	return c.ask(ctx, func(control *Control) error { return control.Close(ctx, room) })
 }

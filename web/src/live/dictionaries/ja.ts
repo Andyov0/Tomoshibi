@@ -470,6 +470,9 @@ const ja: Dictionary = {
 	"That label is too long.": "\u305d\u306e\u8868\u793a\u540d\u306f\u9577\u3059\u304e\u307e\u3059\u3002",
 	"Add a note": "\u30e1\u30e2\u3092\u4ed8\u3051\u308b",
 	"Note": "\u30e1\u30e2",
+	"Moving this meeting to {name}": "\u3053\u306e\u4f1a\u8b70\u3092 {name} \u3078\u79fb\u3057\u3066\u3044\u307e\u3059",
+	"Moving this meeting": "\u3053\u306e\u4f1a\u8b70\u3092\u79fb\u3057\u3066\u3044\u307e\u3059",
+	"You will be back in a moment.": "\u3059\u3050\u306b\u623b\u308a\u307e\u3059\u3002\u64cd\u4f5c\u306f\u4e0d\u8981\u3067\u3059\u3002",
 };
 
 export default ja;

@@ -10,6 +10,7 @@ import { useT } from "@/hooks/useT";
 import { joinFailed } from "@/live/notices";
 import { Lobby, SignIn } from "@/routes/Lobby";
 import { type Choices, PreJoin, remembered, rememberedName } from "@/routes/PreJoin";
+import { Moving } from "@/components/room/Moving";
 import { Room } from "@/routes/Room";
 import { RoomEvent, type Room as LiveRoom } from "livekit-client";
 import type { ReactNode } from "react";
@@ -82,6 +83,41 @@ export function App() {
 	// And the machine it is actually on, where the two came apart. Undefined for
 	// most calls, which is what makes the panel say one name rather than two.
 	const [carrying, setCarrying] = useState<string>();
+
+	/*
+	 * Where this call is being moved to, while it is being moved.
+	 *
+	 * Undefined nearly always. Set when the server says a move is coming and
+	 * cleared when the call is back, and what it buys is that the room stays on
+	 * screen in between: a move ends the call and every tab comes straight back,
+	 * and without this the room came down, the join screen appeared, and the
+	 * call returned a few seconds later. That reads as having been thrown out
+	 * and let back in, which is not what happened and is worse than what did.
+	 *
+	 * The empty string is a move whose destination the server did not name,
+	 * which is still a move worth showing.
+	 */
+	const [moving, setMoving] = useState<string>();
+
+	/*
+	 * And a hard limit on how long that may be shown.
+	 *
+	 * The overlay is cleared when the call comes back and when the rejoin
+	 * fails, which is every path there is — until one of them is added later
+	 * and misses this, and what that produces is somebody sitting under "you
+	 * will be back in a moment" for ever, with the controls they would use
+	 * covered by the promise.
+	 *
+	 * Twenty seconds is well past a rejoin that is going to work: the whole
+	 * thing takes two or three, and the flag driving it expires at fifteen.
+	 */
+	useEffect(() => {
+		if (moving === undefined) return;
+
+		const giveUp = setTimeout(() => setMoving(undefined), 20_000);
+
+		return () => clearTimeout(giveUp);
+	}, [moving]);
 
 	// Worked out once, from two questions asked together.
 	//
@@ -295,6 +331,9 @@ export function App() {
 				current.current = made;
 				setLive(made);
 
+				// Back. Whatever this was, it is over.
+				setMoving(undefined);
+
 				// A handle for the browser scripts in dev/twobrowsers, which check
 				// things no unit test can reach: whether frames are actually
 				// encrypted, what the media server thinks is in the room. Only in
@@ -306,6 +345,13 @@ export function App() {
 				}
 			} catch (err) {
 				void made.disconnect();
+
+				// The overlay goes with it. A move that failed leaves somebody
+				// on the screen they can act from; leaving "you will be back in
+				// a moment" over it would be a promise this just broke, drawn
+				// over the button that is the way out of it.
+				setMoving(undefined);
+
 				joinFailed(err instanceof Error ? err.message : String(err));
 			}
 		},
@@ -364,9 +410,10 @@ export function App() {
 		 * opposite answers. So the server says which, and this remembers it for
 		 * the two seconds between the message and the disconnection.
 		 *
-		 * A flag rather than state: nothing on screen depends on it, and a
-		 * re-render between the warning and the disconnection would be a chance
-		 * for the two to disagree.
+		 * A ref rather than state, because the disconnection handler reads it
+		 * and a re-render between the warning and the disconnection would be a
+		 * chance for the two to disagree. What is on screen is driven by
+		 * `carrying` below, which is set from this.
 		 */
 		const moving = { soon: false, at: 0 };
 
@@ -410,12 +457,27 @@ export function App() {
 		// told was that they had been removed from the room. An operator putting
 		// somebody on a healthier relay sent them an ejection notice and a dead
 		// call.
-		const told = (_payload: Uint8Array, who: unknown, _kind: unknown, topic?: string) => {
+		const told = (payload: Uint8Array, who: unknown, _kind: unknown, topic?: string) => {
 			if (who !== undefined) return;
 			if (topic !== "moving" && topic !== "placing") return;
 
 			moving.soon = true;
 			moving.at = Date.now();
+
+			// And on screen, before the disconnection rather than after it.
+			//
+			// The rejoin has always worked; what it looked like was being thrown
+			// out. The room came down, the join screen appeared, and a moment
+			// later the call came back — which reads as having been removed and
+			// then somehow let back in, and is the reason somebody watching it
+			// would say the meeting ended.
+			//
+			// The payload is where it is going, which the server has always sent
+			// and this used to discard. Somebody told "moving to Tokyo" has been
+			// told what happened; somebody shown a blank join screen has been
+			// told nothing.
+			const where = new TextDecoder().decode(payload).trim();
+			setMoving(where || " ");
 		};
 
 		live.on(RoomEvent.DataReceived, told);
@@ -429,6 +491,10 @@ export function App() {
 				Date.now() - moving.at < MOVING_HOLDS_FOR &&
 				(reason === DISCONNECT_ROOM_CLOSED || reason === DISCONNECT_REMOVED)
 			) {
+				// The room object is dead and cannot be left in place — every
+				// hook attached to it would go on asking a disconnected client
+				// for a roster. What stays is the overlay, which is drawn above
+				// whatever the room resolves to while the new one is built.
 				setLive(undefined);
 				current.current = undefined;
 
@@ -521,10 +587,23 @@ export function App() {
 	 * key it reuses the node, the animation never restarts, and every step after
 	 * the first is exactly as bare as it was before.
 	 */
+	/*
+	 * Every screen goes through here, which is why the move overlay does too.
+	 *
+	 * A move takes the room down and puts it back, and in between the page
+	 * underneath is whatever the front door resolves to — the device screen,
+	 * usually. Drawing the overlay per screen would mean remembering it at each
+	 * of them and would still leave the gap between two of them uncovered.
+	 * Drawn here, it is above all of them and above the gap.
+	 */
 	const page = (at: string, screen: ReactNode) => (
-		<div key={at} className="animate-page h-full">
-			{screen}
-		</div>
+		<>
+			<div key={at} className="animate-page h-full">
+				{screen}
+			</div>
+
+			<Moving to={moving} />
+		</>
 	);
 
 	if (live) {

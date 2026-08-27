@@ -180,8 +180,41 @@ const put = await fetch(`${AT}/api/admin/rooms/${ROOM}/relay`, {
 
 console.log(" ", put.status, (await put.text()).slice(0, 120));
 
-// Long enough for the disconnection and the rejoin behind it.
-await wait(7000);
+// What is on screen while it happens, sampled through the move rather than
+// after it. The rejoin has always worked; what this is checking is that it does
+// not look like being thrown out — the room used to come down and the join
+// screen appear, and a person watching that says the meeting ended.
+const seen = [];
+for (let i = 0; i < 14; i++) {
+	seen.push(
+		await page.run(`(() => {
+			const said = document.querySelector('[role="status"]');
+			const joining = [...document.querySelectorAll("button")].some((b) => /^join$/i.test((b.textContent || "").trim()));
+			return JSON.stringify({ moving: Boolean(said), text: said ? said.textContent.slice(0, 40) : "", joining });
+		})()`),
+	);
+	await wait(500);
+}
+
+const frames = seen.map((one) => JSON.parse(one));
+
+check(
+	"the move is said on screen while it happens",
+	frames.some((f) => f.moving),
+	frames.find((f) => f.moving)?.text ?? "(never shown)",
+);
+
+check(
+	"and the join screen is never what somebody is left looking at",
+	!frames.some((f) => f.joining && !f.moving),
+	JSON.stringify(frames.filter((f) => f.joining).slice(0, 3)),
+);
+
+check(
+	"and it goes away again",
+	!frames[frames.length - 1]?.moving,
+	JSON.stringify(frames[frames.length - 1]),
+);
 
 // Asked of the server rather than read off the screen, and that distinction is
 // the whole test.

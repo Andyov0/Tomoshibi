@@ -43,6 +43,11 @@ type Control interface {
 	// that being disconnected means "come back" rather than "it is over".
 	Announce(ctx context.Context, room, topic string, data []byte) error
 	Tell(ctx context.Context, room, identity, topic string, data []byte) error
+
+	// Hold creates a room on one named node, which is what makes moving a room
+	// move it: closing one destroys it everywhere, and the next arrival creates
+	// it again wherever they came in.
+	Hold(ctx context.Context, room, node string) error
 }
 
 // Names is what they need of the record of names that have been used.

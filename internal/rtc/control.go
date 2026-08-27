@@ -113,6 +113,29 @@ func (c *Control) Close(ctx context.Context, room string) error {
 		&livekit.DeleteRoomResponse{})
 }
 
+// Hold creates a room on one named node, so that it is already there when
+// people arrive.
+//
+// Rooms here are never created deliberately: the first person to connect makes
+// one, on whichever node the media server's own selector picks for the machine
+// they dialled. That is right for an ordinary meeting and it is why moving a
+// room did not move it.
+//
+// A move closes the room and everybody reconnects, so the room is created
+// afresh by whoever gets back first — on their entry's node, not on the one the
+// operator chose. The record said the new machine and the meeting was wherever
+// the race landed. An operator watching that would say the control does
+// nothing, and for the thing they were trying to do it did nothing.
+//
+// Creating it first settles the race before it starts. Everybody who reconnects
+// finds a room that already exists and joins it, wherever they came in.
+func (c *Control) Hold(ctx context.Context, room, node string) error {
+	return c.call(ctx, "CreateRoom",
+		&auth.VideoGrant{RoomCreate: true},
+		&livekit.CreateRoomRequest{Name: room, NodeId: node},
+		&livekit.Room{})
+}
+
 // Announce sends one message to everybody in a room.
 //
 // Used to say that a room is about to be taken down and put up somewhere else,

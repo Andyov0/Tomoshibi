@@ -574,3 +574,120 @@ func TestTheHostsOwnMarkIsNotPublishedToTheRoom(t *testing.T) {
 			"a mark is somebody's identity in every room on this deployment", body)
 	}
 }
+
+/*
+ * Acting on a room after the token that got you in has expired.
+ *
+ * The join token authorises one connect and lasts five minutes by design. The
+ * page holds it for the length of the meeting and sends it with every host
+ * control, so every one of those controls began answering "not yours" a few
+ * minutes into every call — to the person who owns the room, and to
+ * administrators who can close it from the management pages, which is the exact
+ * inconsistency mayHost's own comment was written about.
+ *
+ * The credential that should answer this is the one measured in weeks: the
+ * account session. It is what the mark was earned with and what the room was
+ * claimed under.
+ */
+
+// expiredToken is a token for this room that was valid and is not any more.
+//
+// A second, and then waited out. A negative TTL does not work: the token
+// library ignores anything not greater than zero and falls back to its own
+// default, so asking for one that expired an hour ago produces one good for six
+// — and a test built on it passes while proving the opposite of what it says.
+// That cost twenty minutes here.
+func expiredToken(t *testing.T, name, passphrase string) string {
+	t.Helper()
+
+	grant, err := room.Authorise("APIkey", "a secret long enough for the media server to accept it",
+		room.Request{
+			Room: name, Display: "somebody", Passphrase: room.Passphrase(passphrase),
+			TripKey: tripKey, TTL: time.Second,
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The library allows a minute of clock skew either way, so this has to be
+	// past that rather than merely past the expiry.
+	time.Sleep(1100 * time.Millisecond)
+
+	return grant.Token
+}
+
+func TestAnExpiredTokenIsNotProofOfAnything(t *testing.T) {
+	mux, _ := hosted(t)
+
+	// No session either: this is somebody whose token ran out and who has
+	// nothing else, which must still be a refusal.
+	request := asking(http.MethodPost, "/api/rooms/standup/host",
+		expiredToken(t, "standup", passphrase), `{"to":"t9abc-x"}`)
+
+	if code := ask(mux, request).Code; code != http.StatusForbidden {
+		t.Errorf("an expired token with nothing behind it answered %d, want 403", code)
+	}
+}
+
+// signedInAs puts an account and a live session in the store, and gives back
+// the cookie that carries it.
+func signedInAs(t *testing.T, st *store.Store, name, trip string) *http.Cookie {
+	t.Helper()
+
+	// The session has to name something that still exists: signedIn drops one
+	// whose account has gone, because a session naming nothing is a session that
+	// has ended. Either an account or an administrator satisfies that, and an
+	// account carrying an administrator's signature is refused by the ledger on
+	// purpose — so which one this is depends on the caller.
+	if err := st.AddAccount(store.Account{Name: name, Trip: trip}); err != nil {
+		if err := st.AddAdmin(store.Admin{Trip: trip, Name: name}); err != nil {
+			t.Fatalf("neither an account nor an administrator: %v", err)
+		}
+	}
+
+	now := time.Now().UTC()
+	token := "session-for-" + name
+
+	if err := st.KeepSession(token, store.Session{
+		Trip: trip, Name: name, Kind: "account",
+		Opened: now, Expires: now.Add(24 * time.Hour),
+	}); err != nil {
+		t.Fatalf("KeepSession: %v", err)
+	}
+
+	return &http.Cookie{Name: "meet-live.account", Value: token}
+}
+
+/*
+ * The two that matter, and the one I could not build a fixture for.
+ *
+ * mayHost now accepts a management session and an account session as well as
+ * the join token, because the join token lasts five minutes by design and the
+ * page carries it for the length of the meeting — so every host control began
+ * answering "not yours" a few minutes into every call, to the person who owns
+ * the room. TestAnAdministratorSignedInAtTheFrontRunsTheRoom above covers the
+ * session path with a live token; what is guarded here is that widening it did
+ * not widen it too far.
+ *
+ * The positive case with an expired token is checked in a browser rather than
+ * here: the fixture wants a real account, a real session and a real claim, and
+ * three attempts at assembling one taught me more about the test helpers than
+ * about the code.
+ */
+
+// Somebody signed in who is neither the host nor an administrator.
+func TestBeingSignedInIsNotBeingTheHost(t *testing.T) {
+	mux, st := hosted(t)
+
+	if _, err := st.ClaimHost("standup", room.Trip(tripKey, passphrase)); err != nil {
+		t.Fatalf("ClaimHost: %v", err)
+	}
+
+	request := asking(http.MethodPost, "/api/rooms/standup/invites",
+		expiredToken(t, "standup", "somebody else entirely"), "")
+	request.AddCookie(signedInAs(t, st, "bob", room.Trip(tripKey, "bob's own passphrase")))
+
+	if code := ask(mux, request).Code; code != http.StatusForbidden {
+		t.Errorf("somebody signed in but not the host answered %d, want 403", code)
+	}
+}

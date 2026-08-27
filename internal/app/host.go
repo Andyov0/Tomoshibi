@@ -100,7 +100,56 @@ func (a *App) whoIs(r *http.Request) (bearer, bool) {
 // inconsistency somebody would work around by closing it.
 func (a *App) mayHost(r *http.Request, name string) (bearer, bool) {
 	who, ok := a.whoIs(r)
+
+	// A management session outranks everything, including its own bearer.
+	//
+	// This used to be reached only after the join token verified, so an
+	// administrator was refused by the expiry of a credential that has nothing
+	// to do with why they may act. A join token lasts five minutes by design —
+	// it authorises one join and is not meant to be carried around — and the
+	// page holds it for the length of the meeting. Every host control therefore
+	// began answering "not yours" about five minutes in, to the person who can
+	// close the room from the management pages, which is the exact
+	// inconsistency the comment above this function was written about.
+	//
+	// The room is still named, because a session is permission to moderate this
+	// deployment rather than a licence to send requests without saying where.
+	if a.admin != nil {
+		if session, live := a.admin.SessionOf(r); live && session.Allows(config.Moderate) {
+			if ok && who.Room == name {
+				return who, true
+			}
+
+			// Acting without a usable bearer, which is what an expired one is.
+			// The identity is unknown and unnecessary: what follows from this is
+			// authority over the room, not a claim about who is in it.
+			return bearer{Room: name}, true
+		}
+	}
+
+	// And an account session, which is a credential with a life measured in
+	// weeks rather than in the five minutes a join token gets.
+	//
+	// The token is what the page has, and it is spent on the connect and then
+	// carried for the length of the meeting — so every host control stopped
+	// working a few minutes in, for everybody, whatever they were. An
+	// administrator noticed first because they have the most buttons.
+	//
+	// The mark is the account's, which is the same mark the join was made with:
+	// signing in is what earns it, and it is what the room was claimed under.
 	if !ok || who.Room != name {
+		if account, in := a.signedIn(r); in {
+			mark := room.Signature{Trip: account.Trip, Proven: true}
+
+			if a.administrating(r, mark) {
+				return bearer{Room: name, Mark: mark}, true
+			}
+
+			if host := a.store.HostOf(name); host != "" && host == account.Trip {
+				return bearer{Room: name, Mark: mark}, true
+			}
+		}
+
 		return bearer{}, false
 	}
 

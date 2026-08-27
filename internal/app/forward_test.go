@@ -701,3 +701,5 @@ func TestAPinnedEntryOverridesTheBrowserAndThenGoesAway(t *testing.T) {
 func (quiet) Announce(context.Context, string, string, []byte) error { return nil }
 
 func (quiet) Tell(context.Context, string, string, string, []byte) error { return nil }
+
+func (quiet) Hold(context.Context, string, string) error { return nil }

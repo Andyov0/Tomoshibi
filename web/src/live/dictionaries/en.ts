@@ -501,6 +501,9 @@ const en = {
 	"That label is too long.": "That label is too long.",
 	"Add a note": "Add a note",
 	"Note": "Note",
+	"Moving this meeting to {name}": "Moving this meeting to {name}",
+	"Moving this meeting": "Moving this meeting",
+	"You will be back in a moment.": "You will be back in a moment.",
 } as const;
 
 export default en;

@@ -470,6 +470,9 @@ const zhHans: Dictionary = {
 	"That label is too long.": "\u8fd9\u4e2a\u663e\u793a\u540d\u592a\u957f\u4e86\u3002",
 	"Add a note": "\u52a0\u4e2a\u5907\u6ce8",
 	"Note": "\u5907\u6ce8",
+	"Moving this meeting to {name}": "\u6b63\u5728\u628a\u8fd9\u573a\u4f1a\u8bae\u8fc1\u5230 {name}",
+	"Moving this meeting": "\u6b63\u5728\u8fc1\u79fb\u8fd9\u573a\u4f1a\u8bae",
+	"You will be back in a moment.": "\u9a6c\u4e0a\u5c31\u4f1a\u56de\u6765,\u4e0d\u7528\u64cd\u4f5c\u3002",
 };
 
 export default zhHans;

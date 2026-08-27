@@ -470,6 +470,9 @@ const zhHant: Dictionary = {
 	"That label is too long.": "\u9019\u500b\u986f\u793a\u540d\u592a\u9577\u4e86\u3002",
 	"Add a note": "\u52a0\u500b\u5099\u8a3b",
 	"Note": "\u5099\u8a3b",
+	"Moving this meeting to {name}": "\u6b63\u5728\u628a\u9019\u5834\u6703\u8b70\u9077\u5230 {name}",
+	"Moving this meeting": "\u6b63\u5728\u9077\u79fb\u9019\u5834\u6703\u8b70",
+	"You will be back in a moment.": "\u99ac\u4e0a\u5c31\u6703\u56de\u4f86,\u4e0d\u7528\u64cd\u4f5c\u3002",
 };
 
 export default zhHant;

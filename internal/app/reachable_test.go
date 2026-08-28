@@ -53,7 +53,15 @@ func withReach(t *testing.T, list []store.Relay, up map[string]bool) *relays {
 
 	chosen := newRelays(conf, &listed{relays: list})
 	chosen.reach = newReach(fixed(up))
-	chosen.reach.look(context.Background(), list)
+
+	// Swept until it has settled rather than once. A relay is withdrawn after
+	// withdrawAfter failures in a row, so a single sweep leaves a relay that is
+	// down still being offered — which is the behaviour being tested elsewhere
+	// and is not what any caller of this helper is asking for. What they want
+	// is a fleet in the state the map describes.
+	for i := 0; i < withdrawAfter; i++ {
+		chosen.reach.look(context.Background(), list)
+	}
 
 	return chosen
 }
@@ -207,6 +215,11 @@ func TestNothingAnsweringIsReadAsThisMachineAndNotTheFleet(t *testing.T) {
 		one++
 		return url != "wss://hk.invalid", time.Millisecond, "timed out"
 	})
+	// Twice, because one failed check no longer withdraws anything: the check
+	// measures this node's own path and that path has bad minutes, so a single
+	// reading is a suspicion rather than a finding. Two in a row is a finding,
+	// and this test is about a machine that is genuinely down.
+	watch2.look(context.Background(), fleet)
 	watch2.look(context.Background(), fleet)
 
 	kept := watch2.only(fleet)
@@ -312,9 +325,95 @@ func TestMostOfTheFleetFailingIsAlsoReadAsThisMachine(t *testing.T) {
 		return !only[url], time.Millisecond, "timed out"
 	})
 	one.look(context.Background(), fleet)
+	one.look(context.Background(), fleet)
 
 	if got := len(one.only(fleet)); got != 10 {
 		t.Errorf("%d answering when one of eleven was down, want 10: the rule is about most "+
 			"of them failing together, not about any failure", got)
+	}
+}
+
+/*
+ * One bad check is a suspicion; two in a row is a finding.
+ *
+ * This check measures the path from this node, and offers the answer to clients
+ * whose paths are different. For a relay in Los Angeles and a caller in
+ * California that is not merely a different path, it is a different ocean.
+ *
+ * Withdrawing on one reading cost this deployment its American relay
+ * thirty-nine times in one day, all of it in the evening, when the line out of
+ * here is congested and a handshake that normally takes three hundred
+ * milliseconds does not finish inside four seconds. The measurements: ten
+ * outages, eight of twenty-six to twenty-nine seconds — one failed check, at a
+ * check every thirty — and two of about a minute.
+ *
+ * So two, and the fifth of them that are real are still caught thirty seconds
+ * later. Coming back is not symmetrical: a relay that answers is offered again
+ * at once, because the cost of being slow about that is a caller sent further
+ * away for no reason.
+ */
+func TestARelayIsNotWithdrawnOnOneFailedCheck(t *testing.T) {
+	fleet := []store.Relay{
+		{Name: "tokyo", URL: "wss://jp.invalid", Enabled: true},
+		{Name: "losangeles", URL: "wss://lax.invalid", Enabled: true},
+		{Name: "hongkong", URL: "wss://hk.invalid", Enabled: true},
+	}
+
+	lax := true
+	watch := newReach(func(_ context.Context, url string) (bool, time.Duration, string) {
+		if url == "wss://lax.invalid" {
+			return lax, time.Millisecond, "timed out"
+		}
+
+		return true, time.Millisecond, ""
+	})
+
+	watch.look(context.Background(), fleet)
+
+	// One bad minute on our own line.
+	lax = false
+	watch.look(context.Background(), fleet)
+
+	if got := len(watch.only(fleet)); got != 3 {
+		t.Fatalf("%d relays offered after one failed check, want 3: a single reading from "+
+			"one vantage point is not enough to take a machine away from everybody", got)
+	}
+
+	// It answers again, and the count starts over.
+	lax = true
+	watch.look(context.Background(), fleet)
+
+	lax = false
+	watch.look(context.Background(), fleet)
+
+	if got := len(watch.only(fleet)); got != 3 {
+		t.Errorf("%d relays offered, want 3: a failure, a success and a failure is two bad "+
+			"minutes rather than a machine that has gone, and counting them together would "+
+			"withdraw a relay that answered in between", got)
+	}
+
+	// Twice in a row, which is the finding.
+	watch.look(context.Background(), fleet)
+
+	kept := watch.only(fleet)
+	if len(kept) != 2 {
+		t.Fatalf("%d relays offered after two failed checks in a row, want 2: a relay that "+
+			"has gone has to be taken out of the list or every call is sent to it", len(kept))
+	}
+
+	for _, relay := range kept {
+		if relay.Name == "losangeles" {
+			t.Error("the relay that failed twice is still offered")
+		}
+	}
+
+	// And back at once on the first success, without waiting for a second.
+	lax = true
+	watch.look(context.Background(), fleet)
+
+	if got := len(watch.only(fleet)); got != 3 {
+		t.Errorf("%d relays offered after the failed one answered again, want 3: waiting for "+
+			"a second good check sends somebody further away for another half minute, and "+
+			"there is nothing to be careful about in a machine that is working", got)
 	}
 }

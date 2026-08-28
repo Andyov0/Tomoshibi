@@ -220,7 +220,53 @@ recent() {
 CERT=$(recent 'serving a certificate that expires soon')
 EMPTY=$(recent 'the store is empty and there are copies')
 NOCOPY=$(recent 'could not copy the store')
-NOMEDIA=$(recent 'but not its media port')
+# ---------- media ports, which need the recovery read as well ----------
+#
+# Counting the failures alone made this permanently true.
+#
+# The control node's UDP probe to a relay fails and comes back about two hundred
+# times a day, and each episode is over in half a minute — a cross-border path
+# losing packets for a moment, not a machine with a closed port. But a window
+# six minutes wide almost always contains one of those, so a check that only
+# counted failures never saw a fleet in good health: the counter climbed past
+# the three-round threshold on the first day and stayed there, and this was sent
+# every hour, for ever, about relays that were carrying calls the whole time.
+#
+# That is the exact way to teach somebody to swipe these away.
+#
+# So the recovery line is read too, and what is counted is relays whose *last*
+# word in the window was a failure. A failure followed by "answering again" is a
+# blip and says nothing. The window is wider than before for the same reason:
+# short enough and a real outage looks like a blip, so fifteen minutes, which is
+# still well inside the three rounds this has to survive to be said at all.
+# Written in awk alone rather than with a sed backreference: the first attempt
+# used one to pull the relay's name out, and backreferences inside a pattern are
+# not portable — it matched nothing at all and the function answered nought for
+# every input, including a relay that had failed and never come back. It looked
+# right on the machine, because nought was also the true answer at that moment.
+still_without_media() {
+    journalctl -u tomoshibi --since '-15min' --no-pager 2>/dev/null | awk '
+        {
+            if ($0 ~ /but not its media port/)            state = "bad"
+            else if ($0 ~ /media port is answering again/) state = "ok"
+            else next
+
+            if (match($0, /relay="[^"]*"/))
+                name = substr($0, RSTART + 7, RLENGTH - 8)
+            else if (match($0, /relay=[^ ]+/))
+                name = substr($0, RSTART + 6, RLENGTH - 6)
+            else next
+
+            last[name] = state
+        }
+        END {
+            missing = 0
+            for (name in last) if (last[name] == "bad") missing++
+            print missing
+        }'
+}
+
+NOMEDIA=$(still_without_media)
 
 # ---------- deciding ----------
 trouble=0

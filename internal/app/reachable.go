@@ -74,10 +74,38 @@ type reach struct {
 	// How many sweeps in a row found nothing at all, which is a count of this
 	// machine's own outages rather than of anybody else's.
 	blind int
+
+	// missed counts consecutive failed checks per relay, and is what stops one
+	// of them withdrawing a relay. See withdrawAfter.
+	missed map[string]int
 }
 
+// How many checks in a row a relay has to fail before it stops being offered.
+//
+// One was enough for a while and cost this deployment its American relay for
+// half a minute at a time, thirty-nine times in a day — all of them during the
+// evening, and all but two of them a single failed check with the next one
+// answering normally. The path from this node to Los Angeles is congested at
+// those hours; the path a caller in California takes to the same machine is not
+// the same path and is nobody's business here. Withdrawing on one reading meant
+// a suspicion about our own line deciding what everybody else was offered.
+//
+// Measured before it was changed: ten outages, eight of them twenty-six to
+// twenty-nine seconds — which at a check every thirty seconds is exactly one
+// failure — and two of about a minute. So two in a row removes four fifths of
+// the wrong answers, and the price is thirty seconds more exposure to a relay
+// that has genuinely died, against a timeout that is already thirteen times a
+// normal handshake.
+//
+// Restored on the first success, not on two: the asymmetry runs the other way
+// coming back. A relay that is answering should be offered again at once.
+const withdrawAfter = 2
+
 func newReach(check Check) *reach {
-	return &reach{check: check, down: map[string]bool{}, silent: map[string]bool{}}
+	return &reach{
+		check: check, down: map[string]bool{},
+		silent: map[string]bool{}, missed: map[string]int{},
+	}
 }
 
 // up reports whether a relay is worth offering.
@@ -214,7 +242,16 @@ func (r *reach) look(ctx context.Context, list []store.Relay) {
 	for _, one := range found {
 		r.mu.Lock()
 		was := r.down[one.relay.URL]
-		r.down[one.relay.URL] = !one.ok
+
+		if one.ok {
+			r.missed[one.relay.URL] = 0
+			r.down[one.relay.URL] = false
+		} else {
+			r.missed[one.relay.URL]++
+			r.down[one.relay.URL] = r.missed[one.relay.URL] >= withdrawAfter
+		}
+
+		now := r.down[one.relay.URL]
 		r.mu.Unlock()
 
 		// And whether media can reach it, which is a different question from
@@ -243,10 +280,10 @@ func (r *reach) look(ctx context.Context, list []store.Relay) {
 		// which has been down all night is one line in the log and not two
 		// thousand.
 		switch {
-		case !one.ok && !was:
+		case now && !was:
 			slog.Warn("a relay stopped answering and is no longer offered to clients",
 				"relay", one.relay.Name, "url", one.relay.URL, "detail", one.detail)
-		case one.ok && was:
+		case !now && was:
 			slog.Info("a relay is answering again",
 				"relay", one.relay.Name, "url", one.relay.URL, "took", one.took)
 		}

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"net"
 	"sync"
 	"time"
 
@@ -304,6 +305,24 @@ func (r *reach) carrying(ctx context.Context, relay store.Relay, signalling bool
 		return
 	}
 
+	// Nor about one this node only reaches through something local.
+	//
+	// A relay this network cannot route to at all is reached here through a
+	// forwarder on loopback, put in front of it by hand and named in this
+	// machine's hosts file — so the address below resolves to 127.0.0.0/8 and
+	// the probe is sent to this machine. The forwarder carries the signalling
+	// port and nothing else, because it is a TCP proxy and the probe is UDP, so
+	// what the check measures is whether a second forwarder exists. It does not,
+	// and never will, and the reading was therefore always the same one.
+	//
+	// Thirteen warnings in a day and not one recovery, for a relay that answers
+	// this probe in three hundred milliseconds when it is asked from anywhere
+	// else. A permanent alert about a machine that is working is how somebody
+	// learns to ignore the alerts that matter.
+	if forwardedLocally(relay.Probe) {
+		return
+	}
+
 	asked, ok, took := rtc.Carrying(ctx, relay.Probe)
 	if !asked {
 		return
@@ -348,4 +367,45 @@ func (a *App) watching() {
 		case <-ticker.C:
 		}
 	}
+}
+
+// forwardedLocally reports whether an address this node was given points back at
+// this node.
+//
+// Which means somebody put a forwarder in front of a machine this network
+// cannot reach directly, and that anything measured against the address
+// describes the forwarder rather than the machine.
+//
+// Resolution failure is not local: a name that does not resolve is a fault
+// worth reporting through the ordinary path, and swallowing it here would hide
+// it.
+func forwardedLocally(probe string) bool {
+	if probe == "" {
+		return false
+	}
+
+	host, _, err := net.SplitHostPort(probe)
+	if err != nil {
+		host = probe
+	}
+
+	if address := net.ParseIP(host); address != nil {
+		return address.IsLoopback()
+	}
+
+	found, err := net.LookupIP(host)
+	if err != nil || len(found) == 0 {
+		return false
+	}
+
+	// All of them, not any. A name answering with one loopback address and one
+	// real one is a hosts file half removed, and the real address is still worth
+	// asking.
+	for _, address := range found {
+		if !address.IsLoopback() {
+			return false
+		}
+	}
+
+	return true
 }

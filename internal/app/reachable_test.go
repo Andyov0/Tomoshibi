@@ -417,3 +417,73 @@ func TestARelayIsNotWithdrawnOnOneFailedCheck(t *testing.T) {
 			"there is nothing to be careful about in a machine that is working", got)
 	}
 }
+
+/*
+ * A relay reached through a forwarder on this machine is not measured from here.
+ *
+ * One relay on this fleet is on a network this node cannot route to. It is
+ * reached through a TCP proxy on loopback, named in the machine's hosts file, so
+ * the address the deployment holds for it resolves to 127.0.0.0/8 here and to
+ * the real machine everywhere else.
+ *
+ * The media check sends a UDP probe to that address. The proxy carries TCP, so
+ * the probe goes to this machine, finds nothing listening, and reports the
+ * relay's media port as unreachable — thirteen times in a day with no recovery
+ * between them, about a relay that answers the same probe in three hundred
+ * milliseconds when it is asked from anywhere else. Every one of those was a
+ * message to a person about a machine that was working.
+ *
+ * The rule reads itself: an address that points back here describes the
+ * forwarder, not the relay.
+ */
+func TestAProbeThatPointsAtThisMachineIsNotAMeasurement(t *testing.T) {
+	for _, probe := range []string{
+		"127.0.0.2:39218",
+		"127.0.0.1:39218",
+		"localhost:39218",
+		"[::1]:39218",
+	} {
+		if !forwardedLocally(probe) {
+			t.Errorf("%q was measured, and it points at this machine", probe)
+		}
+	}
+
+	for _, probe := range []string{
+		"198.51.100.9:39218",
+		"shct.api.example:39218",
+		"",
+	} {
+		if forwardedLocally(probe) {
+			t.Errorf("%q was treated as a local forwarder, so a relay this node genuinely "+
+				"cannot reach on UDP would never be reported at all", probe)
+		}
+	}
+}
+
+// And the rule is actually consulted, which the test above does not show: it
+// exercises the function, and deleting the one line that calls it leaves that
+// test green. This one drives the check itself.
+//
+// A probe pointing at this machine, and nothing listening on it — which is
+// exactly the deployment's own case. Without the guard the probe is sent, fails
+// as it always would, and the relay is recorded as having lost its media port.
+func TestTheMediaCheckSkipsARelayReachedThroughThisMachine(t *testing.T) {
+	watch := newReach(fixed(map[string]bool{}))
+
+	relay := store.Relay{
+		Name: "shanghai", URL: "wss://shct.example:39217",
+		Enabled: true, Probe: "127.0.0.2:39218",
+	}
+
+	watch.carrying(context.Background(), relay, true)
+
+	watch.mu.RLock()
+	recorded, seen := watch.silent[relay.URL]
+	watch.mu.RUnlock()
+
+	if seen && recorded {
+		t.Error("a relay reached through a forwarder on this machine was recorded as having " +
+			"lost its media port; that is thirteen messages a day about a machine that is " +
+			"carrying calls, and it never recovers because there is nothing there to recover")
+	}
+}

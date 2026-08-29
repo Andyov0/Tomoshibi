@@ -642,6 +642,14 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		mayOpen = true
 	case room.BySigned:
 		mayOpen = mayOpen || !body.Passphrase.Empty() || signature != ""
+
+	// An account, and not a passphrase somebody set themselves.
+	//
+	// No fallback where a deployment has no accounts, unlike the joining
+	// policy: an administrator can always open a room whatever this says, so
+	// this is never a locked door with no key.
+	case room.ByAccounts:
+		mayOpen = mayOpen || signature != ""
 	}
 
 	// Whether this name has been used before, asked before it is written down,

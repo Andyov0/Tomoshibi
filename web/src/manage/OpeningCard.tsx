@@ -88,6 +88,23 @@ export function OpeningCard({
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("signed")}
 					/>
+					{/* The setting the one above reads as.
+					
+					    "Users & administrators" is `signed`, and signed there means
+					    a signature — which anybody makes by typing anything into
+					    the passphrase box. So a deployment that had chosen it and
+					    thought about who may start a meeting was still one where a
+					    stranger could start one and use the bandwidth. This is the
+					    one that asks for an account. */}
+					<Choice
+						label={t("Accounts only")}
+						describes={t(
+							"Only people with an account here can start one. A passphrase somebody set themselves is not enough.",
+						)}
+						chosen={value?.chosen === "accounts"}
+						disabled={!canModerate || saving || !value}
+						onChoose={() => choose("accounts")}
+					/>
 					<Choice
 						label={t("Administrators")}
 						describes={t("Only administrators can start one. Rooms already in use stay open.")}

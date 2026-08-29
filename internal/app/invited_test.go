@@ -161,3 +161,47 @@ func TestWhoeverKnowsTheNameIsStillTheDefault(t *testing.T) {
 			second.Code)
 	}
 }
+
+/*
+ * A passphrase somebody set themselves is not an account.
+ *
+ * `signed` reads as "signed in" and means "typed something into the passphrase
+ * box", so a deployment that had chosen it and thought about who may start a
+ * meeting was still one where a stranger with any passphrase could start one
+ * and use the bandwidth. Closing the door on rooms that exist did not touch
+ * that: the two are different questions and only one of them had been asked.
+ *
+ * `accounts` is the setting `signed` sounds like. An administrator can still
+ * open a room whatever this says, which is why it needs no fallback for a
+ * deployment that has no accounts — it is never a locked door with no key.
+ */
+func TestUnderAccountsAPassphraseDoesNotOpenARoom(t *testing.T) {
+	// Set in the store rather than on the config, because that is where this
+	// one lives: the file holds a starting value and the pages write the live
+	// one, and reading the file would test a field nothing consults.
+	mux, st, _ := controlWithStore(t, config.PickSticky,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"})
+
+	if err := st.SetOpening(room.ByAccounts); err != nil {
+		t.Fatal(err)
+	}
+
+	opened := joinAs(t, mux, "stranger-was-here", `{"name":"stranger","passphrase":"any-old-thing"}`)
+
+	if opened.Code != http.StatusForbidden {
+		t.Errorf("somebody with a passphrase of their own opened a room and got %d, want 403: "+
+			"a signature proves a name and says nothing about belonging here", opened.Code)
+	}
+
+	// And the setting it sits beside still means what it always did, or this is
+	// not a new option but a change to an old one.
+	if err := st.SetOpening(room.BySigned); err != nil {
+		t.Fatal(err)
+	}
+
+	if again := joinAs(t, mux, "stranger-was-here-too",
+		`{"name":"stranger","passphrase":"any-old-thing"}`); again.Code != http.StatusOK {
+		t.Errorf("under %q a passphrase was refused with %d; that setting is still right "+
+			"where a passphrase is the whole identity model", room.BySigned, again.Code)
+	}
+}

@@ -24,7 +24,7 @@ const RELAY_KEY = "meet-live.relay";
  * So the screen says who rooms are opened by, and the answer about any one
  * person arrives where it always did: on pressing Join.
  */
-export type Opening = "anyone" | "signed" | "admins";
+export type Opening = "anyone" | "signed" | "accounts" | "admins";
 
 /** Who may enter a room that already exists. */
 export type Joining = "anyone" | "invited" | "accounts";
@@ -90,7 +90,9 @@ export async function deployment(): Promise<Deployment> {
 			// value from reaching the interface, which is right — but it has to
 			// let through the values that exist.
 			openedBy:
-				body.openedBy === "admins" || body.openedBy === "signed"
+				body.openedBy === "admins" ||
+				body.openedBy === "signed" ||
+				body.openedBy === "accounts"
 					? body.openedBy
 					: "anyone",
 			// Narrowed the same way and to the same end, and the fallback is the

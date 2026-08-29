@@ -30,14 +30,29 @@ const (
 	// that gets found and used by strangers.
 	BySigned Opening = "signed"
 
+	// ByAccounts refuses one unless whoever asked is signed in.
+	//
+	// The setting BySigned reads as and is not. "Signed" there means a
+	// signature, which anybody makes by typing anything into the passphrase
+	// box — so a deployment that had thought about who may start a meeting was
+	// still one where a stranger could start one and use the bandwidth. This is
+	// the one that means what that sounds like: an account on this deployment,
+	// which somebody has to have been given.
+	//
+	// Between the two rather than replacing either. A deployment where the
+	// people who hold meetings are the people with accounts wants this;
+	// BySigned is still right where a passphrase is the whole identity model
+	// and there are no accounts at all.
+	ByAccounts Opening = "accounts"
+
 	// ByAdmins refuses one unless the passphrase that came with the request is
 	// an administrator's.
 	ByAdmins Opening = "admins"
 )
 
-// Valid reports whether this is one of the three.
+// Valid reports whether this is one of the four.
 func (o Opening) Valid() bool {
-	return o == ByAnyone || o == BySigned || o == ByAdmins
+	return o == ByAnyone || o == BySigned || o == ByAccounts || o == ByAdmins
 }
 
 // InEffect resolves a policy against how many administrators there are to

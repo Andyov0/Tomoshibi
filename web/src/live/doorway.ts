@@ -21,8 +21,16 @@
  * assertion.
  */
 
-/** What the deployment lets people do with a name nobody has used. */
-export type Opening = "anyone" | "signed" | "admins";
+/**
+ * What the deployment lets people do with a name nobody has used.
+ *
+ * Re-exported rather than written again. It was written again, in three files,
+ * and adding a fourth setting compiled in two of them — the third failed at the
+ * one place the two copies met, which is a good deal luckier than it sounds.
+ */
+import type { Opening } from "./api";
+
+export type { Opening };
 
 export type Arriving = {
 	/** The room an invitation names, if one was presented and was good. */

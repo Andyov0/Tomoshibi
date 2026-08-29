@@ -278,7 +278,7 @@ export interface Account {
 }
 
 /** Who may use a name nobody has used before. */
-export type Opening = "anyone" | "signed" | "admins";
+export type Opening = "anyone" | "signed" | "accounts" | "admins";
 
 /**
  * Who may enter a room that already exists.

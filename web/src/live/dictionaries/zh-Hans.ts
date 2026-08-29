@@ -358,6 +358,8 @@ const zhHans: Dictionary = {
 	"Media": "媒体",
 	"Move": "迁移",
 	"Move now, ending this call": "立刻迁移,结束这通通话",
+	"Accounts only": "仅限有账号的人",
+	"Only people with an account here can start one. A passphrase somebody set themselves is not enough.": "只有在这里有账号的人能开房间。自己随便设的口令不算。",
 	"Sign in to join a room here.": "这里要登录后才能进入房间。",
 	"Rooms here are by invitation. Open the link you were sent, or sign in.": "这里的房间需要邀请。打开别人发给你的链接,或者登录。",
 	"name not kept then": "当时没记名字",

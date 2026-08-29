@@ -47,6 +47,7 @@ var (
 
 // openedBy is where settings keeps a room.Opening.
 var openedBy = []byte("rooms.opened_by")
+var joinedBy = []byte("rooms.joined_by")
 
 // ErrNotOpen refuses a name nobody has used to somebody who may not open one.
 var ErrNotOpen = errors.New("that room has not been opened")
@@ -304,6 +305,14 @@ func (s *Store) Forget(since time.Time, limit int) (int, error) {
 			if err := bucket.Delete(name); err != nil {
 				return err
 			}
+
+			// And what was seen of the people who were in it. A history must not
+			// outlive the room it is about, and the addresses in it must not be
+			// kept after the last thing that referred to them has gone.
+			if err := forgetArrivals(tx, string(name)); err != nil {
+				return err
+			}
+
 			gone++
 		}
 
@@ -348,6 +357,51 @@ func (s *Store) Opening() room.Opening {
 	}
 
 	return opening
+}
+
+// Joining is who may enter a room that already exists.
+//
+// Falls back to the configuration's value rather than to a constant, which is
+// the difference between this and Opening: opening has had a stored value since
+// it existed and a deployment that has never set one meant the default. Joining
+// is new, so an unset value has to mean "whatever the file says" or every
+// deployment that configured it would find the setting ignored.
+func (s *Store) Joining(configured room.Joining) room.Joining {
+	var joining room.Joining
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		if bucket := tx.Bucket(settings); bucket != nil {
+			joining = room.Joining(bucket.Get(joinedBy))
+		}
+
+		return nil
+	})
+
+	if !joining.Valid() {
+		if configured.Valid() {
+			return configured
+		}
+
+		return room.ByWhoeverKnows
+	}
+
+	return joining
+}
+
+// SetJoining changes who may enter a room that already exists.
+func (s *Store) SetJoining(joining room.Joining) error {
+	if !joining.Valid() {
+		return fmt.Errorf("%q is not a way of joining rooms", joining)
+	}
+
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(settings)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(joinedBy, []byte(joining))
+	})
 }
 
 // SetOpening changes who may open a room.
@@ -784,65 +838,85 @@ func (s *Store) HostOf(name string) string {
 // every choice they made afterwards.
 func (s *Store) PinEntry(room, identity, relay string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		bucket, err := tx.CreateBucketIfNotExists(arrivals)
+		bucket, err := tx.CreateBucketIfNotExists(pins)
 		if err != nil {
 			return err
 		}
 
-		key := arrivalKey(room, identity)
-
-		var arrival Arrival
-		if raw := bucket.Get(key); raw != nil {
-			_ = json.Unmarshal(raw, &arrival)
-		}
-
-		arrival.Pinned = relay
-
-		if arrival.At.IsZero() {
-			arrival.At = time.Now().UTC()
-		}
-
-		encoded, err := json.Marshal(arrival)
-		if err != nil {
-			return err
-		}
-
-		return bucket.Put(key, encoded)
+		return bucket.Put(pinKey(room, identity), []byte(relay))
 	})
 }
 
-// TakePin reads a pinned entry and clears it, so it moves somebody once.
+// TakePin reads a pin and spends it, so it moves somebody once.
 func (s *Store) TakePin(room, identity string) string {
 	var relay string
 
 	_ = s.db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket(arrivals)
+		bucket := tx.Bucket(pins)
 		if bucket == nil {
 			return nil
 		}
 
-		key := arrivalKey(room, identity)
+		key := pinKey(room, identity)
 
 		raw := bucket.Get(key)
 		if raw == nil {
 			return nil
 		}
 
-		var arrival Arrival
-		if err := json.Unmarshal(raw, &arrival); err != nil || arrival.Pinned == "" {
-			return nil
-		}
+		relay = string(raw)
 
-		relay = arrival.Pinned
-		arrival.Pinned = ""
-
-		encoded, err := json.Marshal(arrival)
-		if err != nil {
-			return err
-		}
-
-		return bucket.Put(key, encoded)
+		return bucket.Delete(key)
 	})
 
 	return relay
+}
+
+// Used reports whether this name has ever been opened.
+//
+// Read rather than inferred from HeldOn, which answers about a relay and is
+// empty for a room nobody has joined since the note aged out. The question here
+// is whether the name exists at all, and the record is what says so.
+//
+// A store that will not answer says the name is unused. That is the safe
+// direction for the caller: an unused name is an opening, and an opening is
+// already gated by whoever may open one.
+func (s *Store) Used(name string) bool {
+	var used bool
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		used = bucket.Get([]byte(name)) != nil
+
+		return nil
+	})
+
+	return used
+}
+
+// AccountCount is how many accounts exist, for a policy that asks for one.
+//
+// A count rather than the list: the only caller wants to know whether a rule
+// asking for an account is a rule anybody could satisfy, and reading every
+// account to answer that on every join would be a waste of the store's one
+// reader.
+func (s *Store) AccountCount() int {
+	count := 0
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(accountsBucket)
+		if bucket == nil {
+			return nil
+		}
+
+		count = bucket.Stats().KeyN
+
+		return nil
+	})
+
+	return count
 }

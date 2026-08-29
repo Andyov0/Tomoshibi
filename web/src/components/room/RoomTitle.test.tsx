@@ -20,7 +20,16 @@ import { RoomTitle } from "./RoomTitle";
 
 // The answer is fetched rather than passed in, because it belongs to the
 // deployment and not to any of the props above this component.
-function serverSays(policy: unknown) {
+// The door left open in these, because they are about the other half — who may
+// open a name nobody has used. A deployment that asks for an invitation says so
+// first and instead, since somebody typing a name they were given is asking to
+// be let in rather than to start something; a fixture that did not say which it
+// was would be testing whichever sentence happened to win.
+function serverSays(policy: Record<string, unknown>) {
+	return says({ joinedBy: "anyone", ...policy });
+}
+
+function says(policy: unknown) {
 	vi.stubGlobal(
 		"fetch",
 		vi.fn(async () => new Response(JSON.stringify(policy), { status: 200 })),
@@ -134,5 +143,58 @@ describe("a room somebody chose", () => {
 		await waitFor(() => expect(screen.getByText("team-standup")).toBeTruthy());
 
 		expect(screen.getByLabelText("Change room")).toBeTruthy();
+	});
+});
+
+/*
+ * The door, said before the question of who may start something.
+ *
+ * Somebody typing a name they were given is asking to be let in, not asking to
+ * open a room — so on a deployment that asks for an invitation, that is the
+ * sentence worth their attention, and the other one is about a thing they are
+ * not doing.
+ *
+ * It was saying the opposite. Under the middle opening policy the line read
+ * "anybody can join one that already exists", which had been true of every
+ * deployment until there was a setting that made it false, and it went on
+ * saying so to people who were about to be turned away with no idea what would
+ * have worked.
+ */
+describe("a deployment that asks for an invitation", () => {
+	it("says so instead of saying who may open a room", async () => {
+		says({ openedBy: "signed", joinedBy: "invited" });
+
+		render(<RoomTitle room="standup" onChange={vi.fn()} />);
+
+		await waitFor(() => expect(screen.getByText(/by invitation/i)).toBeDefined());
+
+		// And not the sentence that was there, which promises the opposite of
+		// what the server will do.
+		expect(screen.queryByText(/anybody can join one that already exists/i)).toBeNull();
+		expect(screen.queryByText(/anyone who guesses/i)).toBeNull();
+	});
+
+	it("says to sign in where that is the only way", async () => {
+		says({ openedBy: "anyone", joinedBy: "accounts" });
+
+		render(<RoomTitle room="standup" onChange={vi.fn()} />);
+
+		await waitFor(() => expect(screen.getByText(/sign in to join/i)).toBeDefined());
+	});
+
+	it("says nothing at all until the server has answered", async () => {
+		// A request that never settles, which is the moment the page is drawn.
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(() => new Promise(() => {})),
+		);
+
+		render(<RoomTitle room="standup" onChange={vi.fn()} />);
+
+		// Not "anyone who guesses" and not "by invitation": one of those is
+		// wrong on any given deployment, and drawing one and swapping it tells
+		// somebody the wrong thing in the moment they were reading it.
+		expect(screen.queryByText(/anyone who guesses/i)).toBeNull();
+		expect(screen.queryByText(/by invitation/i)).toBeNull();
 	});
 });

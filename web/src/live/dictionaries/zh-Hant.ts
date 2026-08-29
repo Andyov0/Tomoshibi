@@ -358,6 +358,8 @@ const zhHant: Dictionary = {
 	"Media": "媒體",
 	"Move": "遷移",
 	"Move now, ending this call": "立刻遷移,結束這通通話",
+	"Sign in to join a room here.": "這裡要登入後才能進入房間。",
+	"Rooms here are by invitation. Open the link you were sent, or sign in.": "這裡的房間需要邀請。打開別人發給你的連結,或者登入。",
 	"name not kept then": "當時沒記名字",
 	"account": "帳號",
 	"passphrase": "口令",

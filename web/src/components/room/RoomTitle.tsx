@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
-import { type Opening, deployment } from "@/live/api";
+import { type Joining, type Opening, deployment } from "@/live/api";
 import { MAX_ROOM_NAME, looksGenerated, normaliseRoomName, validRoomName } from "@/live/names";
 import { Check, Copy, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -41,7 +41,21 @@ export function RoomTitle({
 	const t = useT();
 	const [editing, setEditing] = useState(false);
 	const [copied, setCopied] = useState(false);
-	const [opening, setOpening] = useState<Opening>("anyone");
+	// Nothing until the server has answered, rather than a guess corrected a
+	// moment later.
+	//
+	// Both halves come from one request, and until it lands neither sentence is
+	// known — so drawing one and swapping it is telling somebody the wrong thing
+	// in the moment they were reading it, which is worse than a line arriving
+	// fifty milliseconds late. Where the request fails this settles on what
+	// every deployment has until somebody changes it, which is the reading this
+	// page has always fallen back to: a page that cannot ask must not invent a
+	// restriction, and must not promise there is none either — so it says only
+	// what it said before there was a door to describe.
+	const [said, setSaid] = useState<{ opening: Opening; joining?: Joining }>();
+
+	const opening = said?.opening ?? "anyone";
+	const joining = said?.joining;
 	const field = useRef<HTMLInputElement>(null);
 
 	// Asked once, here, because this is the only line on the screen it changes.
@@ -50,8 +64,8 @@ export function RoomTitle({
 	useEffect(() => {
 		let live = true;
 
-		void deployment().then((said) => {
-			if (live) setOpening(said.openedBy);
+		void deployment().then((answer) => {
+			if (live) setSaid({ opening: answer.openedBy, joining: answer.joinedBy });
 		});
 
 		return () => {
@@ -161,7 +175,24 @@ export function RoomTitle({
 			{/* One line at most, and never two. Both of these are about what this
 			    name is worth, and somebody reading a paragraph under a heading
 			    reads the first sentence or none. */}
-			{opening === "admins" ? (
+			{/* The door, where it is shut, before the question of who may open a
+			    new name — because somebody typing a name they were given is
+			    asking to be let in rather than asking to start something, and
+			    being told what would have worked is worth more than being told
+			    who may start one.
+
+			    This half was missing and the page said the opposite. Under the
+			    middle opening policy it read "anybody can join one that already
+			    exists", which was true of every deployment until there was a
+			    setting that made it false — and it went on saying so to people
+			    about to be turned away with no idea what would have worked. */}
+			{!said ? null : joining && joining !== "anyone" ? (
+				<p className="text-fg-muted text-xs leading-snug">
+					{joining === "accounts"
+						? t("Sign in to join a room here.")
+						: t("Rooms here are by invitation. Open the link you were sent, or sign in.")}
+				</p>
+			) : opening === "admins" ? (
 				<p className="text-fg-muted text-xs leading-snug">
 					{t("Only administrators can start new rooms. Enter the name you were given.")}
 				</p>

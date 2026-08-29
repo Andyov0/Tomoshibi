@@ -26,9 +26,23 @@ const RELAY_KEY = "meet-live.relay";
  */
 export type Opening = "anyone" | "signed" | "admins";
 
+/** Who may enter a room that already exists. */
+export type Joining = "anyone" | "invited" | "accounts";
+
 /** What the server said about itself. */
 export interface Deployment {
 	openedBy: Opening;
+
+	/**
+	 * Who may enter a room that already exists.
+	 *
+	 * Here because the join screen was saying the wrong thing without it: under
+	 * the middle opening policy it read "anybody can join one that already
+	 * exists", which was true of every deployment until there was a setting
+	 * that made it false — and it went on saying so to people about to be turned
+	 * away.
+	 */
+	joinedBy: Joining;
 	/**
 	 * Where the code running here can be read.
 	 *
@@ -41,7 +55,13 @@ export interface Deployment {
 }
 
 /** What a deployment that will not say anything is taken to be. */
-const PLAIN: Deployment = { openedBy: "anyone", source: "" };
+// What a page reads when the server will not answer.
+//
+// "anyone" on both halves, which is what every deployment had until each
+// setting existed. A page that cannot ask must not invent a restriction — and
+// must not promise there is none either, which is why nothing is drawn at all
+// until this is reached rather than starting here and correcting itself.
+const PLAIN: Deployment = { openedBy: "anyone", joinedBy: "anyone", source: "" };
 
 /**
  * Ask the server about itself.
@@ -73,6 +93,10 @@ export async function deployment(): Promise<Deployment> {
 				body.openedBy === "admins" || body.openedBy === "signed"
 					? body.openedBy
 					: "anyone",
+			// Narrowed the same way and to the same end, and the fallback is the
+			// closed one: a page that cannot tell what the door is should not
+			// promise anybody it is open.
+			joinedBy: body.joinedBy === "anyone" || body.joinedBy === "accounts" ? body.joinedBy : "invited",
 			source: typeof body.source === "string" ? body.source : "",
 		};
 	} catch {

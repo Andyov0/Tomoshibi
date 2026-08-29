@@ -389,6 +389,8 @@ const en = {
 	"Media": "Media",
 	"Move": "Move",
 	"Move now, ending this call": "Move now, ending this call",
+	"Sign in to join a room here.": "Sign in to join a room here.",
+	"Rooms here are by invitation. Open the link you were sent, or sign in.": "Rooms here are by invitation. Open the link you were sent, or sign in.",
 	"name not kept then": "name not kept then",
 	"account": "account",
 	"passphrase": "passphrase",

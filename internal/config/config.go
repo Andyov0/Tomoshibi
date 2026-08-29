@@ -346,6 +346,16 @@ type Rooms struct {
 	// the two side by side for whoever is reading the file and wondering why.
 	OpenedBy room.Opening `yaml:"opened_by"`
 
+	// JoinedBy is who may enter a room that already exists.
+	//
+	// A separate question from who may create one, and the one that was never
+	// asked: knowing a name let anybody in, so a deployment whose rooms are
+	// called things like 223223 had a door that could be guessed. `anyone` is
+	// what it did before this existed and is the default for that reason;
+	// `invited` asks for an invite, an account, an administrator's passphrase,
+	// or being the host; `accounts` asks for an account and nothing else.
+	JoinedBy room.Joining `yaml:"joined_by"`
+
 	// Remember is how long a name stays used after the last time it was joined.
 	//
 	// Two things at once, and they agree. A name is written down on first use
@@ -452,7 +462,7 @@ var defaults = Meet{
 	TrustProxy:  false,
 	// Thirty days: long enough that a fortnightly meeting keeps its room, short
 	// enough that a name nobody has used since is not still holding one.
-	Rooms: Rooms{OpenedBy: room.ByAnyone, Remember: 3 * 24 * time.Hour},
+	Rooms: Rooms{OpenedBy: room.ByAnyone, JoinedBy: room.ByWhoeverKnows, Remember: 3 * 24 * time.Hour},
 	Enrol: Enrol{ListenPort: 13377, UDPPort: 13378, TCPPort: 13379},
 	// Empty rather than a repository somebody else runs.
 	//
@@ -507,6 +517,16 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf(
 			"rooms.remember: %s is not a length of time to keep a name for. Use zero to keep them for ever",
 			meet.Rooms.Remember)
+	}
+
+	if meet.Rooms.JoinedBy == "" {
+		meet.Rooms.JoinedBy = room.ByWhoeverKnows
+	}
+
+	if !meet.Rooms.JoinedBy.Valid() {
+		return nil, fmt.Errorf(
+			"rooms.joined_by: %q is not who may join a room. The three are %q, %q and %q",
+			meet.Rooms.JoinedBy, room.ByWhoeverKnows, room.ByInvitation, room.ByAccount)
 	}
 
 	if !meet.Rooms.OpenedBy.Valid() {

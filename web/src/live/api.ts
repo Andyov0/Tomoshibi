@@ -224,6 +224,14 @@ function explain(reason: string | undefined, room: string): string {
 			return t("{room} isn't open. Ask the organiser for the link.", {
 				room,
 			});
+		// Said as a fact about the meeting, and without telling them whether
+		// this name is in use — which is the one thing somebody guessing names
+		// would learn from the difference between this and the sentence above.
+		// Both point at the same way in: ask whoever is holding it.
+		case "not_invited":
+			return t("{room} is by invitation. Ask the organiser for a link.", {
+				room,
+			});
 		// Said plainly, and about the passphrase rather than about the person.
 		// It is the only thing this server recognises anybody by, and somebody
 		// who is reading this may well not know why — telling them to ask is

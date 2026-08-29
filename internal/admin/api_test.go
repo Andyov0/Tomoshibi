@@ -363,6 +363,15 @@ func (unwritten) Rooms() ([]store.Named, error) { return nil, errors.New("no sto
 
 // The policy a deployment nobody has configured runs under.
 func (unwritten) Opening() room.Opening { return room.ByAnyone }
+func (unwritten) Joining(configured room.Joining) room.Joining {
+	if configured.Valid() {
+		return configured
+	}
+
+	return room.ByWhoeverKnows
+}
+func (unwritten) SetJoining(room.Joining) error { return nil }
+func (unwritten) AccountCount() int             { return 0 }
 
 func (unwritten) SetOpening(room.Opening) error { return errors.New("no store") }
 
@@ -374,6 +383,7 @@ func (unwritten) SetOpening(room.Opening) error { return errors.New("no store") 
 func (unwritten) HeldOn(string) (string, bool) { return "", false }
 
 func (unwritten) Arrivals(string) map[string]store.Arrival { return nil }
+func (unwritten) Visits(string, int) []store.Visit         { return nil }
 
 // A record of names that keeps the one setting these tests are about.
 type remembers struct {

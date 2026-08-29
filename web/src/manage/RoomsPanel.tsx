@@ -18,7 +18,7 @@ import {
 import { useCallback, useState } from "react";
 import { type Participant, type Relay, type Track, api } from "./api";
 import { actionFailed } from "@/live/notices";
-import { OpeningCard } from "./OpeningCard";
+import { JoiningCard, OpeningCard } from "./OpeningCard";
 import { usePoll } from "./poll";
 import { Card, Empty, Failed } from "./Shell";
 import { bitrate, day, since } from "./units";
@@ -186,6 +186,7 @@ export function RoomsPanel({
 				    above the live rooms it would push the reason anybody opened
 				    this panel below the fold. */}
 				<OpeningCard canModerate={canModerate} onSignedOut={onSignedOut} />
+				<JoiningCard canModerate={canModerate} onSignedOut={onSignedOut} />
 			</div>
 
 			{open ? (

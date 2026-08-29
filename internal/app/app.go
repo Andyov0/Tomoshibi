@@ -195,7 +195,7 @@ func (a *App) sweep() {
 		slog.Info("swept expired invites", "gone", gone)
 	}
 
-	if gone, err := a.store.SweepArrivals(now); err != nil {
+	if gone, err := a.store.SweepArrivals(now, a.conf.Meet.Rooms.Remember); err != nil {
 		slog.Error("failed to sweep the arrivals", "error", err)
 	} else if gone > 0 {
 		slog.Info("swept old arrivals", "gone", gone)
@@ -635,6 +635,23 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		mayOpen = mayOpen || !body.Passphrase.Empty() || signature != ""
 	}
 
+	// Whether this name has been used before, asked before it is written down,
+	// because the answer decides which of the two doors this person is at: a
+	// name nobody has used is an opening and a name somebody has is a joining,
+	// and the deployment may have different rules for each.
+	known := a.store.Used(name)
+
+	// The second door, which did not exist. A room here is a name and nothing
+	// else, so knowing the name was the whole of the check — which is a fine
+	// model for names that are long and given out carefully, and a bad one for a
+	// meeting called 223223. What made it hard to see is that the setting next
+	// to it is called "signed", which sounds like signed in and means "typed
+	// something into the passphrase box".
+	if known && !a.mayJoin(r, name, isAdmin, signature, body.Passphrase) {
+		fail(w, http.StatusForbidden, reasonNotInvited)
+		return
+	}
+
 	// Before the token rather than after it, and waited for rather than sent
 	// off, because this is no longer only an observation: whether the name has
 	// ever been used is the answer, and it has to be settled before anybody is
@@ -859,9 +876,13 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// afterwards, and both are the first thing anybody asks when a call is going
 	// badly for one person and nobody else.
 	if err := a.store.Arrived(name, grant.Identity, store.Arrival{
-		Address:   limit.Caller(r, a.conf.Meet.TrustProxy),
-		Relay:     entry.Shown(),
-		Holding:   elsewhere(entry, holding),
+		Address: limit.Caller(r, a.conf.Meet.TrustProxy),
+		Relay:   entry.Shown(),
+		Holding: elsewhere(entry, holding),
+		// What they called themselves. The media server has this for a call in
+		// progress and there is no media server to ask about one that ended, so
+		// a history without it is a page of addresses and hex.
+		Name:      body.Name,
 		Forwarded: forward != nil,
 		At:        time.Now().UTC(),
 	}); err != nil {
@@ -1185,6 +1206,7 @@ const (
 	reasonRateLimited    = "rate_limited"
 	reasonBadRoom        = "invalid_room"
 	reasonNotOpen        = "room_not_open"
+	reasonNotInvited     = "not_invited"
 	reasonServerError    = "server_error"
 	reasonNoSuchEndpoint = "no_such_endpoint"
 	// reasonBlocked is somebody an administrator has refused. A code like every
@@ -1309,4 +1331,52 @@ func (a *App) pinTo(ctx context.Context, room string, there store.Relay) {
 		slog.Warn("could not put a placed room on the machine it was placed on",
 			"room", room, "relay", there.Name, "node", stats.Node, "error", err)
 	}
+}
+
+// mayJoin decides whether somebody may enter a room that already exists.
+//
+// Only called for a name that has been used. A name nobody has used is an
+// opening and is decided by `rooms.opened_by`, which is a different question:
+// a deployment may well want anybody with an account to hold a meeting and
+// still not want a stranger who guessed the name to be in it.
+//
+// The host is admitted because they must be. They come back to their own
+// meeting with the passphrase they opened it with and no invite — nobody sent
+// them one — and a rule that shut the host out of the room they are running
+// would be worse than the one it replaces.
+func (a *App) mayJoin(r *http.Request, name string, isAdmin bool, signature string, said room.Passphrase) bool {
+	switch a.joining() {
+	case room.ByWhoeverKnows:
+		return true
+
+	case room.ByAccount:
+		// An account and nothing else. An invite is a thing the room gave out
+		// and this is a deployment that has said it does not accept those.
+		return isAdmin || signature != ""
+	}
+
+	// ByInvitation: anything the deployment or the room itself handed over.
+	if isAdmin || signature != "" {
+		return true
+	}
+
+	if a.invited(r, name) {
+		return true
+	}
+
+	// The host, by the mark their passphrase makes. Compared against what was
+	// written down when the room was opened, so it is the person who opened it
+	// rather than anybody who has since typed a passphrase.
+	if !said.Empty() {
+		if host := a.store.HostOf(name); host != "" && host == room.Trip(a.tripKey, string(said)) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// joining is the join policy, resolved against whether anybody could satisfy it.
+func (a *App) joining() room.Joining {
+	return a.store.Joining(a.conf.Meet.Rooms.JoinedBy).InEffect(a.store.AccountCount())
 }

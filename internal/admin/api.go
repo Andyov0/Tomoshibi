@@ -62,6 +62,12 @@ type Names interface {
 	Opening() room.Opening
 	SetOpening(opening room.Opening) error
 
+	// Joining is who may enter a room that already exists, which is the other
+	// half of the door and the half that had no setting at all.
+	Joining(configured room.Joining) room.Joining
+	SetJoining(joining room.Joining) error
+	AccountCount() int
+
 	// HeldOn says which relay a room is on, and Arrivals what was seen of the
 	// people in it when they were let in.
 	//
@@ -72,6 +78,10 @@ type Names interface {
 	// the machine and saw the address, once, at the join.
 	HeldOn(room string) (string, bool)
 	Arrivals(room string) map[string]store.Arrival
+
+	// Visits is every join recorded against a room, newest first, which is a
+	// different question from who is in it now and outlives the call.
+	Visits(room string, limit int) []store.Visit
 }
 
 // Roster is where the administrators are kept.
@@ -416,6 +426,7 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/history", a.observe(a.trend))
 	mux.HandleFunc("GET /api/admin/rooms", a.observe(a.rooms))
 	mux.HandleFunc("GET /api/admin/rooms/{room}/participants", a.observe(a.participants))
+	mux.HandleFunc("GET /api/admin/rooms/{room}/visits", a.observe(a.visits))
 	mux.HandleFunc("GET /api/admin/runtime", a.observe(a.runtime))
 	mux.HandleFunc("GET /api/admin/policy", a.observe(a.readPolicy))
 	mux.HandleFunc("GET /api/admin/relays", a.observe(a.listRelays))
@@ -992,6 +1003,12 @@ type policy struct {
 	// anybody exists who could satisfy it.
 	Chosen room.Opening `json:"chosen"`
 
+	// JoinedBy is who may enter a room that already exists, and ChosenJoin what
+	// was set before it was reconciled against whether anybody could satisfy it.
+	JoinedBy       room.Joining `json:"joinedBy"`
+	ChosenJoin     room.Joining `json:"chosenJoin"`
+	ConfiguredJoin room.Joining `json:"configuredJoin"`
+
 	// Configured is the configuration file's value, which is the starting one
 	// and nothing more.
 	Configured room.Opening `json:"configured"`
@@ -1008,12 +1025,16 @@ type policy struct {
 
 func (a *API) currentPolicy() policy {
 	chosen := a.store.Opening()
+	joining := a.store.Joining(a.conf.Meet.Rooms.JoinedBy)
 
 	return policy{
-		OpenedBy:   chosen.InEffect(len(a.Administrators())),
-		Chosen:     chosen,
-		Configured: a.conf.Meet.Rooms.OpenedBy,
-		Remember:   int64(a.conf.Meet.Rooms.Remember / time.Second),
+		OpenedBy:       chosen.InEffect(len(a.Administrators())),
+		Chosen:         chosen,
+		Configured:     a.conf.Meet.Rooms.OpenedBy,
+		JoinedBy:       joining.InEffect(a.store.AccountCount()),
+		ChosenJoin:     joining,
+		ConfiguredJoin: a.conf.Meet.Rooms.JoinedBy,
+		Remember:       int64(a.conf.Meet.Rooms.Remember / time.Second),
 	}
 }
 
@@ -1030,11 +1051,34 @@ func (a *API) readPolicy(_ Session, w http.ResponseWriter, _ *http.Request) {
 func (a *API) setPolicy(session Session, w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		OpenedBy room.Opening `json:"openedBy"`
+		JoinedBy room.Joining `json:"joinedBy"`
 	}
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
 		refuse(w, http.StatusBadRequest, "unreadable_request")
 		return
+	}
+
+	// One at a time, because the page offers them as two controls and a request
+	// carrying only the one that moved must not silently reset the other.
+	if body.JoinedBy != "" {
+		if !body.JoinedBy.Valid() {
+			refuse(w, http.StatusBadRequest, "no_such_policy")
+			return
+		}
+
+		if err := a.store.SetJoining(body.JoinedBy); err != nil {
+			a.record(session, "set joining", "", string(body.JoinedBy), err)
+			refuse(w, http.StatusInternalServerError, "store_unavailable")
+			return
+		}
+
+		a.record(session, "set joining", "", string(body.JoinedBy), nil)
+
+		if body.OpenedBy == "" {
+			respond(w, a.currentPolicy())
+			return
+		}
 	}
 
 	if !body.OpenedBy.Valid() {
@@ -1225,4 +1269,57 @@ func (a *API) Guessing() *guess.Attempts {
 	}
 
 	return a.sessions.limit
+}
+
+// visits answers what has happened in one room.
+//
+// Separate from participants, which asks the media server who is in a room and
+// therefore answers nothing at all about a room nobody is in. Every question an
+// operator has about a meeting that has ended — who was here, when, from what
+// address, through which machine — is about rows this server wrote at the join
+// and is unanswerable from anywhere else.
+//
+// Available for a name that has never been used, which answers with nothing.
+// Refusing there would make the page ask twice: once to find out whether the
+// name is known, and again for the history.
+func (a *API) visits(_ Session, w http.ResponseWriter, r *http.Request) {
+	if a.store == nil {
+		a.detached(w)
+		return
+	}
+
+	name := strings.ToLower(r.PathValue("room"))
+
+	// A ceiling, because this is drawn on a page. A room somebody has held every
+	// weekday for a month is a few hundred rows and a name somebody is hammering
+	// is however many the rate limiter allowed.
+	found := a.store.Visits(name, 500)
+
+	out := make([]map[string]any, 0, len(found))
+	for _, one := range found {
+		row := map[string]any{
+			"identity": one.Identity,
+			"at":       one.At.UTC(),
+		}
+
+		// Only what there is. A row of blanks reads as a row of things that were
+		// nought rather than as a row about a join recorded by an older version
+		// that did not write them down.
+		for key, value := range map[string]string{
+			"name": one.Name, "address": one.Address,
+			"relay": one.Relay, "holding": one.Holding,
+		} {
+			if value != "" {
+				row[key] = value
+			}
+		}
+
+		if one.Forwarded {
+			row["forwarded"] = true
+		}
+
+		out = append(out, row)
+	}
+
+	respond(w, map[string]any{"room": name, "visits": out})
 }

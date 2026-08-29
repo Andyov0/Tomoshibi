@@ -3,7 +3,7 @@ import type { Phrase } from "@/live/i18n";
 import { cn } from "@/lib/utils";
 import { actionFailed } from "@/live/notices";
 import { type ReactNode, useCallback, useState } from "react";
-import { type Opening, type Policy, api } from "./api";
+import { type Joining, type Opening, type Policy, api } from "./api";
 import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
 
@@ -302,4 +302,101 @@ export function words(opening: Opening): Phrase {
 	if (opening === "signed") return "users and administrators";
 
 	return "anyone";
+}
+
+/**
+ * Who may enter a room that already exists.
+ *
+ * Beside the card above rather than inside it, because they are two questions
+ * and answering them with one control is what hid this one. A room here is a
+ * name and nothing else, so until this existed the whole of the check was
+ * knowing the name — which is a reasonable door for names that are long and
+ * handed out carefully, and no door at all for a meeting called 223223.
+ *
+ * The setting above did not cover it and read as though it did: "signed" sounds
+ * like signed in and means "typed something into the passphrase box", so a
+ * deployment that had thought about who may start a meeting still let anybody
+ * who guessed a name walk into one.
+ */
+export function JoiningCard({
+	canModerate,
+	onSignedOut,
+}: {
+	canModerate: boolean;
+	onSignedOut: () => void;
+}) {
+	const t = useT();
+
+	const [saving, setSaving] = useState(false);
+
+	const { value, error, refresh } = usePoll(api.policy, { every: 30_000, onSignedOut });
+
+	const choose = useCallback(
+		async (joinedBy: Joining) => {
+			if (saving || value?.chosenJoin === joinedBy) return;
+
+			setSaving(true);
+			try {
+				await api.setJoining(joinedBy);
+				await refresh();
+			} catch (whatever) {
+				actionFailed(whatever instanceof Error ? whatever.message : String(whatever));
+			} finally {
+				setSaving(false);
+			}
+		},
+		[refresh, saving, value?.chosenJoin],
+	);
+
+	return (
+		<Card title={t("Joining a room")} note={t("Who can get in")}>
+			{error && <Failed>{error}</Failed>}
+
+			<div className="flex flex-col gap-3 px-3 py-3 sm:px-4">
+				<div
+					role="radiogroup"
+					aria-label={t("Who can join a room that already exists")}
+					className="flex flex-col"
+				>
+					<Choice
+						label={t("Anyone with the name")}
+						describes={t(
+							"Typing the name is enough. Somebody who guesses a short name is in the meeting.",
+						)}
+						chosen={value?.chosenJoin === "anyone"}
+						disabled={!canModerate || saving || !value}
+						onChoose={() => choose("anyone")}
+					/>
+					<Choice
+						label={t("Invited or signed in")}
+						describes={t(
+							"An invite link, an account, or the passphrase the room was opened with. Guessing the name is not enough.",
+						)}
+						chosen={value?.chosenJoin === "invited"}
+						disabled={!canModerate || saving || !value}
+						onChoose={() => choose("invited")}
+					/>
+					<Choice
+						label={t("Signed in only")}
+						describes={t("An account and nothing else. Invite links stop working.")}
+						chosen={value?.chosenJoin === "accounts"}
+						disabled={!canModerate || saving || !value}
+						onChoose={() => choose("accounts")}
+					/>
+				</div>
+
+				{/* Said where it applies rather than in a note nobody reads: the
+				    setting cannot lock the deployment out of itself, and somebody
+				    who picks it should be told that rather than discovering it. */}
+				{value && value.chosenJoin !== value.joinedBy && (
+					<p className="text-[11.5px] text-tally leading-relaxed">
+						{t(
+							"Set to {chosen}, running as {effect}: nothing could satisfy the stricter one, so it would have shut everybody out including you.",
+							{ chosen: value.chosenJoin, effect: value.joinedBy },
+						)}
+					</p>
+				)}
+			</div>
+		</Card>
+	);
 }

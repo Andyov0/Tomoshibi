@@ -253,6 +253,15 @@ export interface Account {
 export type Opening = "anyone" | "signed" | "admins";
 
 /**
+ * Who may enter a room that already exists.
+ *
+ * The other half of the door, and the half that had no setting: a room here is
+ * a name, so knowing the name was the whole of the check. "anyone" is what the
+ * deployment did before this existed.
+ */
+export type Joining = "anyone" | "invited" | "accounts";
+
+/**
  * The policy, in the three forms worth telling apart.
  *
  * One value would be enough to draw a switch and not enough to explain it.
@@ -267,6 +276,11 @@ export interface Policy {
 	chosen: Opening;
 	/** The configuration file's value, which is the starting one and no more. */
 	configured: Opening;
+
+	/** Who may enter a room that already exists, in the same three forms. */
+	joinedBy: Joining;
+	chosenJoin: Joining;
+	configuredJoin: Joining;
 	/**
 	 * How long a name stays used after the last join, in seconds, or nought
 	 * where names are kept for ever.
@@ -576,6 +590,13 @@ export const api = {
 
 	setPolicy: (openedBy: Opening) =>
 		call<Policy>("/policy", { method: "PUT", body: JSON.stringify({ openedBy }) }),
+
+	/**
+	 * Sent on its own, so that changing one door does not quietly reset the
+	 * other — the server takes whichever half the request carries.
+	 */
+	setJoining: (joinedBy: Joining) =>
+		call<Policy>("/policy", { method: "PUT", body: JSON.stringify({ joinedBy }) }),
 
 	relays: () => call<{ relays: Relay[] }>("/relays"),
 

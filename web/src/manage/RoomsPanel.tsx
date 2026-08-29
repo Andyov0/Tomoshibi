@@ -21,7 +21,7 @@ import { actionFailed } from "@/live/notices";
 import { JoiningCard, OpeningCard } from "./OpeningCard";
 import { usePoll } from "./poll";
 import { Card, Empty, Failed } from "./Shell";
-import { bitrate, day, since } from "./units";
+import { bitrate, clock, day, since } from "./units";
 
 /**
  * The rooms, and whoever is in the one selected.
@@ -56,8 +56,21 @@ export function RoomsPanel({
 	const live = value?.live ?? [];
 	const known = value?.known ?? [];
 
-	// Whatever was selected may have ended while it was being watched.
-	const open = live.some((one) => one.name === selected) ? selected : undefined;
+	// Whatever was selected, as long as this server has heard of it.
+	//
+	// This used to check the live list alone, so a room that ended while
+	// somebody was watching it closed the panel under them — which was the point
+	// — and, once the known list became something you could click, selecting one
+	// did nothing at all: the name went into state and straight back out.
+	//
+	// The panel is worth having for both. A call in progress has people in it and
+	// a history; a call that has ended has a history, which is the half an
+	// operator asks about afterwards and the half that outlives the media server.
+	const open =
+		selected &&
+		(live.some((one) => one.name === selected) || known.some((one) => one.name === selected))
+			? selected
+			: undefined;
 
 	const act = useCallback(
 		async (what: () => Promise<void>) => {
@@ -93,7 +106,11 @@ export function RoomsPanel({
 					{error && <Failed>{error}</Failed>}
 
 					{live.length === 0 ? (
-						<Empty>{t("No calls right now.")}</Empty>
+						<Empty>
+							{value?.liveUnavailable
+								? t("The media servers did not answer, so what is happening now is unknown. What this server has written down is below.")
+								: t("No calls right now.")}
+						</Empty>
 					) : (
 						<ul>
 							{live.map((one) => (
@@ -159,22 +176,37 @@ export function RoomsPanel({
 					) : (
 						<ul className="max-h-80 overflow-y-auto">
 							{known.map((one) => (
-								<li
-									key={one.name}
-									className="flex items-baseline gap-2 border-border border-b px-4 py-2 last:border-0"
-								>
-									<span className="truncate text-[13px]">{one.name}</span>
+								<li key={one.name}>
+									{/* Opens the same panel a live room opens.
 
-									{one.placed && one.relay && (
-										<span className="flex shrink-0 items-center gap-1 text-[11px] text-fg-muted">
-											<Pin className="size-2.5 shrink-0" />
-											<Flagged text={one.relay} />
+									    It was a plain list item, which made the most
+									    interesting rooms on the page the only ones that
+									    could not be looked at: what an operator asks about a
+									    meeting — who was in it, from where, through which
+									    machine — is asked after it has ended, and the only
+									    rooms that answered were the ones still running. */}
+									<button
+										type="button"
+										onClick={() => setSelected(one.name)}
+										className={cn(
+											"flex w-full items-baseline gap-2 border-border border-b px-4 py-2 text-left last:border-0",
+											"transition-colors hover:bg-surface-hi",
+											one.name === open && "bg-surface-hi",
+										)}
+									>
+										<span className="truncate text-[13px]">{one.name}</span>
+
+										{one.placed && one.relay && (
+											<span className="flex shrink-0 items-center gap-1 text-[11px] text-fg-muted">
+												<Pin className="size-2.5 shrink-0" />
+												<Flagged text={one.relay} />
+											</span>
+										)}
+
+										<span className="ml-auto shrink-0 text-fg-muted text-xs">
+											{day(one.lastSeen)}
 										</span>
-									)}
-
-									<span className="ml-auto shrink-0 text-fg-muted text-xs">
-										{day(one.lastSeen)}
-									</span>
+									</button>
 								</li>
 							))}
 						</ul>
@@ -284,7 +316,11 @@ function People({
 	return (
 		<Card
 			title={room}
-			note={`${people.length} ${people.length === 1 ? "person" : "people"}`}
+			// Two phrases rather than a word chosen in code and glued to a number.
+			// The English plural was picked here and the whole thing never went
+			// through the dictionary, so a page translated everywhere else said
+			// "0 people" in the middle of it.
+			note={people.length === 1 ? t("1 person") : t("{count} people", { count: people.length })}
 			className="self-start"
 			actions={
 				// The way back, carrying nothing but its own arrow: the room's
@@ -401,7 +437,109 @@ function People({
 					))}
 				</ul>
 			)}
+
+			<History room={room} onSignedOut={onSignedOut} />
 		</Card>
+	);
+}
+
+/**
+ * Who has been in this room, as against who is in it.
+ *
+ * The list above asks the media server, so it answers nothing at all about a
+ * meeting that has ended — and the questions an operator actually has about a
+ * meeting are asked afterwards. Where somebody came from and which machine they
+ * came in through are seen once, by this server, at the join, and are not
+ * recoverable from anywhere else.
+ *
+ * Under the live list rather than instead of it, because both are true at once
+ * during a call and the second explains the first: somebody in the room twice
+ * over is one row above and two below, which is what a reconnect looks like.
+ *
+ * Bounded by the room's own life. A name nobody has joined for as long as the
+ * deployment keeps names is forgotten whole and this goes with it, so the
+ * addresses are not kept after the last thing that referred to them has gone.
+ */
+function History({ room, onSignedOut }: { room: string; onSignedOut: () => void }) {
+	const t = useT();
+
+	const ask = useCallback(() => api.visits(room), [room]);
+	const { value, error } = usePoll(ask, { every: 20_000, onSignedOut });
+
+	const visits = value?.visits ?? [];
+
+	return (
+		<div className="border-border border-t">
+			<div className="flex items-baseline gap-2 px-4 py-2.5">
+				<h3 className="font-medium text-[13px]">{t("Who has been here")}</h3>
+				<span className="text-fg-muted text-xs">
+					{visits.length > 0 ? t("{count} joins", { count: visits.length }) : ""}
+				</span>
+			</div>
+
+			{error && <Failed>{error}</Failed>}
+
+			{visits.length === 0 ? (
+				<Empty>{t("Nothing recorded for this name.")}</Empty>
+			) : (
+				<div className="overflow-x-auto">
+					<table className="w-full min-w-[34rem] border-collapse text-sm">
+						<thead>
+							<tr className="border-border border-b text-[11px] text-fg-muted">
+								<th className="px-4 py-2 text-left font-normal">{t("when")}</th>
+								<th className="px-2 py-2 text-left font-normal">{t("who")}</th>
+								<th className="px-2 py-2 text-left font-normal">{t("from")}</th>
+								<th className="px-4 py-2 text-left font-normal">{t("through")}</th>
+							</tr>
+						</thead>
+
+						<tbody>
+							{visits.map((one) => (
+								<tr
+									key={`${one.at}-${one.identity}`}
+									className="border-border border-b align-top last:border-0"
+								>
+									<td className="px-4 py-2 text-[12px] text-fg-muted tabular-nums">
+										{clock(one.at)}
+										<span className="block text-[11px] opacity-70">{day(one.at)}</span>
+									</td>
+
+									<td className="px-2 py-2">
+										<span className="block truncate text-[12.5px]">
+											{one.name || t("(no name)")}
+										</span>
+										{/* The identity, which is the half nobody can choose.
+										    Two people can type the same display name and the
+										    row is worth reading only because this is beside
+										    it. */}
+										<span className="readout block truncate text-[11px] text-fg-muted">
+											{one.identity.split("-")[0]}
+										</span>
+									</td>
+
+									<td className="readout px-2 py-2 text-[12px] text-fg-muted">
+										{one.address || "\u2014"}
+									</td>
+
+									<td className="px-4 py-2 text-[11.5px] text-fg-muted">
+										{one.relay ? <Flagged text={one.relay} /> : "\u2014"}
+										{/* Where the meeting was, when that was somewhere
+										    else. Said only then: on a call held on the
+										    machine somebody dialled, a second identical name
+										    is noise. */}
+										{one.holding && one.holding !== one.relay && (
+											<span className="block opacity-70">
+												{t("held on")} <Flagged text={one.holding} />
+											</span>
+										)}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</div>
+			)}
+		</div>
 	);
 }
 

@@ -184,6 +184,20 @@ export interface KnownRoom {
 	placed?: boolean;
 }
 
+/** One join, as the history reads it. */
+export interface Visit {
+	identity: string;
+	at: string;
+	name?: string;
+	/** Where the request came from, as this deployment resolved it. */
+	address?: string;
+	/** The machine they were sent to: the door, not necessarily the room. */
+	relay?: string;
+	/** The machine the meeting was on, where that was a different one. */
+	holding?: string;
+	forwarded?: boolean;
+}
+
 export interface Layer {
 	quality: string;
 	width: number;
@@ -527,7 +541,18 @@ export const api = {
 		call<Trend>(
 			`/history?${new URLSearchParams(range ? { from: range.from, to: range.to } : { span })}`,
 		),
-	rooms: () => call<{ live: LiveRoom[]; known: KnownRoom[] | null }>("/rooms"),
+	rooms: () =>
+		call<{ live: LiveRoom[]; known: KnownRoom[] | null; liveUnavailable?: boolean }>("/rooms"),
+	/**
+	 * Every join recorded against a room, newest first.
+	 *
+	 * Answers for a room nobody is in, which is the whole point: participants
+	 * asks the media server, and the media server has nothing to say about a
+	 * meeting that ended.
+	 */
+	visits: (room: string) =>
+		call<{ room: string; visits: Visit[] }>(`/rooms/${encodeURIComponent(room)}/visits`),
+
 	participants: (room: string) =>
 		call<Participant[]>(`/rooms/${encodeURIComponent(room)}/participants`),
 	/**

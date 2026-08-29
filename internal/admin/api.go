@@ -704,11 +704,21 @@ func (a *API) rooms(_ Session, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Answered even where the media servers cannot be reached.
+	//
+	// Half of this page comes from the store and needs no media server at all:
+	// the names this deployment has seen, when they were last used, and where an
+	// operator has said each one goes. Refusing the whole endpoint took that
+	// away too — so the page went blank at precisely the moment somebody opened
+	// it to find out what was wrong, and it went blank in a way that said
+	// nothing about which half had failed.
+	//
+	// Said in the answer rather than in a status, because the answer is useful.
+	// A page that knows the live half is missing can draw the rest and mark it;
+	// a page that got a 502 can only apologise.
 	live, err := a.control.Rooms(r.Context())
 	if err != nil {
 		slog.Error("failed to list rooms", "error", err)
-		refuse(w, http.StatusBadGateway, "media_server_unreachable")
-		return
 	}
 
 	seen, err := a.store.Rooms()
@@ -736,10 +746,19 @@ func (a *API) rooms(_ Session, w http.ResponseWriter, r *http.Request) {
 	// and because every relay forwards, so the entry is the machine whose line
 	// the media is actually on. The count on the fleet page is what to compare
 	// against when they ever look like disagreeing again.
-	respond(w, map[string]any{
+	answer := map[string]any{
 		"live":  liveRooms(live, a.wherever()),
 		"known": knownRooms(seen, a.wherever()),
-	})
+	}
+
+	if err != nil {
+		// Named rather than left to be inferred from an empty list, which is
+		// what a deployment holding no calls looks like and is the one reading
+		// this must not be confused with.
+		answer["liveUnavailable"] = true
+	}
+
+	respond(w, answer)
 }
 
 // knownRooms flattens what the store holds.
@@ -858,6 +877,16 @@ func (a *API) participants(_ Session, w http.ResponseWriter, r *http.Request) {
 
 	people, err := a.control.Participants(r.Context(), name)
 	if err != nil {
+		// A room nobody is in is not a fault. The page that asks this now opens
+		// for a name out of the history as well as for a call in progress, and
+		// the media server's answer for one of those is that it has never heard
+		// of it — which is the truth and is a list of nobody, not an error to
+		// put in front of somebody who asked what happened in a meeting.
+		if errors.Is(err, rtc.ErrNoSuchRoom) {
+			respond(w, []map[string]any{})
+			return
+		}
+
 		slog.Error("failed to list participants", "room", name, "error", err)
 		refuse(w, statusOf(err), reasonOf(err))
 		return

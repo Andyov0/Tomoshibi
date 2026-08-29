@@ -1,5 +1,4 @@
 import { useT } from "@/hooks/useT";
-import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 
 /**
@@ -140,15 +139,31 @@ export function MicLevel({ on, deviceId }: { on: boolean; deviceId?: string }) {
 				role="meter"
 				aria-label={t("Microphone level")}
 			>
+				{/*
+				  * Started at nothing with an inline style rather than with
+				  * `scale-x-0`, and this is the whole of why the meter never
+				  * moved.
+				  *
+				  * Tailwind v4 writes its scale utilities to the `scale`
+				  * property — `.scale-x-0` is `scale: 0% var(--tw-scale-y)` —
+				  * and the loop below writes `transform: scaleX(n)`. Those are
+				  * two different properties and the browser applies both, so a
+				  * class saying "zero" multiplied whatever the loop wrote and the
+				  * fill was invisible at every volume. What was left on screen
+				  * was the track behind it, which is a full-width bar that never
+				  * moves, beside a label reading "Hearing you" — because the
+				  * wording is state and only the bar was written this way.
+				  *
+				  * Set here so that both ends of the animation are the same
+				  * property and nothing has to know that.
+				  */}
 				<div
 					ref={bar}
-					className={cn(
-						"h-full origin-left rounded-full bg-tally",
-						// No transition: the value is written every frame and a
-						// transition would make the bar lag behind the voice it is
-						// about, which reads as a meter measuring somebody else.
-						"scale-x-0",
-					)}
+					style={{ transform: "scaleX(0)" }}
+					// No transition: the value is written every frame and a
+					// transition would make the bar lag behind the voice it is
+					// about, which reads as a meter measuring somebody else.
+					className="h-full origin-left rounded-full bg-tally"
 				/>
 			</div>
 

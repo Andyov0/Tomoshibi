@@ -351,13 +351,23 @@ type Rooms struct {
 	// Two things at once, and they agree. A name is written down on first use
 	// and nothing ever took one away, so the store grew for as long as anybody
 	// asked it for names — bounded by the rate limiter in how fast and by
-	// nothing at all in how many. And a name nobody has spoken in a month is
-	// not a room in use; treating it as one leaves a room open for good because
+	// nothing at all in how many. And a name nobody has spoken in days is not a
+	// room in use; treating it as one leaves a room open for good because
 	// somebody said its name once, last year.
+	//
+	// Three days, down from thirty. A meeting that happens again happens within
+	// the week, and everything else here is a name somebody typed once. The
+	// month was chosen when the record held a name and a count; it now also
+	// holds where an operator said the room goes, and that is the reason the
+	// number came down — a placement is deliberately not aged out on its own, so
+	// the record's own life is the only thing bounding it, and a month of it was
+	// a choice made about a meeting nobody remembers outliving the meeting by
+	// four weeks.
 	//
 	// Under `admins` this is therefore how long a room stays open unattended.
 	// Zero keeps every name for ever, which is what this did before the setting
-	// existed and is still available to anybody who wants it.
+	// existed and is still available to anybody who wants it — and now also
+	// means a placement with nothing at all bounding it.
 	Remember time.Duration `yaml:"remember"`
 }
 
@@ -442,7 +452,7 @@ var defaults = Meet{
 	TrustProxy:  false,
 	// Thirty days: long enough that a fortnightly meeting keeps its room, short
 	// enough that a name nobody has used since is not still holding one.
-	Rooms: Rooms{OpenedBy: room.ByAnyone, Remember: 30 * 24 * time.Hour},
+	Rooms: Rooms{OpenedBy: room.ByAnyone, Remember: 3 * 24 * time.Hour},
 	Enrol: Enrol{ListenPort: 13377, UDPPort: 13378, TCPPort: 13379},
 	// Empty rather than a repository somebody else runs.
 	//

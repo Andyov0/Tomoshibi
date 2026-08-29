@@ -527,11 +527,19 @@ func (s *Store) hold(name, relay string, placed bool) error {
 // landed on, for good, and choosing a server would stop meaning anything the
 // second time a name was used.
 //
-// A placement is not a guess and does not age at all. Somebody chose it, and it
-// stands until somebody chooses otherwise — an expiry on it would be this server
-// overruling an operator on a timer, which is the same fault seen from the other
-// side. The price is that a pin is invisible unless it is shown, so it is shown:
-// the rooms page marks a placed room and offers to hand it back to the policy.
+// A placement is not a guess and is not aged out on this clock. Somebody chose
+// it, and it stands until somebody chooses otherwise — an expiry on it would be
+// this server overruling an operator on a timer, which is the same fault seen
+// from the other side. The price is that a pin is invisible unless it is shown,
+// so it is shown: the rooms page marks a placed room and offers to hand it back
+// to the policy.
+//
+// It is not eternal, though, and must not be. What bounds it is the room record
+// it lives in: a name nobody has joined for `rooms.remember` is forgotten
+// whole, and the placement goes with it. So a room in use keeps the machine it
+// was given, and a name used once keeps it for three days and then stops
+// existing — rather than sitting in the list for ever with a pin on it, waiting
+// to decide something about a meeting nobody is going to hold.
 const heldFor = 2 * time.Hour
 
 // HeldOn says which relay a room is being held on, and whether somebody chose

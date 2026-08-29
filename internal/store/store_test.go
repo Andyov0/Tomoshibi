@@ -638,3 +638,70 @@ func TestAPlacementOutlivesTheJoinThatObeysIt(t *testing.T) {
 			"nowhere is a record no caller can act on", relay, placed)
 	}
 }
+
+/*
+ * A placement does not outlive the room it is about.
+ *
+ * The test above is that an operator's choice is not aged out on a clock of its
+ * own, and that is right: an expiry there would be the server overruling
+ * somebody on a timer. But "not aged out" was read as "eternal", and it left a
+ * name that had been used once sitting in the list for ever with a pin on it,
+ * waiting to decide something about a meeting nobody was going to hold.
+ *
+ * What bounds it is the record it lives in. A name nobody has joined for
+ * `rooms.remember` — three days — is forgotten whole, and the placement is part
+ * of what is forgotten. A room in use keeps the machine it was given for as
+ * long as it is in use, which is the whole of what the rule was for.
+ */
+func TestAPlacementIsForgottenWithTheRoom(t *testing.T) {
+	st := open(t)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.PlaceRoom("standup", "shanghai"); err != nil {
+		t.Fatal(err)
+	}
+
+	if relay, placed := st.HeldOn("standup"); relay != "shanghai" || !placed {
+		t.Fatalf("the placement did not take: %q placed=%v", relay, placed)
+	}
+
+	// Nobody has joined it for four days, against a retention of three.
+	if err := st.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+
+		var tally Room
+		if err := json.Unmarshal(bucket.Get([]byte("standup")), &tally); err != nil {
+			return err
+		}
+
+		tally.Seen = time.Now().Add(-4 * 24 * time.Hour)
+
+		encoded, err := json.Marshal(tally)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte("standup"), encoded)
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	gone, err := st.Forget(time.Now().Add(-3*24*time.Hour), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if gone != 1 {
+		t.Fatalf("the sweep took %d rooms, want 1: a placed room is still a room nobody "+
+			"has joined, and skipping it would keep the name for ever", gone)
+	}
+
+	if relay, placed := st.HeldOn("standup"); relay != "" || placed {
+		t.Errorf("a room nobody has joined for four days still reads %q placed=%v; the pin "+
+			"outlived the meeting it was about and sits in the list deciding nothing",
+			relay, placed)
+	}
+}

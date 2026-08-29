@@ -308,3 +308,38 @@ export function Failed({ children }: { children: ReactNode }) {
 		</p>
 	);
 }
+
+/**
+ * A panel that has been asked and has not answered yet.
+ *
+ * Drawn while a question is in flight rather than leaving the last answer on
+ * screen: clicking a second room used to show the first room's people and the
+ * first room's history until the next tick, which for a history polled every
+ * twenty seconds is long enough to read it and believe it.
+ *
+ * A shape rather than a spinner. What arrives is a list, so what waits is a
+ * list — three bars where three rows will be, which keeps the panel the size it
+ * is about to be and does not make the page jump when the answer lands.
+ *
+ * It arrives with the same animation everything else here does, and it is worth
+ * saying why it is not instant: a request that comes back in forty milliseconds
+ * would otherwise flash a skeleton and remove it, which reads as a glitch. The
+ * delay on the first bar is longer than a fast answer takes, so a fast answer
+ * never draws this at all.
+ */
+export function Waiting({ rows = 3 }: { rows?: number }) {
+	return (
+		<div className="flex flex-col gap-2 px-4 py-3" aria-hidden>
+			{Array.from({ length: rows }, (_, at) => (
+				<span
+					key={at}
+					className="animate-arrive h-3 rounded bg-surface-hi"
+					style={{
+						width: `${72 - at * 14}%`,
+						animationDelay: `${120 + at * 60}ms`,
+					}}
+				/>
+			))}
+		</div>
+	);
+}

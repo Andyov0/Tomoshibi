@@ -20,7 +20,7 @@ import { type Participant, type Relay, type Track, api } from "./api";
 import { actionFailed } from "@/live/notices";
 import { JoiningCard, OpeningCard } from "./OpeningCard";
 import { usePoll } from "./poll";
-import { Card, Empty, Failed } from "./Shell";
+import { Card, Empty, Failed, Waiting } from "./Shell";
 import { bitrate, clock, day, since } from "./units";
 
 /**
@@ -294,7 +294,7 @@ function People({
 	const t = useT();
 
 	const ask = useCallback(() => api.participants(room), [room]);
-	const { value, error } = usePoll(ask, { onSignedOut });
+	const { value, error, loading } = usePoll(ask, { onSignedOut, about: room });
 
 	// Asked once rather than done at once. Nothing else on this panel ends a call
 	// for everybody in it, and it used to be one press away from a list somebody
@@ -419,7 +419,9 @@ function People({
 				)}
 			</div>
 
-			{people.length === 0 ? (
+			{loading ? (
+				<Waiting />
+			) : people.length === 0 ? (
 				<Empty>{t("Nobody is here.")}</Empty>
 			) : (
 				<ul>
@@ -464,7 +466,11 @@ function History({ room, onSignedOut }: { room: string; onSignedOut: () => void 
 	const t = useT();
 
 	const ask = useCallback(() => api.visits(room), [room]);
-	const { value, error } = usePoll(ask, { every: 20_000, onSignedOut });
+	const { value, error, loading } = usePoll(ask, {
+		every: 20_000,
+		onSignedOut,
+		about: room,
+	});
 
 	const visits = value?.visits ?? [];
 
@@ -479,7 +485,9 @@ function History({ room, onSignedOut }: { room: string; onSignedOut: () => void 
 
 			{error && <Failed>{error}</Failed>}
 
-			{visits.length === 0 ? (
+			{loading ? (
+				<Waiting rows={4} />
+			) : visits.length === 0 ? (
 				<Empty>{t("Nothing recorded for this name.")}</Empty>
 			) : (
 				<div className="overflow-x-auto">
@@ -504,38 +512,38 @@ function History({ room, onSignedOut }: { room: string; onSignedOut: () => void 
 										<span className="block text-[11px] opacity-70">{day(one.at)}</span>
 									</td>
 
-									{/* Who, in the order of how much it is worth.
-									
-									    The account this deployment knows the mark belongs to
-									    first, because that is the half nobody could have
-									    invented. Then what they typed, which is a claim.
-									
-									    Where there is neither, the row is one written before
-									    the typed name was recorded — which is every row this
-									    deployment already had when the history was built.
-									    It said "(no name)", which reads as somebody having
-									    had none; nobody can join without one, so what is
-									    actually true is that it was not kept. */}
+									{/* The name they were showing as, and what kind of mark
+									    they were showing it with.
+
+									    Their own name first. A history of a meeting is a
+									    list of who was in it, and who somebody was in a
+									    meeting is what everybody in the room saw — putting
+									    the account name over the top of it answers a
+									    question nobody asked and loses the one thing the row
+									    is a record of.
+
+									    The account is not thrown away: it goes on the line
+									    below, beside the mark, where it belongs — it is who
+									    this deployment knows the mark to be rather than what
+									    they called themselves, and the two are worth telling
+									    apart. It is also the only thing that names anybody on
+									    a row written before the typed name was recorded.
+
+									    Where there is neither, the name was not kept. It said
+									    "(no name)", which reads as somebody having had none —
+									    nobody can join without one, so what is true is that
+									    it was not written down. */}
 									<td className="px-2 py-2">
-										{one.account ? (
-											<span className="block truncate text-[12.5px]">
-												{one.account}
-												{one.name && one.name !== one.account && (
-													<span className="text-fg-muted"> · {one.name}</span>
-												)}
-											</span>
-										) : one.name ? (
+										{one.name ? (
 											<span className="block truncate text-[12.5px]">{one.name}</span>
+										) : one.account ? (
+											<span className="block truncate text-[12.5px]">{one.account}</span>
 										) : (
 											<span className="block truncate text-[12.5px] text-fg-muted italic">
 												{t("name not kept then")}
 											</span>
 										)}
 
-										{/* The mark, which is the half nobody can choose, and
-										    what kind it is: an account, a passphrase somebody
-										    set themselves, or a guest whose mark is drawn from
-										    nothing and differs in every tab. */}
 										<span className="readout block truncate text-[11px] text-fg-muted">
 											{one.trip ?? one.identity.split("-")[0]}
 											{one.kind && (
@@ -547,6 +555,11 @@ function History({ room, onSignedOut }: { room: string; onSignedOut: () => void 
 															? t("passphrase")
 															: t("guest")}
 												</span>
+											)}
+											{/* Who the deployment knows that mark to be, when it
+											    knows and they are showing as something else. */}
+											{one.account && one.account !== one.name && (
+												<span className="opacity-70"> · {one.account}</span>
 											)}
 										</span>
 									</td>

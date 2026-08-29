@@ -15,7 +15,11 @@ import { SignedOut } from "./api";
  */
 export function usePoll<T>(
 	ask: () => Promise<T>,
-	{ every = 2000, onSignedOut }: { every?: number; onSignedOut?: () => void } = {},
+	{
+		every = 2000,
+		onSignedOut,
+		about,
+	}: { every?: number; onSignedOut?: () => void; about?: string } = {},
 ) {
 	const [value, setValue] = useState<T>();
 	const [error, setError] = useState<string>();
@@ -44,6 +48,29 @@ export function usePoll<T>(
 			setLoading(false);
 		}
 	}, []);
+
+	// What the question is about, where it is about something.
+	//
+	// The answer on screen belongs to the last subject, and when the subject
+	// changes it is not a stale answer to this question — it is a correct answer
+	// to a different one. Clicking a second room showed the first room's people
+	// and the first room's history until the next tick, which for the history is
+	// twenty seconds: long enough to read it, believe it, and act on it.
+	//
+	// Passed rather than derived from `ask`. Every caller rebuilds that function
+	// on render and the ref above exists precisely so that does not restart
+	// anything; keying off its identity would turn a caller who forgot to
+	// memoise into a request per render. The subject is a string the caller
+	// already has.
+	useEffect(() => {
+		if (about === undefined) return;
+
+		setValue(undefined);
+		setError(undefined);
+		setLoading(true);
+
+		void refresh();
+	}, [about, refresh]);
 
 	useEffect(() => {
 		let live = true;

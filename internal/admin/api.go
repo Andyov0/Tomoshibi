@@ -1328,11 +1328,56 @@ func (a *API) visits(_ Session, w http.ResponseWriter, r *http.Request) {
 	// is however many the rate limiter allowed.
 	found := a.store.Visits(name, 500)
 
+	// Who a mark belongs to, where this deployment knows.
+	//
+	// The typed name is what somebody called themselves and is the only thing on
+	// the row anybody could have made up. The mark is not: an account's is held
+	// and an administrator's is derived from their passphrase, so resolving one
+	// against the two lists says who it actually was — and says it for rows
+	// written before the typed name was recorded at all, which is every row this
+	// deployment already had.
+	named := map[string]string{}
+
+	for _, admin := range a.Administrators() {
+		if admin.Name != "" {
+			named[admin.Trip] = admin.Name
+		}
+	}
+
+	if a.ledger != nil {
+		if accounts, err := a.ledger.Accounts(); err == nil {
+			for _, account := range accounts {
+				named[account.Trip] = account.Name
+			}
+		}
+	}
+
 	out := make([]map[string]any, 0, len(found))
 	for _, one := range found {
 		row := map[string]any{
 			"identity": one.Identity,
 			"at":       one.At.UTC(),
+		}
+
+		// The mark and what kind it is, which is the difference between somebody
+		// this deployment has heard of and somebody who typed a passphrase of
+		// their own — and between both of those and a guest, whose mark is drawn
+		// from nothing and is a different string in every tab.
+		if mark, ok := room.SignatureOf(one.Identity); ok {
+			row["trip"] = mark.Trip
+
+			switch {
+			case mark.Account:
+				row["kind"] = "account"
+			case mark.Proven:
+				row["kind"] = "passphrase"
+			default:
+				row["kind"] = "guest"
+			}
+
+			if who := named[mark.Trip]; who != "" {
+				row["account"] = who
+			}
 		}
 
 		// Only what there is. A row of blanks reads as a row of things that were

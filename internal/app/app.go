@@ -451,6 +451,15 @@ type deployment struct {
 	// OpenedBy is who may use a name nobody has used before.
 	OpenedBy room.Opening `json:"openedBy"`
 
+	// JoinedBy is who may enter one that has been used.
+	//
+	// Sent because the join screen was saying the wrong thing without it. Under
+	// the middle opening policy it read "anybody can join one that already
+	// exists", which was true of every deployment until there was a setting
+	// that made it false — and it went on saying so to people who were about to
+	// be turned away.
+	JoinedBy room.Joining `json:"joinedBy"`
+
 	// Source is where the code running here can be read.
 	//
 	// Required rather than courteous. This is licensed under the AGPL, whose
@@ -1107,7 +1116,7 @@ func (a *App) binary(w http.ResponseWriter, r *http.Request) {
 // administrator's passphrase — a faster one than the sign-in page, which is
 // rate limited for precisely that reason.
 func (a *App) deployment(w http.ResponseWriter, _ *http.Request) {
-	respond(w, deployment{OpenedBy: a.opening(), Source: a.conf.Meet.SourceURL})
+	respond(w, deployment{OpenedBy: a.opening(), JoinedBy: a.joining(), Source: a.conf.Meet.SourceURL})
 }
 
 // opening is who may use a name nobody has used, as this deployment can

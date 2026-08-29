@@ -188,7 +188,21 @@ export interface KnownRoom {
 export interface Visit {
 	identity: string;
 	at: string;
+	/** What they typed, which is the one thing on the row anybody could invent. */
 	name?: string;
+	/**
+	 * Who this deployment knows the mark belongs to.
+	 *
+	 * Resolved on the server against the accounts and the administrators, so it
+	 * is present for somebody this deployment has heard of and absent for a
+	 * guest — and present for rows written before the typed name was recorded,
+	 * which is every row that existed before this was built.
+	 */
+	account?: string;
+	/** The mark itself, without the prefix saying what kind it is. */
+	trip?: string;
+	/** account, passphrase, or guest. */
+	kind?: string;
 	/** Where the request came from, as this deployment resolved it. */
 	address?: string;
 	/** The machine they were sent to: the door, not necessarily the room. */

@@ -504,16 +504,50 @@ function History({ room, onSignedOut }: { room: string; onSignedOut: () => void 
 										<span className="block text-[11px] opacity-70">{day(one.at)}</span>
 									</td>
 
+									{/* Who, in the order of how much it is worth.
+									
+									    The account this deployment knows the mark belongs to
+									    first, because that is the half nobody could have
+									    invented. Then what they typed, which is a claim.
+									
+									    Where there is neither, the row is one written before
+									    the typed name was recorded — which is every row this
+									    deployment already had when the history was built.
+									    It said "(no name)", which reads as somebody having
+									    had none; nobody can join without one, so what is
+									    actually true is that it was not kept. */}
 									<td className="px-2 py-2">
-										<span className="block truncate text-[12.5px]">
-											{one.name || t("(no name)")}
-										</span>
-										{/* The identity, which is the half nobody can choose.
-										    Two people can type the same display name and the
-										    row is worth reading only because this is beside
-										    it. */}
+										{one.account ? (
+											<span className="block truncate text-[12.5px]">
+												{one.account}
+												{one.name && one.name !== one.account && (
+													<span className="text-fg-muted"> · {one.name}</span>
+												)}
+											</span>
+										) : one.name ? (
+											<span className="block truncate text-[12.5px]">{one.name}</span>
+										) : (
+											<span className="block truncate text-[12.5px] text-fg-muted italic">
+												{t("name not kept then")}
+											</span>
+										)}
+
+										{/* The mark, which is the half nobody can choose, and
+										    what kind it is: an account, a passphrase somebody
+										    set themselves, or a guest whose mark is drawn from
+										    nothing and differs in every tab. */}
 										<span className="readout block truncate text-[11px] text-fg-muted">
-											{one.identity.split("-")[0]}
+											{one.trip ?? one.identity.split("-")[0]}
+											{one.kind && (
+												<span className="opacity-70">
+													{" "}
+													{one.kind === "account"
+														? t("account")
+														: one.kind === "passphrase"
+															? t("passphrase")
+															: t("guest")}
+												</span>
+											)}
 										</span>
 									</td>
 

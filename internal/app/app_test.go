@@ -240,9 +240,25 @@ func TestWhatTheClientIsToldAboutTheDeployment(t *testing.T) {
 		t.Errorf("source = %v, want %q", said["source"], source)
 	}
 
+	// The joining policy, which is worth the one thing it gives away.
+	//
+	// The page has to say what is true of this deployment. It was telling
+	// everybody "anybody can join one that already exists", which had been true
+	// everywhere until there was a setting that made it false — and it went on
+	// saying so to people who were about to be turned away with no idea what
+	// would have worked.
+	//
+	// What it tells somebody probing is whether guessing names is worth their
+	// time, and they learn that from their first attempt anyway: a refusal comes
+	// back as not_invited. One request against a sentence every visitor reads is
+	// a trade worth making, and it is the only one on this endpoint that is.
+	if said["joinedBy"] != string(room.ByWhoeverKnows) {
+		t.Errorf("joinedBy = %v, want %q", said["joinedBy"], room.ByWhoeverKnows)
+	}
+
 	// Nothing else. Anything added here is said to everybody who loads the page,
 	// including whoever is working out what this server will admit.
-	if len(said) != 2 {
+	if len(said) != 3 {
 		t.Errorf("the deployment says more about itself than it was asked: %v", said)
 	}
 }

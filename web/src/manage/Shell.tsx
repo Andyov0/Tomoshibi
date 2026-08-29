@@ -5,6 +5,7 @@ import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import { Activity, LayoutGrid, ScrollText, Server, Users, UsersRound } from "lucide-react";
 import type { ReactNode } from "react";
+import type { Phrase } from "@/live/i18n";
 import type { Who } from "./api";
 import { rate } from "./units";
 
@@ -14,6 +15,24 @@ import { rate } from "./units";
 // the service down — and a page behind the management sign-in is readable only
 // when the thing it reports on is already answering.
 export const PANELS = ["Now", "Rooms", "Accounts", "Relays", "Admins", "Runtime"] as const;
+
+/**
+ * What each panel is called on screen.
+ *
+ * Separate from PANELS because those are also the address — `?panel=rooms` is
+ * what somebody bookmarks and what Manage.tsx reads back — so translating the
+ * list itself would translate the URL. This was drawn straight from the list
+ * for a long time, which left a reader in Chinese with a column of six English
+ * words down the side of an otherwise translated page.
+ */
+export const PANEL_NAMES: Record<Panel, Phrase> = {
+	Now: "Now",
+	Rooms: "Rooms",
+	Accounts: "Accounts",
+	Relays: "Relays",
+	Admins: "Admins",
+	Runtime: "Runtime",
+};
 export type Panel = (typeof PANELS)[number];
 
 const ICONS: Record<Panel, typeof Activity> = {
@@ -143,6 +162,8 @@ function Rail({
 	current: Panel;
 	onPanel: (panel: Panel) => void;
 }) {
+	const t = useT();
+
 	const Icon = ICONS[panel];
 
 	return (
@@ -156,7 +177,7 @@ function Rail({
 			)}
 		>
 			<Icon className="size-4 shrink-0" />
-			{panel}
+			{t(PANEL_NAMES[panel])}
 		</button>
 	);
 }
@@ -170,6 +191,8 @@ function Tab({
 	current: Panel;
 	onPanel: (panel: Panel) => void;
 }) {
+	const t = useT();
+
 	const Icon = ICONS[panel];
 
 	return (
@@ -183,7 +206,7 @@ function Tab({
 			)}
 		>
 			<Icon className="size-4" />
-			{panel}
+			{t(PANEL_NAMES[panel])}
 		</button>
 	);
 }
@@ -223,6 +246,7 @@ function Crown({
 
 /** The same reading at the foot of the rail, where there is room to say more. */
 function Load({ load }: { load?: { out: number; rooms: number; clients: number } }) {
+	const t = useT();
 	return (
 		<div className="flex flex-col gap-0.5 border-border border-t pt-3">
 			<span className="readout font-semibold text-[15px] text-tally tabular-nums">
@@ -231,7 +255,10 @@ function Load({ load }: { load?: { out: number; rooms: number; clients: number }
 			<span className="text-fg-muted text-[11px]">uplink</span>
 			{load && (
 				<span className="text-fg-muted text-[11px]">
-					{load.rooms} rooms · {load.clients} people
+					{t("{rooms} rooms · {people} people", {
+						rooms: load.rooms,
+						people: load.clients,
+					})}
 				</span>
 			)}
 		</div>

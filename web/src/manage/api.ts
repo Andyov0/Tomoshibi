@@ -28,6 +28,25 @@ export interface NodeReading {
 	url: string;
 	reachable: boolean;
 	detail?: string;
+	/**
+	 * What a person calls the machine, and where it is.
+	 *
+	 * Sent with the counters rather than joined against the relay list on the
+	 * page: the two are fetched on different timers, and a row drawn from one
+	 * and labelled from the other is briefly wrong every time either changes.
+	 */
+	label?: string;
+	region?: string;
+	/**
+	 * How long this relay took to answer the control node, in milliseconds.
+	 *
+	 * Not what a caller will see. It is one round trip on one path — this
+	 * node's — and it is here because it is the only latency this page can
+	 * report without inventing it, and because a relay that has become slow to
+	 * answer is worth noticing before it stops.
+	 */
+	tookMs?: number;
+	nackPerSec?: number;
 	node: string;
 	ip: string;
 	rooms: number;

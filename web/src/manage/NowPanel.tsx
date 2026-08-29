@@ -4,11 +4,12 @@ import { Input } from "@/components/ui/input";
 import { useLingering } from "@/hooks/useLingering";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type Now, type Point, api } from "./api";
+import { type NodeReading, type Now, type Point, api } from "./api";
+import { say } from "@/live/i18n";
 import { usePoll } from "./poll";
 import { Card, Failed } from "./Shell";
 import { Trend } from "./Trend";
-import { linkBits, count, moment, rate, since, size, width } from "./units";
+import { bitrate, linkBits, count, moment, rate, since, size, width } from "./units";
 
 /**
  * How the server is doing, and how it got here.
@@ -167,11 +168,17 @@ export function NowPanel({ now, onSignedOut }: { now?: Now; onSignedOut: () => v
 						<Figure label={t("People")} value={String(now?.clients ?? 0)} />
 						<Figure
 							label={t("Tracks")}
-							value={`${now?.tracks.in ?? 0} in · ${now?.tracks.out ?? 0} out`}
+							value={t("{in} in · {out} out", {
+								in: now?.tracks.in ?? 0,
+								out: now?.tracks.out ?? 0,
+							})}
 						/>
 						<Figure
 							label={t("CPU")}
-							value={`${Math.round((now?.cpu.load ?? 0) * 100)}% of ${now?.cpu.count ?? 0}`}
+							value={t("{percent}% of {cores}", {
+								percent: Math.round((now?.cpu.load ?? 0) * 100),
+								cores: now?.cpu.count ?? 0,
+							})}
 							warn={(now?.cpu.load ?? 0) > 0.8}
 						/>
 					</dl>
@@ -446,97 +453,279 @@ function Was({ label, value, peak }: { label: string; value: string; peak?: stri
 	);
 }
 
-/** The machines a control node's figures were summed from. */
+/**
+ * The machines a control node's figures were summed from.
+ *
+ * Read as a table rather than as a sentence per relay, which is what this was.
+ * A row said "0 rooms 0 people 0 B/s 3% cpu / 2" and then, right-aligned and a
+ * shade dimmer, "carried 27 KB out · 23 KB in · 11h" — seven numbers in one
+ * grey, none of them under a heading, and the same number in a different place
+ * on every row because the words around them are different lengths. Nothing in
+ * it was wrong and none of it could be scanned: comparing the load on two
+ * machines meant reading two sentences and finding the number in each.
+ *
+ * So: columns, aligned, under headings, with the units in the heading rather
+ * than repeated in every cell. A number that means the same thing on every row
+ * is in the same place on every row, which is the whole of what makes a column
+ * of figures readable.
+ *
+ * Grouped by region, because that is how somebody thinks about this fleet — the
+ * mainland relays and the overseas ones are different jobs, and the question
+ * asked of the page is usually about one of the two rather than about all
+ * eleven machines at once.
+ *
+ * The load bar is there because a percentage is a number to read and a bar is a
+ * thing to notice. It is the one figure on this page somebody scans for rather
+ * than looks up.
+ */
 function Fleet({ now }: { now: Now }) {
 	const t = useT();
 
 	const nodes = now.nodes ?? [];
 	const quiet = nodes.filter((one) => !one.reachable).length;
 
+	// Grouped in the order the relays are listed, so the page and the relay
+	// page put the same machines in the same order — the list is hand-sorted by
+	// somebody and that order carries a meaning this page cannot see.
+	const regions: { name: string; nodes: NodeReading[] }[] = [];
+	for (const one of nodes) {
+		const where = one.region || t("Elsewhere");
+		const already = regions.find((r) => r.name === where);
+		if (already) already.nodes.push(one);
+		else regions.push({ name: where, nodes: [one] });
+	}
+
 	return (
 		<Card
 			title={t("Relays")}
 			note={
 				quiet > 0
-					? `${now.answered ?? 0} of ${now.asked ?? nodes.length} answering`
-					: `${nodes.length} answering`
+					? t("{answering} of {asked} answering", {
+							answering: now.answered ?? 0,
+							asked: now.asked ?? nodes.length,
+						})
+					: t("{count} answering", { count: nodes.length })
 			}
 		>
 			{nodes.length === 0 && (
 				<p className="px-3 py-3 text-fg-muted text-sm sm:px-4">{t("No relays are configured, so this node has nowhere to send a call.")}</p>
 			)}
 
-			<ul>
-				{nodes.map((one) => (
-					<li
-						key={one.url}
-						className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-border border-b px-3 py-3 last:border-0 sm:px-4"
-					>
-						<span className="flex items-center gap-2">
-							{/*
-							  * A light rather than a dot.
-							  *
-							  * The dot was the same grey whatever the relay was doing,
-							  * which made it decoration: it took the place where a
-							  * status belongs and reported nothing. This says the three
-							  * things worth knowing at a glance — answering and quiet,
-							  * answering and working hard, not answering — and says
-							  * them in the same colours the connection light in a call
-							  * uses, so one habit reads both.
-							  *
-							  * Amber rather than red for a relay that is busy, and red
-							  * only for one that did not answer. Busy is a machine
-							  * doing its job near its limit; silent is a machine that
-							  * cannot do it at all.
-							  */}
-							<Light
-								ok={one.reachable}
-								busy={(one.load ?? 0) > 0.8 || (one.outPerSec ?? 0) * 8 > linkBits() * 0.66}
-							/>
-							<span className="text-fg text-sm">{one.name}</span>
-						</span>
+			{nodes.length > 0 && (
+				<div className="overflow-x-auto">
+					<table className="w-full min-w-[46rem] border-collapse text-sm">
+						<thead>
+							<tr className="border-border border-b text-[11px] text-fg-muted">
+								<th className="px-3 py-2 text-left font-normal sm:px-4">{t("Relay")}</th>
+								<th className="px-2 py-2 text-right font-normal">{t("rooms")}</th>
+								<th className="px-2 py-2 text-right font-normal">{t("people")}</th>
+								{/* Tracks and retransmissions were in the payload and on
+								    none of the pages. A room count says how many meetings
+								    a machine is holding and a track count says how much of
+								    a meeting it is actually carrying — a room of nine with
+								    one camera on is not the room the count suggests. And
+								    the retransmission rate is the first thing that moves
+								    when a relay's network goes bad, before anybody in the
+								    call has thought to complain. */}
+								<th className="px-2 py-2 text-right font-normal">
+									{t("tracks")} <span className="opacity-60">{t("in / out")}</span>
+								</th>
+								<th className="px-2 py-2 text-right font-normal">{t("out")}</th>
+								<th className="px-2 py-2 text-right font-normal">{t("in")}</th>
+								<th className="px-2 py-2 text-right font-normal">{t("asked again")}</th>
+								<th className="px-2 py-2 text-left font-normal">{t("load")}</th>
+								<th className="px-2 py-2 text-right font-normal">{t("answered in")}</th>
+								{/* Named in the heading rather than in every cell, and
+								    named at all: it was "27 kB / 23 kB" under the word
+								    "carried", which is two numbers and no way to tell
+								    which is which. */}
+								<th className="px-3 py-2 text-right font-normal sm:px-4">
+									{t("carried")} <span className="opacity-60">{t("out / in")}</span>
+								</th>
+							</tr>
+						</thead>
 
-						{one.reachable ? (
-							<>
-								<span className="readout text-fg-muted text-[12px]">{one.ip || "—"}</span>
+						{regions.map((region) => (
+							<tbody key={region.name}>
+								<tr>
+									{/* A heading that reads as one. The first version was
+									    another row in the same grey as the numbers, which
+									    made the fleet look like eleven rows with three
+									    stray ones in it. */}
+									<th
+										colSpan={10}
+										className={cn(
+											"border-border border-y bg-surface-hi/60 px-3 py-1.5 sm:px-4",
+											"text-left font-medium text-[10.5px] text-fg-muted uppercase tracking-[0.08em]",
+										)}
+									>
+										{say(region.name)}
+										<span className="ml-2 font-normal normal-case tracking-normal opacity-60">
+											{region.nodes.length}
+										</span>
+									</th>
+								</tr>
 
-								<span className="ml-auto flex flex-wrap justify-end gap-x-4 gap-y-0.5 text-fg-muted text-xs tabular-nums">
-									<span>{one.rooms} rooms</span>
-									<span>{one.clients} people</span>
-									<span>{rate(one.outPerSec ?? 0)}</span>
-									{/* With the core count, because the percentage alone does
-									    not say what it is a percentage of. Eighty per cent
-									    of two cores and of thirty-two are different
-									    situations, and the number was the same. Omitted
-									    where the relay did not report one rather than shown
-									    as nought cores. */}
-									<span>
-										{Math.round((one.load ?? 0) * 100)}% cpu
-										{one.cpus ? ` / ${one.cpus}` : ""}
-									</span>
-
-									{/* What this machine has actually carried, which is the
-									    figure a bill is made of — and the one that was
-									    missing, because a rate says how busy a relay is now
-									    and nothing about what it has cost. Since its own
-									    process started, which is not the same date on every
-									    machine, so it is said rather than assumed. */}
-									<span className="w-full text-right text-fg-muted/70 text-[11px]">
-										{t("carried")} {size(one.bytesOut ?? 0)} {t("out")} ·{" "}
-										{size(one.bytesIn ?? 0)} {t("in")}
-										{one.startedAt ? ` · ${since(one.startedAt)}` : ""}
-									</span>
-								</span>
-							</>
-						) : (
-							<span className="ml-auto max-w-full truncate text-tally text-xs">
-								{one.detail || "did not answer"}
-							</span>
-						)}
-					</li>
-				))}
-			</ul>
+								{region.nodes.map((one) => (
+									<Relay key={one.url} one={one} />
+								))}
+							</tbody>
+						))}
+					</table>
+				</div>
+			)}
 		</Card>
+	);
+}
+
+/** One relay's row. */
+function Relay({ one }: { one: NodeReading }) {
+	const t = useT();
+
+	const busy = (one.load ?? 0) > 0.8 || (one.outPerSec ?? 0) * 8 > linkBits() * 0.66;
+
+	if (!one.reachable) {
+		return (
+			<tr className="border-border border-b last:border-0">
+				<td className="px-3 py-2.5 sm:px-4">
+					<Named one={one} ok={false} busy={false} />
+				</td>
+				{/* A sentence, across the columns the numbers would have been in.
+				    Zeros there would read as a relay holding nothing, which is a
+				    different thing from one that did not answer and is the
+				    distinction this whole card exists to draw.
+				
+				    The machine's own words are kept, because they are the
+				    difference between a refused connection and a certificate that
+				    has expired — but they are a Go error with a URL in it, and
+				    printed at full width in warning colour they were the loudest
+				    thing on the page. Dimmed, truncated, and in the title
+				    attribute for whoever needs the whole of it. */}
+				<td colSpan={9} className="px-2 py-2.5 text-right sm:pr-4">
+					<span className="text-tally text-xs">{t("did not answer")}</span>
+					{one.detail && (
+						<span
+							className="ml-2 inline-block max-w-[22rem] translate-y-[1px] truncate align-bottom text-[11px] text-fg-muted/60"
+							title={one.detail}
+						>
+							{one.detail}
+						</span>
+					)}
+				</td>
+			</tr>
+		);
+	}
+
+	return (
+		<tr className="border-border border-b last:border-0">
+			<td className="px-3 py-2.5 sm:px-4">
+				<Named one={one} ok busy={busy} />
+			</td>
+
+			<td className="px-2 py-2.5 text-right tabular-nums">{one.rooms}</td>
+			<td className="px-2 py-2.5 text-right tabular-nums">{one.clients}</td>
+
+			<td className="px-2 py-2.5 text-right text-fg-muted text-xs tabular-nums">
+				{one.tracksIn ?? 0} / {one.tracksOut ?? 0}
+			</td>
+
+			<td className="px-2 py-2.5 text-right text-fg-muted text-xs tabular-nums">
+				{rate(one.outPerSec ?? 0)}
+			</td>
+			<td className="px-2 py-2.5 text-right text-fg-muted text-xs tabular-nums">
+				{rate(one.inPerSec ?? 0)}
+			</td>
+
+			{/* Coloured only where it is worth reading. A handful a second is an
+			    ordinary network and a hundred is one that is failing, so a figure
+			    printed in the same grey at both ends says nothing at either. */}
+			<td
+				className={cn(
+					"px-2 py-2.5 text-right text-xs tabular-nums",
+					(one.nackPerSec ?? 0) > 50 ? "text-danger" : (one.nackPerSec ?? 0) > 5 ? "text-tally" : "text-fg-muted",
+				)}
+			>
+				{(one.nackPerSec ?? 0) > 0 ? `${(one.nackPerSec ?? 0).toFixed(1)}/s` : "—"}
+			</td>
+
+			<td className="px-2 py-2.5">
+				<Load load={one.load ?? 0} cpus={one.cpus} />
+			</td>
+
+			{/* Dimmed above a tenth of a second, which on this fleet is Los
+			    Angeles from Hong Kong and is not news. What is news is a relay
+			    that used to answer in ten milliseconds taking two hundred. */}
+			<td className="px-2 py-2.5 text-right text-fg-muted text-xs tabular-nums">
+				{one.tookMs === undefined ? "—" : `${one.tookMs} ms`}
+			</td>
+
+			<td className="px-3 py-2.5 text-right text-fg-muted/70 text-[11px] tabular-nums sm:px-4">
+				{size(one.bytesOut ?? 0)} / {size(one.bytesIn ?? 0)}
+				{/* "in 11h" under a column of byte counts read as a third byte
+				    count. It is how long the machine has been up, and the whole
+				    column means nothing without it. */}
+				{one.startedAt && (
+					<span className="block opacity-70">{t("over")} {since(one.startedAt)}</span>
+				)}
+			</td>
+		</tr>
+	);
+}
+
+/**
+ * A relay's light, name and address.
+ *
+ * The label is what a person calls it and the key is what the pages and the
+ * store call it; both are here because an operator moving a room picks the
+ * label off a menu and then reads the name in a log line, and a page that shows
+ * only one of them makes them do that translation themselves.
+ */
+function Named({ one, ok, busy }: { one: NodeReading; ok: boolean; busy: boolean }) {
+	return (
+		<span className="flex items-center gap-2">
+			<Light ok={ok} busy={busy} />
+
+			<span className="min-w-0">
+				<span className="block truncate text-fg">{one.label ? say(one.label) : one.name}</span>
+				<span className="readout block truncate text-[11px] text-fg-muted">
+					{one.label ? `${one.name} · ` : ""}
+					{one.ip || "—"}
+				</span>
+			</span>
+		</span>
+	);
+}
+
+/**
+ * How hard a machine is working, as a bar and a number.
+ *
+ * The bar is what gets noticed and the number is what gets quoted, so both. The
+ * core count travels with it because the percentage alone does not say what it
+ * is a percentage of: eighty per cent of two cores and of thirty-two are
+ * different situations and the number was the same.
+ */
+function Load({ load, cpus }: { load: number; cpus?: number }) {
+	const t = useT();
+	const per = Math.max(0, Math.min(1, load));
+
+	return (
+		<span className="flex items-center gap-2">
+			<span className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-surface-hi">
+				<span
+					className={cn(
+						"block h-full rounded-full transition-[width] duration-500",
+						per > 0.8 ? "bg-danger" : per > 0.5 ? "bg-tally" : "bg-ok",
+					)}
+					style={{ width: `${Math.max(per * 100, per > 0 ? 3 : 0)}%` }}
+				/>
+			</span>
+
+			<span className="text-fg-muted text-xs tabular-nums">
+				{cpus
+					? t("{percent}% of {cores}", { percent: Math.round(per * 100), cores: cpus })
+					: `${Math.round(per * 100)}%`}
+			</span>
+		</span>
 	);
 }
 
@@ -610,7 +799,18 @@ function Ceiling({ bitsPerSecond }: { bitsPerSecond: number }) {
 					style={{ width: `${Math.max(share * 100, share > 0 ? 1 : 0)}%` }}
 				/>
 			</div>
-			<p className="mt-1 text-fg-muted text-[11px]">{Math.round(share * 100)}% of 1 Gbps</p>
+			{/* The link's real size, not the words "1 Gbps".
+			
+			    The share above it has always been worked out against linkBits(),
+			    which a deployment sets — so on anything but a gigabit line the
+			    sentence disagreed with the bar drawn beside it, and did it
+			    confidently. */}
+			<p className="mt-1 text-fg-muted text-[11px]">
+				{t("{percent}% of {link}", {
+					percent: Math.round(share * 100),
+					link: bitrate(linkBits()),
+				})}
+			</p>
 		</div>
 	);
 }

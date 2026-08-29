@@ -59,8 +59,9 @@ func TestFleetAddsUpWhatAnswered(t *testing.T) {
 		},
 	}
 
-	got := readFleet(context.Background(), f, map[string]string{
-		"wss://a.invalid": "alpha", "wss://b.invalid": "bravo",
+	got := readFleet(context.Background(), f, map[string]relayLook{
+		"wss://a.invalid": {Name: "alpha", Label: "Alpha", Region: "CN-East"},
+		"wss://b.invalid": {Name: "bravo", Label: "Bravo", Region: "Oversea/Asia"},
 	})
 
 	if got.Answered != 2 || got.Asked != 2 {
@@ -166,8 +167,10 @@ func TestNodesComeBackInAStableOrder(t *testing.T) {
 		},
 	}
 
-	named := map[string]string{
-		"wss://a.invalid": "alpha", "wss://b.invalid": "bravo", "wss://c.invalid": "charlie",
+	named := map[string]relayLook{
+		"wss://a.invalid": {Name: "alpha"},
+		"wss://b.invalid": {Name: "bravo"},
+		"wss://c.invalid": {Name: "charlie"},
 	}
 
 	for i := 0; i < 5; i++ {

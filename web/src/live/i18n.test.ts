@@ -193,6 +193,14 @@ const SUPPLIED_BY_THE_DEPLOYMENT = [
 	"cn-south",
 	"cn-north",
 	"cn-west",
+	// Written with the slash because that is what a deployment types into the
+	// region field, and say() looks the whole string up before it looks at any
+	// part of it. "Oversea" and "Asia" being here separately does not translate
+	// "Oversea/Asia" — it left the fleet page showing two of its four headings
+	// in English while the other two were translated, which reads as a bug in
+	// the page rather than as a gap in a list.
+	"Oversea/Asia",
+	"Oversea/America",
 	"Shanghai",
 	"Guangzhou",
 	"Beijing",

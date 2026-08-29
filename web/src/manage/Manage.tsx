@@ -29,6 +29,23 @@ export function Manage() {
 	// means one request rather than two when the panel is open.
 	const { value: load } = usePoll(api.now, { every: 5000, onSignedOut: () => setWho(undefined) });
 
+	// What the deployment says its line carries, asked for on signing in.
+	//
+	// api.runtime() tells units.ts the answer, and until this was here the only
+	// thing that called it was the Runtime panel — so every share-of-the-uplink
+	// bar was drawn against a hardcoded gigabit unless somebody had happened to
+	// open that page first. On a hundred megabit line the rail said five per
+	// cent while the line was half full, and it said it more convincingly than
+	// most numbers on the page because there was a bar beside it.
+	//
+	// Once rather than polled: a line does not change while somebody is looking
+	// at it, and the answer is kept in a module rather than in state.
+	useEffect(() => {
+		if (!who) return;
+
+		void api.runtime().catch(() => {});
+	}, [who]);
+
 	const identify = useCallback(async () => {
 		try {
 			setWho(await api.whoami());

@@ -28,6 +28,21 @@ type nodeReading struct {
 	Name string `json:"name"`
 	URL  string `json:"url"`
 
+	// What an operator calls the machine and where it is, carried here so the
+	// page can group and label without asking a second endpoint for the list it
+	// is already looking at. The two lists would drift for a second on every
+	// change, and the second of them arrives while the page is drawn.
+	Label  string `json:"label,omitempty"`
+	Region string `json:"region,omitempty"`
+
+	// How long this relay took to answer, in milliseconds.
+	//
+	// A round trip to the machine and back, which is the only latency figure
+	// this page can honestly report — it is what the control node measures by
+	// doing the thing it was going to do anyway. It is not what a caller will
+	// see, and the page says so.
+	TookMs int64 `json:"tookMs,omitempty"`
+
 	// Reachable separates a relay holding no calls from one that did not
 	// answer. Both would otherwise show as zeros, and the difference between
 	// "quiet" and "down" is the whole reason somebody opens this page.
@@ -56,7 +71,7 @@ type fleetReading struct {
 // and in turn the wait would be the sum of every relay's latency — including
 // the full timeout of any that is down, which is the case the page is most
 // often opened to look at.
-func readFleet(ctx context.Context, fleet Fleet, named map[string]string) fleetReading {
+func readFleet(ctx context.Context, fleet Fleet, named map[string]relayLook) fleetReading {
 	relays := fleet.Relays()
 
 	reading := fleetReading{Asked: len(relays), Nodes: make([]nodeReading, len(relays))}
@@ -66,13 +81,19 @@ func readFleet(ctx context.Context, fleet Fleet, named map[string]string) fleetR
 
 	var wait sync.WaitGroup
 	for i, url := range relays {
-		reading.Nodes[i] = nodeReading{URL: url, Name: named[url]}
+		look := named[url]
+		reading.Nodes[i] = nodeReading{
+			URL: url, Name: look.Name, Label: look.Label, Region: look.Region,
+		}
 
 		wait.Add(1)
 		go func(i int, url string) {
 			defer wait.Done()
 
+			started := time.Now()
 			stats, err := fleet.AskStats(ctx, url)
+			took := time.Since(started)
+
 			if err != nil {
 				reading.Nodes[i].Detail = err.Error()
 				return
@@ -80,17 +101,38 @@ func readFleet(ctx context.Context, fleet Fleet, named map[string]string) fleetR
 
 			reading.Nodes[i].Reachable = true
 			reading.Nodes[i].Stats = stats
+			reading.Nodes[i].TookMs = took.Milliseconds()
 		}(i, url)
 	}
 	wait.Wait()
 
-	// Sorted by name so a page redrawn every few seconds does not reorder
-	// itself under whoever is reading it. Goroutines finish in whatever order
-	// the network allows, which is not an order anybody wants to watch.
+	// In the order the deployment lists its relays, so a page redrawn every few
+	// seconds does not reorder itself under whoever is reading it. Goroutines
+	// finish in whatever order the network allows, which is not an order
+	// anybody wants to watch.
+	//
+	// The list's order rather than alphabetical, which is what this was. An
+	// operator sorts that list by hand and the sorting means something — near
+	// first, or the ones that carry the traffic first — and answering with it
+	// alphabetised threw that away and grouped the fleet page's regions in an
+	// order matching nothing else in the interface. Where a relay is not in the
+	// list at all it sorts last, by name, rather than at an arbitrary nought.
 	sort.Slice(reading.Nodes, func(i, j int) bool {
+		left, leftKnown := named[reading.Nodes[i].URL]
+		right, rightKnown := named[reading.Nodes[j].URL]
+
+		if leftKnown != rightKnown {
+			return leftKnown
+		}
+
+		if leftKnown && left.Order != right.Order {
+			return left.Order < right.Order
+		}
+
 		if reading.Nodes[i].Name != reading.Nodes[j].Name {
 			return reading.Nodes[i].Name < reading.Nodes[j].Name
 		}
+
 		return reading.Nodes[i].URL < reading.Nodes[j].URL
 	})
 
@@ -143,10 +185,22 @@ func readFleet(ctx context.Context, fleet Fleet, named map[string]string) fleetR
 	return reading
 }
 
+// relayLook is what a page needs to draw a relay it already has the counters
+// for: the name it is keyed by, the name a person reads, and where it is.
+type relayLook struct {
+	Name   string
+	Label  string
+	Region string
+
+	// Order is where this relay sits in the deployment's own list, which is
+	// hand-sorted and therefore meant.
+	Order int
+}
+
 // relayNames maps an address back to the name it was given, for a page that
 // should say "tokyo" rather than an address somebody has to recognise.
-func (a *API) relayNames() map[string]string {
-	named := map[string]string{}
+func (a *API) relayNames() map[string]relayLook {
+	named := map[string]relayLook{}
 
 	if a.relays == nil {
 		return named
@@ -157,8 +211,10 @@ func (a *API) relayNames() map[string]string {
 		return named
 	}
 
-	for _, relay := range list {
-		named[relay.URL] = relay.Name
+	for at, relay := range list {
+		named[relay.URL] = relayLook{
+			Name: relay.Name, Label: relay.Label, Region: relay.Region, Order: at,
+		}
 	}
 
 	return named

@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { chosenRelay, rememberRelay } from "./api";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { INVITE_KEY, inviteToken } from "./account";
+import { chosenRelay, join, rememberRelay } from "./api";
 
 /*
 The relay somebody chose, and the two screens that choose one.
@@ -42,5 +43,44 @@ describe("the relay somebody chose", () => {
 		// needed to be, every time, until somebody notices a dropdown.
 		expect(localStorage.getItem("meet-live.relay")).toBeNull();
 		expect(sessionStorage.getItem("meet-live.relay")).toBe("SG Misaka");
+	});
+});
+
+/*
+ * The invite comes out of the address bar once it has been used.
+ *
+ * It belongs in a link — that is what an invite is, and the query is where
+ * every chat client preserves it. What it does not belong in is the address bar
+ * of somebody in a video call, which is the one place this application puts its
+ * users that a link normally never reaches: people share their screen, and the
+ * token admits anybody to the meeting for the rest of the day.
+ *
+ * Kept in this tab rather than thrown away. The server puts it in a cookie for
+ * exactly this, and that cookie is HttpOnly — so a browser that declined it
+ * would be one where a reload lost the call, and nothing here could tell.
+ */
+describe("an invite that has been used", () => {
+	it("is taken out of the address bar and kept for the tab", async () => {
+		sessionStorage.clear();
+		history.replaceState(null, "", "/?invite=a-token#/standup");
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(
+				async () =>
+					new Response(JSON.stringify({ url: "wss://x.invalid", token: "t", identity: "g1-a", room: "standup" }), {
+						status: 200,
+					}),
+			),
+		);
+
+		await join("standup", "Somebody", "", "", "a-token");
+
+		expect(new URL(window.location.href).searchParams.get("invite")).toBeNull();
+		expect(sessionStorage.getItem(INVITE_KEY)).toBe("a-token");
+
+		// And it is still found, so a reload goes back into the call rather than
+		// being turned away by a door that now asks for one.
+		expect(inviteToken()).toBe("a-token");
 	});
 });

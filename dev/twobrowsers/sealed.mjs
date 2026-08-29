@@ -19,9 +19,13 @@
 //   for p in 9341 9342; do
 //     chrome --headless=new --remote-debugging-port=$p \
 //       --user-data-dir=$(mktemp -d) --use-fake-device-for-media-stream \
-//       --use-fake-ui-for-media-stream about:blank &
+//       --use-fake-ui-for-media-stream --mute-audio about:blank &
 //   done
 //   node dev/twobrowsers/sealed.mjs http://127.0.0.1:39687
+//
+// --mute-audio matters: the fake microphone emits a beep once a second, and
+// two of these in one room decode each other's tone straight into the
+// speakers, which sounds exactly like the machine developing a fault.
 //
 // Exits non-zero when it fails.
 

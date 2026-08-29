@@ -263,12 +263,17 @@ type Visit struct {
 // No age filter. What bounds this is the sweep and the room's own life — a
 // history that quietly stopped at twelve hours would be worse than none, because
 // it would look complete.
-func (s *Store) Visits(room string, limit int) []Visit {
+//
+// The count is returned with the rows for the same reason. There is a ceiling,
+// because this is drawn on a page, and a page showing five hundred rows of a
+// thousand while saying nothing is a history that looks complete and is not —
+// which is the fault above with a different cause.
+func (s *Store) Visits(room string, limit int) (found []Visit, total int) {
 	if limit <= 0 {
 		limit = 500
 	}
 
-	found := make([]Visit, 0, 32)
+	found = make([]Visit, 0, 32)
 	prefix := room + "\x00"
 
 	_ = s.db.View(func(tx *bolt.Tx) error {
@@ -300,11 +305,13 @@ func (s *Store) Visits(room string, limit int) []Visit {
 		found[left], found[right] = found[right], found[left]
 	}
 
+	total = len(found)
+
 	if len(found) > limit {
 		found = found[:limit]
 	}
 
-	return found
+	return found, total
 }
 
 // forgetArrivals removes every join recorded against one room.

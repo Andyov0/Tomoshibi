@@ -705,3 +705,47 @@ func TestAPlacementIsForgottenWithTheRoom(t *testing.T) {
 			relay, placed)
 	}
 }
+
+/*
+ * A history that was cut says how much of it there was.
+ *
+ * There is a ceiling, because this is drawn on a page and a name somebody has
+ * been hammering has as many rows as the rate limiter allowed. A ceiling is
+ * fine; a ceiling nobody is told about is not. Five hundred rows of a thousand,
+ * with nothing saying so, reads as the whole history — which is the same fault
+ * as a history that silently stopped at twelve hours, arrived at from the other
+ * end.
+ */
+func TestAHistoryLongerThanTheCeilingSaysHowLongItWas(t *testing.T) {
+	st := open(t)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	when := time.Now().UTC().Add(-time.Hour)
+	for at := 0; at < 12; at++ {
+		if err := st.Arrived("standup", fmt.Sprintf("t%010d-abc", at), Arrival{
+			Name: "somebody", At: when.Add(time.Duration(at) * time.Second),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	found, total := st.Visits("standup", 5)
+
+	if len(found) != 5 {
+		t.Errorf("asked for five and got %d", len(found))
+	}
+
+	if total != 12 {
+		t.Errorf("a history of twelve cut to five reported %d; a page cannot say what it "+
+			"is not showing if it is never told", total)
+	}
+
+	// And a history inside the ceiling reports itself, so the page has nothing
+	// to mention.
+	if _, whole := st.Visits("standup", 50); whole != 12 {
+		t.Errorf("a history of twelve reported %d when nothing was cut", whole)
+	}
+}

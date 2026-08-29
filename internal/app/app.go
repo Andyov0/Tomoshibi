@@ -656,6 +656,18 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// because the answer decides which of the two doors this person is at: a
 	// name nobody has used is an opening and a name somebody has is a joining,
 	// and the deployment may have different rules for each.
+	//
+	// A store that will not answer says "unused", and that is deliberate — but
+	// it is safe only in company. It sends everybody to the opening door, and
+	// the opening door is decided by OpenRoom, which lets a join through and
+	// says so loudly when the store will not answer. So an outage admits people
+	// rather than turning them away, which is this deployment's standing rule:
+	// a store that cannot tell an unused name from one a meeting is happening in
+	// must not end the meeting.
+	//
+	// Making this fail closed on its own would look like the careful change and
+	// would turn a store outage into every call on the deployment dropping and
+	// nobody able to rejoin. The two halves have to keep agreeing.
 	known := a.store.Used(name)
 
 	// The second door, which did not exist. A room here is a name and nothing
@@ -664,7 +676,17 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// meeting called 223223. What made it hard to see is that the setting next
 	// to it is called "signed", which sounds like signed in and means "typed
 	// something into the passphrase box".
-	if known && !a.mayJoin(r, name, isAdmin, signature, body.Passphrase) {
+	// Redeemed once, here, and the answer carried to both places that need it.
+	//
+	// The door asks whether they were invited and the block near the end of this
+	// handler asks again so it can leave the token in a cookie — and redeeming
+	// counts, so asking twice counted twice. Nothing reads that count yet, which
+	// is why this is a wrong number rather than a broken door; it is kept
+	// precisely because it cannot be recovered later, so recording it wrong is
+	// worse than not recording it.
+	invited := known && a.invited(r, name)
+
+	if known && !a.mayJoin(r, name, isAdmin, signature, body.Passphrase, invited) {
 		fail(w, http.StatusForbidden, reasonNotInvited)
 		return
 	}
@@ -875,7 +897,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// It does not open a name nobody has used. An invitation is to a meeting
 	// that exists, and one that could open a room would be a way around the
 	// setting deciding who may.
-	if a.invited(r, name) {
+	if invited {
 		keepInvite(w, r, r.TLS != nil || forwardedProto(r, a.conf.Meet.TrustProxy) == "https")
 	}
 
@@ -1361,7 +1383,9 @@ func (a *App) pinTo(ctx context.Context, room string, there store.Relay) {
 // meeting with the passphrase they opened it with and no invite — nobody sent
 // them one — and a rule that shut the host out of the room they are running
 // would be worse than the one it replaces.
-func (a *App) mayJoin(r *http.Request, name string, isAdmin bool, signature string, said room.Passphrase) bool {
+func (a *App) mayJoin(
+	r *http.Request, name string, isAdmin bool, signature string, said room.Passphrase, invited bool,
+) bool {
 	switch a.joining() {
 	case room.ByWhoeverKnows:
 		return true
@@ -1377,7 +1401,7 @@ func (a *App) mayJoin(r *http.Request, name string, isAdmin bool, signature stri
 		return true
 	}
 
-	if a.invited(r, name) {
+	if invited {
 		return true
 	}
 

@@ -61,8 +61,21 @@ export async function signOut(): Promise<void> {
  * lives and because a link somebody pastes into a chat client has its query
  * preserved by every one of them and its fragment by fewer.
  */
+/** Where a spent invite is kept for this tab, so a reload is not a refusal. */
+export const INVITE_KEY = "meet-live.invite";
+
 export function inviteToken(): string {
-	return new URLSearchParams(window.location.search).get("invite") ?? "";
+	const said = new URLSearchParams(window.location.search).get("invite");
+	if (said) return said;
+
+	// Then what this tab kept when it took the token out of the address bar. A
+	// reload after joining has no query left to read, and the cookie the server
+	// set for exactly this cannot be seen from here.
+	try {
+		return sessionStorage.getItem(INVITE_KEY) ?? "";
+	} catch {
+		return "";
+	}
 }
 
 /** What room an invite is for, or why it is no good. */

@@ -358,6 +358,7 @@ const zhHant: Dictionary = {
 	"Media": "媒體",
 	"Move": "遷移",
 	"Move now, ending this call": "立刻遷移,結束這通通話",
+	"most recent {count} of {total} joins": "共 {total} 次入會,顯示最近 {count} 次",
 	"Accounts only": "僅限有帳號的人",
 	"Only people with an account here can start one. A passphrase somebody set themselves is not enough.": "只有在這裡有帳號的人能開房間。自己隨便設的口令不算。",
 	"Sign in to join a room here.": "這裡要登入後才能進入房間。",

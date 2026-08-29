@@ -389,6 +389,7 @@ const en = {
 	"Media": "Media",
 	"Move": "Move",
 	"Move now, ending this call": "Move now, ending this call",
+	"most recent {count} of {total} joins": "most recent {count} of {total} joins",
 	"Accounts only": "Accounts only",
 	"Only people with an account here can start one. A passphrase somebody set themselves is not enough.": "Only people with an account here can start one. A passphrase somebody set themselves is not enough.",
 	"Sign in to join a room here.": "Sign in to join a room here.",

@@ -81,7 +81,7 @@ type Names interface {
 
 	// Visits is every join recorded against a room, newest first, which is a
 	// different question from who is in it now and outlives the call.
-	Visits(room string, limit int) []store.Visit
+	Visits(room string, limit int) ([]store.Visit, int)
 }
 
 // Roster is where the administrators are kept.
@@ -1326,7 +1326,7 @@ func (a *API) visits(_ Session, w http.ResponseWriter, r *http.Request) {
 	// A ceiling, because this is drawn on a page. A room somebody has held every
 	// weekday for a month is a few hundred rows and a name somebody is hammering
 	// is however many the rate limiter allowed.
-	found := a.store.Visits(name, 500)
+	found, total := a.store.Visits(name, 500)
 
 	// Who a mark belongs to, where this deployment knows.
 	//
@@ -1399,5 +1399,13 @@ func (a *API) visits(_ Session, w http.ResponseWriter, r *http.Request) {
 		out = append(out, row)
 	}
 
-	respond(w, map[string]any{"room": name, "visits": out})
+	answer := map[string]any{"room": name, "visits": out}
+
+	// Said only where it is true, so a page can draw the number without having
+	// to decide whether it is worth mentioning.
+	if total > len(out) {
+		answer["total"] = total
+	}
+
+	respond(w, answer)
 }

@@ -358,6 +358,7 @@ const ja: Dictionary = {
 	"Media": "メディア",
 	"Move": "移す",
 	"Move now, ending this call": "今すぐ移す（この通話は終わります）",
+	"most recent {count} of {total} joins": "全 {total} 回中、直近 {count} 回",
 	"Accounts only": "アカウント保持者のみ",
 	"Only people with an account here can start one. A passphrase somebody set themselves is not enough.": "ここにアカウントを持つ人だけが開けます。自分で決めた合言葉では足りません。",
 	"Sign in to join a room here.": "ここでは参加にサインインが必要です。",

@@ -383,7 +383,7 @@ func (unwritten) SetOpening(room.Opening) error { return errors.New("no store") 
 func (unwritten) HeldOn(string) (string, bool) { return "", false }
 
 func (unwritten) Arrivals(string) map[string]store.Arrival { return nil }
-func (unwritten) Visits(string, int) []store.Visit         { return nil }
+func (unwritten) Visits(string, int) ([]store.Visit, int)  { return nil, 0 }
 
 // A record of names that keeps the one setting these tests are about.
 type remembers struct {

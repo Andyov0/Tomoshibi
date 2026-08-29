@@ -1,3 +1,4 @@
+import { INVITE_KEY } from "./account";
 import { t } from "./i18n";
 import { preferred } from "./relays";
 /*
@@ -224,6 +225,30 @@ export async function join(
 	// on the same machine is a second person as far as any of this is concerned,
 	// and one of them reloading must not drag the other into a call.
 	sessionStorage.setItem(WAS_IN_KEY, room);
+
+	// The invite comes out of the address bar now that it has been used.
+	//
+	// It belongs in a link — that is what an invite is, and the comment above
+	// says so about the query, the history and any Referer. What it does not
+	// belong in is the address bar of somebody in a video call, which is the one
+	// place this application puts its users that a link normally never reaches:
+	// people share their screen, and the token is a working key to the meeting
+	// for the rest of the day.
+	//
+	// Kept in this tab rather than thrown away. The server has put it in a
+	// cookie, but that cookie is HttpOnly and cannot be checked from here, and a
+	// browser that declined it would otherwise be one where a reload loses the
+	// call. Session storage is per tab, which is the same scope as being in this
+	// call, and is a great deal less exposed than the address bar.
+	if (invite) {
+		sessionStorage.setItem(INVITE_KEY, invite);
+
+		const clean = new URL(window.location.href);
+		if (clean.searchParams.has("invite")) {
+			clean.searchParams.delete("invite");
+			window.history.replaceState(null, "", clean.toString());
+		}
+	}
 
 	return result;
 }

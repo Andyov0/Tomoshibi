@@ -565,7 +565,9 @@ export const api = {
 	 * meeting that ended.
 	 */
 	visits: (room: string) =>
-		call<{ room: string; visits: Visit[] }>(`/rooms/${encodeURIComponent(room)}/visits`),
+		call<{ room: string; visits: Visit[]; total?: number }>(
+			`/rooms/${encodeURIComponent(room)}/visits`,
+		),
 
 	participants: (room: string) =>
 		call<Participant[]>(`/rooms/${encodeURIComponent(room)}/participants`),

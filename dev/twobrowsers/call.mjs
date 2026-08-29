@@ -24,9 +24,13 @@
 //   for p in 9341 9342; do
 //     chrome --headless=new --remote-debugging-port=$p \
 //       --user-data-dir=$(mktemp -d) --use-fake-device-for-media-stream \
-//       --use-fake-ui-for-media-stream http://127.0.0.1:8080/ &
+//       --use-fake-ui-for-media-stream --mute-audio http://127.0.0.1:8080/ &
 //   done
 //   node dev/twobrowsers/call.mjs
+//
+// --mute-audio matters: the fake microphone emits a beep once a second, and
+// two of these in one room decode each other's tone straight into the
+// speakers, which sounds exactly like the machine developing a fault.
 //
 // One trap worth knowing before changing the selectors: the name field carries
 // no type attribute, so input[type="text"] does not match it while

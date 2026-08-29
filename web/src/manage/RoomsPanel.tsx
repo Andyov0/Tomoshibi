@@ -478,8 +478,19 @@ function History({ room, onSignedOut }: { room: string; onSignedOut: () => void 
 		<div className="border-border border-t">
 			<div className="flex items-baseline gap-2 px-4 py-2.5">
 				<h3 className="font-medium text-[13px]">{t("Who has been here")}</h3>
+				{/* And how many there were, where the page is not showing all of
+				    them. A list cut at five hundred with nothing said reads as
+				    the whole history — which is the same fault as a history that
+				    stops at twelve hours, arrived at from the other end. */}
 				<span className="text-fg-muted text-xs">
-					{visits.length > 0 ? t("{count} joins", { count: visits.length }) : ""}
+					{visits.length === 0
+						? ""
+						: value?.total
+							? t("most recent {count} of {total} joins", {
+									count: visits.length,
+									total: value.total,
+								})
+							: t("{count} joins", { count: visits.length })}
 				</span>
 			</div>
 

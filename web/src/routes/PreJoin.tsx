@@ -40,11 +40,27 @@ const DEVICES_KEY = "meet-live.devices";
  * the server — and a field somebody retypes from a password manager on every
  * visit is a field most people stop filling in.
  *
- * So it is worth being clear about what is being kept. It proves a display name
- * in a call and nothing else. There is no account behind it, nothing it can
- * read, and nothing it can spend; the worst it buys is the use of somebody's
- * name in a meeting. That is a real cost on a shared machine and a small one
- * against never being signed at all.
+ * So it is worth being clear about what is being kept, and the first version of
+ * this was not: it said the passphrase proves a display name and nothing else,
+ * that there is no account behind it and nothing it can spend, and that the
+ * worst it buys is the use of somebody's name in a meeting.
+ *
+ * That undersells it in two ways that have both mattered since.
+ *
+ * It is what makes somebody the host of a room they opened, and a host moves the
+ * call to another machine, removes people, mutes them and ends the meeting. And
+ * this field is where an administrator types an administrator passphrase — the
+ * join endpoint tests the same value against the administrator list — so an
+ * administrator who signs into a room this way leaves that credential here in
+ * the clear.
+ *
+ * It is kept anyway, deliberately, and the trade is the one at the top of this
+ * comment: the alternative is retyping on every visit, which is how a field
+ * stops being filled at all. Somebody weighing it again should weigh the real
+ * cost above rather than the gentler claim this used to make.
+ *
+ * The sealing word for an encrypted call is a different secret and is not kept
+ * anywhere.
  *
  * It is still offered to the password manager as well, which is the better home
  * of the two and the only one that syncs to somebody's other devices. This is

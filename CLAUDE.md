@@ -122,10 +122,30 @@ screen is an implementation detail escaping, and it escapes untranslated.
 **Storage keys keep the old product name on purpose.** They are what a browser
 already has written down. Renaming one abandons it.
 
-**A secret does not go in local storage.** The passphrase field is a password
-field with an `autocomplete` attribute so the browser's own manager keeps it,
-which is encrypted, behind the machine's lock, and deletable by its owner. This
-application stores none of it.
+**The passphrase is kept in local storage, in the clear, on purpose.** The rule
+here used to read "a secret does not go in local storage" and say that this
+application stores none of it. That was never true of the code: `PreJoin.tsx`
+writes `meet-live.passphrase` on every join, so that the field is filled next
+time. It is offered to the browser's password manager as well — which is
+encrypted, behind the machine's lock, syncs to somebody's other devices, and is
+the better home of the two — and the local copy is the one that guarantees the
+field is filled for somebody who has no manager or declined to use it.
+
+What it buys, said accurately, because the comment beside it understated this
+for a while: a passphrase is a display name nobody else can wear, **and** it is
+what makes somebody the host of a room they opened — moving the call to another
+machine, removing people, muting them, ending the meeting. The join field is
+also where an **administrator** types their administrator passphrase, since the
+same field is tested against the administrator list, so an administrator who
+does that leaves that credential in local storage in the clear.
+
+This is an accepted risk on this deployment rather than an oversight: the cost
+of the alternative is retyping a passphrase on every visit, which is how a
+field stops being filled at all. Anybody weighing it again should weigh that,
+not the older and gentler claim that the worst it buys is a name.
+
+The sealing word for an encrypted call is a different secret and is **not**
+kept anywhere — see `live/secrecy.ts`.
 
 **Dependencies are counted, not assumed.** `src/dependencies.test.ts` walks every
 import and compares both directions against the manifest, because an unused

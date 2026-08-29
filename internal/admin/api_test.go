@@ -631,3 +631,56 @@ func (absent) Announce(context.Context, string, string, []byte) error { return n
 func (absent) Tell(context.Context, string, string, string, []byte) error { return nil }
 
 func (absent) Hold(context.Context, string, string) error { return nil }
+
+/*
+ * The pages cannot turn the door off.
+ *
+ * "Anybody who has the room's name" is a setting this server understands and is
+ * not one it offers. A room here is a name, so it means "anybody who guesses
+ * it", and the invite mechanism exists precisely so that one person can be let
+ * into one call without being handed a name that admits them to every future
+ * one — a control that undoes that is pressed by whoever has the page open
+ * rather than by whoever thought about the deployment.
+ *
+ * It stays settable in the configuration file, where it is a deliberate act by
+ * somebody editing it and is said in the log on every start. That is a
+ * different thing from a radio button, and the difference is the whole of why
+ * this test exists rather than the value simply being deleted.
+ */
+func TestTheJoiningPolicyCannotBeLoosenedFromAPage(t *testing.T) {
+	admin := config.Admin{
+		Trip: room.Trip(key, "moderator"), Name: "adam",
+		Can: []string{config.Observe, config.Moderate},
+	}
+
+	api := &API{
+		conf:     &config.Config{Meet: config.Meet{Admins: []config.Admin{admin}}, LiveKit: livekitDefaults()},
+		sessions: NewSessions(func() []config.Admin { return []config.Admin{admin} }, key),
+		media:    absent{},
+		log:      NewLog(),
+		store:    unwritten{},
+		history:  NewHistory(nil),
+		stop:     make(chan struct{}),
+	}
+
+	mux := http.NewServeMux()
+	api.Mount(mux)
+
+	_, token, _ := api.sessions.Open("", "moderator")
+
+	loosen := place(t, mux, cookieName+"="+token, "/api/admin/policy", `{"joinedBy":"anyone"}`)
+
+	if loosen.Code != http.StatusBadRequest {
+		t.Errorf("a page was allowed to set the joining policy to %q and answered %d; the "+
+			"one value that opens the deployment to whoever guesses a name is the one "+
+			"value no button may reach", "anyone", loosen.Code)
+	}
+
+	// And the two that are offered still work, or the guard is just broken.
+	for _, offered := range []string{"invited", "accounts"} {
+		if got := place(t, mux, cookieName+"="+token,
+			"/api/admin/policy", `{"joinedBy":"`+offered+`"}`); got.Code != http.StatusOK {
+			t.Errorf("setting the joining policy to %q answered %d, want 200", offered, got.Code)
+		}
+	}
+}

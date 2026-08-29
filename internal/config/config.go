@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -350,10 +351,14 @@ type Rooms struct {
 	//
 	// A separate question from who may create one, and the one that was never
 	// asked: knowing a name let anybody in, so a deployment whose rooms are
-	// called things like 223223 had a door that could be guessed. `anyone` is
-	// what it did before this existed and is the default for that reason;
+	// called things like 223223 had a door that could be guessed.
+	//
 	// `invited` asks for an invite, an account, an administrator's passphrase,
-	// or being the host; `accounts` asks for an account and nothing else.
+	// or being the host, and is the default. `accounts` asks for an account and
+	// nothing else. There is no setting for the old behaviour: the invite
+	// mechanism exists so that somebody can be let into one call without being
+	// handed a name, and an option to turn it off is an option to undo the
+	// reason it is there.
 	JoinedBy room.Joining `yaml:"joined_by"`
 
 	// Remember is how long a name stays used after the last time it was joined.
@@ -462,7 +467,7 @@ var defaults = Meet{
 	TrustProxy:  false,
 	// Thirty days: long enough that a fortnightly meeting keeps its room, short
 	// enough that a name nobody has used since is not still holding one.
-	Rooms: Rooms{OpenedBy: room.ByAnyone, JoinedBy: room.ByWhoeverKnows, Remember: 3 * 24 * time.Hour},
+	Rooms: Rooms{OpenedBy: room.ByAnyone, JoinedBy: room.ByInvitation, Remember: 3 * 24 * time.Hour},
 	Enrol: Enrol{ListenPort: 13377, UDPPort: 13378, TCPPort: 13379},
 	// Empty rather than a repository somebody else runs.
 	//
@@ -520,13 +525,24 @@ func Load(path string) (*Config, error) {
 	}
 
 	if meet.Rooms.JoinedBy == "" {
-		meet.Rooms.JoinedBy = room.ByWhoeverKnows
+		meet.Rooms.JoinedBy = room.ByInvitation
+	}
+
+	// Understood, not offered, and said every time. A deployment may treat its
+	// room names as secrets and hand them out like passwords, and this is how
+	// that is written down — but it is not a thing anybody should arrive at by
+	// pressing the top option on a page, so the management pages do not have it
+	// and the log says so on every start.
+	if meet.Rooms.JoinedBy == room.ByWhoeverKnows {
+		slog.Warn("rooms.joined_by is \"anyone\", so anybody who has a room's name is in the " +
+			"meeting — and a room here is a name, so anybody who guesses one is too. The " +
+			"management pages do not offer this; it is set in the configuration file")
 	}
 
 	if !meet.Rooms.JoinedBy.Valid() {
 		return nil, fmt.Errorf(
 			"rooms.joined_by: %q is not who may join a room. The three are %q, %q and %q",
-			meet.Rooms.JoinedBy, room.ByWhoeverKnows, room.ByInvitation, room.ByAccount)
+			meet.Rooms.JoinedBy, room.ByInvitation, room.ByAccount, room.ByWhoeverKnows)
 	}
 
 	if !meet.Rooms.OpenedBy.Valid() {

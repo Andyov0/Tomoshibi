@@ -12,6 +12,7 @@ import (
 	"tomoshibi/internal/admin"
 	"tomoshibi/internal/config"
 	"tomoshibi/internal/limit"
+	"tomoshibi/internal/room"
 	"tomoshibi/internal/store"
 )
 
@@ -70,12 +71,17 @@ func controlWithStore(t *testing.T, policy string, relayList ...store.Relay) (ht
 		}
 	}
 
+	// The door left open, said out loud, because most of these tests are about
+	// which relay somebody lands on and not about who is let in. A fixture that
+	// quietly satisfied the door would be testing two things and saying so
+	// about one.
 	conf := &config.Config{
 		Key:    "APIkey",
 		Secret: "a secret long enough for the media server to accept it",
 		Meet: config.Meet{
 			Role:        config.RoleControl,
 			RelayPolicy: policy,
+			Rooms:       config.Rooms{JoinedBy: room.ByWhoeverKnows},
 			TokenTTL:    5 * time.Minute,
 			JoinRate:    1000,
 			JoinBurst:   1000,

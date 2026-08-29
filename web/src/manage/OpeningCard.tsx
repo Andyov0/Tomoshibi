@@ -359,15 +359,6 @@ export function JoiningCard({
 					className="flex flex-col"
 				>
 					<Choice
-						label={t("Anyone with the name")}
-						describes={t(
-							"Typing the name is enough. Somebody who guesses a short name is in the meeting.",
-						)}
-						chosen={value?.chosenJoin === "anyone"}
-						disabled={!canModerate || saving || !value}
-						onChoose={() => choose("anyone")}
-					/>
-					<Choice
 						label={t("Invited or signed in")}
 						describes={t(
 							"An invite link, an account, or the passphrase the room was opened with. Guessing the name is not enough.",
@@ -384,6 +375,25 @@ export function JoiningCard({
 						onChoose={() => choose("accounts")}
 					/>
 				</div>
+
+				{/* The third setting, where a deployment is on it.
+
+				    "Anybody who has the name" is understood by the server and is
+				    not offered here. A room is a name, so it means "anybody who
+				    guesses it", and the invite mechanism exists so that one
+				    person can be let into one call without being handed a name
+				    that admits them to every future one — a button undoing that
+				    is pressed by whoever has the page open rather than by whoever
+				    thought about the deployment. It is set in the configuration
+				    file by somebody who meant it, and this says so rather than
+				    drawing a row that appears to be unselected. */}
+				{value?.chosenJoin === "anyone" && (
+					<p className="text-[11.5px] text-tally leading-relaxed">
+						{t(
+							"Set in the configuration file to let in anybody who has a room's name — and a room here is a name, so anybody who guesses one. Change it there.",
+						)}
+					</p>
+				)}
 
 				{/* Said where it applies rather than in a note nobody reads: the
 				    setting cannot lock the deployment out of itself, and somebody

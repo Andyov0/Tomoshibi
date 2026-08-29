@@ -1091,7 +1091,11 @@ func (a *API) setPolicy(session Session, w http.ResponseWriter, r *http.Request)
 	// One at a time, because the page offers them as two controls and a request
 	// carrying only the one that moved must not silently reset the other.
 	if body.JoinedBy != "" {
-		if !body.JoinedBy.Valid() {
+		// Offered rather than Valid. "anyone" is a setting this server
+		// understands and is not one the pages hand out: it is written in a
+		// file by somebody who meant it, not chosen from a list by whoever has
+		// the page open.
+		if !body.JoinedBy.Offered() {
 			refuse(w, http.StatusBadRequest, "no_such_policy")
 			return
 		}

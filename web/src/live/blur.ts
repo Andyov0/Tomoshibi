@@ -68,6 +68,41 @@ const RADIUS = 12;
 /** Whether this browser was asked to blur, so it does not have to be asked again. */
 const WANTED_KEY = "meet-live.blur";
 
+/**
+ * Fetch the runtime and the model before anybody asks for them.
+ *
+ * Installing a processor whose runtime is still arriving, in a call that is
+ * already running, produces a canvas track that never draws a frame — the
+ * install reports success, the picture goes to nothing, and turning blur off
+ * again does not bring it back. It is a timing fault and nothing else: the same
+ * browser, the same room and the same code work when the files are already in
+ * its cache and fail when they are not, which is why it never appeared in
+ * development and appeared every time on a deployment.
+ *
+ * So the wait is moved off the switch. This is called when a call starts, costs
+ * one fetch of the same bytes somebody would have paid for on their first press,
+ * and leaves the press itself instant.
+ *
+ * Failures are ignored on purpose. This is a head start, not a requirement; the
+ * check in blur below is what makes a cold install safe.
+ */
+export async function warm(): Promise<void> {
+	if (!possible()) return;
+
+	try {
+		await Promise.all(
+			[
+				`${ASSETS.tasksVisionFileSet}/vision_wasm_internal.js`,
+				`${ASSETS.tasksVisionFileSet}/vision_wasm_internal.wasm`,
+				ASSETS.modelAssetPath,
+			].map((at) => fetch(at, { cache: "force-cache" })),
+		);
+	} catch {
+		// An offline browser, or a deployment not serving these. The switch is
+		// still offered and still checks its own work.
+	}
+}
+
 /** Whether this browser can do it at all. */
 export function possible(): boolean {
 	try {

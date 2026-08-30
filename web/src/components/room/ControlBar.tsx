@@ -7,6 +7,8 @@ import { MessageSquare, Mic, MicOff, Video, VideoOff, Volume2 } from "lucide-rea
 import { Leaving } from "./Leaving";
 import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
+import type { Reaction } from "@/live/hands";
+import { HandButton } from "./HandButton";
 import { ShareButton } from "./ShareButton";
 import { useLocalState } from "@/hooks/useLocalState";
 import { canShareScreen } from "@/live/context";
@@ -21,6 +23,9 @@ import { deviceRefused } from "@/live/notices";
  */
 export function ControlBar({
 	room,
+	handUp,
+	onRaise,
+	onReact,
 	chatting,
 	unread,
 	listening,
@@ -31,6 +36,12 @@ export function ControlBar({
 	host,
 }: {
 	room: Room;
+	/* Raised here and drawn on the tiles, so both come from one place: a
+	   reaction is an event and holding it in two components would be two lists
+	   that drift. */
+	handUp: boolean;
+	onRaise: (up: boolean) => void;
+	onReact: (what: Reaction) => void;
 	chatting: boolean;
 	/** Something was said while the panel was closed. */
 	unread: boolean;
@@ -115,6 +126,10 @@ export function ControlBar({
 			>
 				{local.camera ? <Video /> : <VideoOff />}
 			</Toggle>
+
+			{/* Beside the camera rather than with the panels: it is a thing said
+			    to the room, like speaking, and not a thing opened to be read. */}
+			<HandButton up={handUp} onRaise={onRaise} onReact={onReact} />
 
 			{canShareScreen() && (
 				<ShareButton

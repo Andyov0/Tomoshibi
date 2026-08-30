@@ -355,6 +355,40 @@
 	}
 }
 
+/*
+ * A reaction leaving the tile it was sent from.
+ *
+ * Up and out rather than a fade in place: what it is saying is "somebody just
+ * did this", and a thing that happened reads as motion. Fading would be
+ * indistinguishable from the picture behind it changing.
+ */
+@utility animate-rise {
+	animation: rise 4000ms var(--ease-settle) forwards;
+
+	@media (prefers-reduced-motion: reduce) {
+		animation: none;
+		opacity: 0;
+	}
+}
+
+@keyframes rise {
+	0% {
+		opacity: 0;
+		transform: translateY(6px) scale(0.6);
+	}
+	12% {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+	70% {
+		opacity: 1;
+	}
+	100% {
+		opacity: 0;
+		transform: translateY(-64px) scale(1);
+	}
+}
+
 @utility animate-depart {
 	animation: depart 180ms var(--ease-settle) both;
 	pointer-events: none;

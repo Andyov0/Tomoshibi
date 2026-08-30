@@ -1,6 +1,8 @@
 import { Audible } from "@/components/room/Audible";
 import { ChatPanel } from "@/components/room/ChatPanel";
 import { ControlBar } from "@/components/room/ControlBar";
+import { Reacting } from "@/components/room/Reacting";
+import { useHands, useReactions } from "@/live/hands";
 import { EmptyRoom } from "@/components/room/EmptyRoom";
 import { PictureMenu } from "@/components/room/PictureMenu";
 import { Plane } from "@/components/room/Plane";
@@ -63,6 +65,13 @@ export interface RoomProps {
 const CLEAR_OF_CONTROLS = "bottom-[calc(max(1.25rem,env(safe-area-inset-bottom)+0.5rem)+4rem)]";
 
 export function Room({ room, relay, carrying, onLeave }: RoomProps) {
+	// Both here, because both are drawn in two places: the bar sends them and
+	// the tiles show them. A reaction is an event, so holding it in each would
+	// be two lists that drift apart; a hand is state on the roster, and reading
+	// it twice would work and would still be two things to keep agreeing.
+	const hands = useHands(room);
+	const reactions = useReactions(room);
+
 	// One at a time, because both float over the same corner and the second
 	// would simply be drawn on top of the first.
 	const [panel, setPanel] = useState<"messages" | "sound">();
@@ -104,6 +113,8 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 		<div className="relative h-full">
 			<Stage
 				room={room}
+				hands={hands}
+				reactions={reactions}
 				relay={relay}
 				carrying={carrying}
 				standing={standing}
@@ -116,6 +127,9 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 			/>
 			<ControlBar
 				room={room}
+				handUp={hands.mine}
+				onRaise={hands.raise}
+				onReact={reactions.react}
 				chatting={chatting}
 				unread={chat.unread}
 				listening={listening}
@@ -134,6 +148,8 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 
 function Stage({
 	room,
+	hands,
+	reactions,
 	chat,
 	chatting,
 	listening,
@@ -145,6 +161,11 @@ function Stage({
 	onOpenSound,
 }: {
 	room: LiveRoom;
+	/* Passed in rather than read again here. A reaction is an event held in a
+	   list, and a second copy of that list in a second component is two lists
+	   that drift — the bar sends them and this draws them, so there is one. */
+	hands: ReturnType<typeof useHands>;
+	reactions: ReturnType<typeof useReactions>;
 	relay?: string;
 	carrying?: string;
 	standing: Standing;
@@ -294,6 +315,15 @@ function Stage({
 				selected={onStage}
 				overlay={
 					<>
+						{/* Whose hand is up and what they just reacted with, drawn
+						    from the same two places the bar sends them from. */}
+						<Reacting
+							hand={hands.raised.includes(owner(surface).identity)}
+							reactions={reactions.shown
+								.filter((one) => one.from === owner(surface).identity)
+								.map((one) => one.what)}
+						/>
+
 						<SaidOnTile said={saidOn(surface)} compact={!onStage && pinned !== undefined} />
 						{onStage && (
 							<StageControls

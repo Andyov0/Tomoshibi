@@ -920,3 +920,45 @@ func (s *Store) AccountCount() int {
 
 	return count
 }
+
+// ForgetRoom removes one name and everything written against it.
+//
+// The record holds three things and all three go: that the name has been used,
+// where an operator said the room goes, and what was seen of the people who
+// were in it. Removing only the placement is a different action and has its own
+// control — this one is for a name somebody wants gone.
+//
+// Reports whether there was anything to remove, so a page can tell "done" from
+// "that was already not there" instead of showing success for a name that never
+// existed.
+func (s *Store) ForgetRoom(name string) (bool, error) {
+	found := false
+
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		if bucket.Get([]byte(name)) == nil {
+			return nil
+		}
+
+		found = true
+
+		if err := bucket.Delete([]byte(name)); err != nil {
+			return err
+		}
+
+		// And the history, for the reason the sweep does it: a record of who was
+		// in a room must not outlive the room, and the addresses in it must not
+		// be kept once the last thing referring to them has gone.
+		return forgetArrivals(tx, name)
+	})
+
+	if err != nil {
+		return false, fmt.Errorf("forget the room %s: %w", name, err)
+	}
+
+	return found, nil
+}

@@ -749,3 +749,80 @@ func TestAHistoryLongerThanTheCeilingSaysHowLongItWas(t *testing.T) {
 		t.Errorf("a history of twelve reported %d when nothing was cut", whole)
 	}
 }
+
+/*
+ * Forgetting a name takes the history with it.
+ *
+ * The record holds three things and all three are the same fact from different
+ * angles: that the name has been used, where an operator said it goes, and what
+ * was seen of the people who were in it. Leaving any of them behind is leaving
+ * the name half there — and the addresses are the half that must not outlive
+ * the thing that referred to them.
+ */
+func TestForgettingARoomTakesEverythingWithIt(t *testing.T) {
+	st := open(t)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.PlaceRoom("standup", "shanghai"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.Arrived("standup", "tabcdefghij-1", Arrival{
+		Name: "somebody", Address: "198.51.100.4", At: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// A second room, to catch a prefix walk that takes more than it was asked
+	// for — the arrivals are keyed by name and a careless scan would.
+	if _, err := st.OpenRoom("standup-two", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.Arrived("standup-two", "tabcdefghij-1", Arrival{
+		Name: "somebody", At: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := st.ForgetRoom("standup")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !found {
+		t.Error("forgetting a room that was there reported nothing to forget")
+	}
+
+	if st.Used("standup") {
+		t.Error("the name is still used after being forgotten")
+	}
+
+	if relay, placed := st.HeldOn("standup"); relay != "" || placed {
+		t.Errorf("the placement outlived the name: %q placed=%v — which is the whole reason "+
+			"somebody presses this, since a name nobody can remove keeps a machine assigned "+
+			"to it until it ages out", relay, placed)
+	}
+
+	if visits, _ := st.Visits("standup", 50); len(visits) != 0 {
+		t.Errorf("%d visits outlived the room; the addresses in them are kept for the room's "+
+			"sake and for nothing else", len(visits))
+	}
+
+	// And the room beside it is untouched.
+	if !st.Used("standup-two") {
+		t.Error("forgetting one name forgot another whose name it is a prefix of")
+	}
+
+	if visits, _ := st.Visits("standup-two", 50); len(visits) != 1 {
+		t.Errorf("the neighbour has %d visits, want 1", len(visits))
+	}
+
+	// Asked again, so a page can tell "done" from "that was already not there".
+	if again, err := st.ForgetRoom("standup"); err != nil || again {
+		t.Errorf("forgetting it twice reported %v (err %v), want false", again, err)
+	}
+}

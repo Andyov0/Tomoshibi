@@ -13,6 +13,7 @@ import {
 	Move,
 	Pin,
 	Server,
+	Trash2,
 	UserMinus,
 } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -89,6 +90,18 @@ export function RoomsPanel({
 			}
 		},
 		[refresh],
+	);
+
+	const onForget = useCallback(
+		(name: string) => {
+			void act(async () => {
+				await api.forgetRoom(name);
+
+				// Whatever was open may have been the row that just went.
+				setSelected((was) => (was === name ? undefined : was));
+			});
+		},
+		[act],
 	);
 
 	return (
@@ -176,7 +189,7 @@ export function RoomsPanel({
 					) : (
 						<ul className="max-h-80 overflow-y-auto">
 							{known.map((one) => (
-								<li key={one.name}>
+								<li key={one.name} className="group relative">
 									{/* Opens the same panel a live room opens.
 
 									    It was a plain list item, which made the most
@@ -207,6 +220,17 @@ export function RoomsPanel({
 											{day(one.lastSeen)}
 										</span>
 									</button>
+
+									{/* Beside the row rather than inside it: a button inside
+									    a button is not a thing, and the row is a button
+									    because the whole of it opens the history. */}
+									{canModerate && (
+										<Forget
+											room={one.name}
+											acting={acting}
+											onForget={() => onForget(one.name)}
+										/>
+									)}
 								</li>
 							))}
 						</ul>
@@ -1008,6 +1032,82 @@ function Sending({
 						</button>
 					))}
 				</div>
+			)}
+		</span>
+	);
+}
+
+/**
+ * Removing a name from the list this server has seen.
+ *
+ * Two presses, because it cannot be undone and because it sits in a list people
+ * click through: the row it is on opens a history, and a single-press delete
+ * beside that is one slip away from taking a name and its history with it.
+ *
+ * What it is for is the placement. A name carries where an operator said it
+ * goes and that now stands until somebody says otherwise, so a name used once
+ * for a test keeps a machine assigned to it until it ages out — and until this
+ * existed there was no way to be rid of it but waiting. Clearing the placement
+ * alone is a different control, on the panel the row opens.
+ */
+function Forget({
+	room,
+	acting,
+	onForget,
+}: {
+	room: string;
+	acting: boolean;
+	onForget: () => void;
+}) {
+	const t = useT();
+
+	const [asking, setAsking] = useState(false);
+	const { mounted, leaving } = useLingering(asking, 160);
+
+	return (
+		<span className="-translate-y-1/2 absolute top-1/2 right-2 flex items-center gap-1">
+			{mounted ? (
+				<span
+					className={cn(
+						"flex items-center gap-1 rounded-md bg-surface px-1 py-0.5",
+						leaving ? "animate-depart" : "animate-arrive",
+					)}
+				>
+					<span className="pr-1 text-[11px] text-fg-muted">{t("Forget it?")}</span>
+
+					<button
+						type="button"
+						disabled={acting}
+						onClick={() => {
+							setAsking(false);
+							onForget();
+						}}
+						className={cn(
+							"rounded-md bg-danger px-2 py-0.5 text-[11px] text-danger-fg",
+							"transition-opacity hover:opacity-90 disabled:opacity-40",
+						)}
+					>{t("Forget")}</button>
+
+					<button
+						type="button"
+						onClick={() => setAsking(false)}
+						className="rounded-md border border-border px-2 py-0.5 text-[11px] hover:bg-surface-hi"
+					>{t("Cancel")}</button>
+				</span>
+			) : (
+				/* Quiet until the row is under the pointer, because a column of
+				   crosses down a list reads as a list of things to get rid of. */
+				<button
+					type="button"
+					aria-label={t("Forget {room}", { room })}
+					onClick={() => setAsking(true)}
+					className={cn(
+						"rounded-md p-1 text-fg-muted opacity-0 transition-opacity",
+						"hover:bg-surface-hi hover:text-fg focus-visible:opacity-100 group-hover:opacity-100",
+					)}
+				>
+					<Trash2 className="size-3.5" />
+				</button>
 			)}
 		</span>
 	);

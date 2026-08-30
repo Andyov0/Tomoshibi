@@ -393,6 +393,12 @@ function explain(reason: string | undefined, status: number): string {
 			return t("That is not a stretch of time this server can answer for.");
 		case "no_such_policy":
 			return t("Rooms are opened either by anyone or by administrators, and that was neither.");
+		// Said as a thing to do next rather than as a refusal, because there is
+		// one and it is short: close the room, then forget it.
+		case "room_in_use":
+			return t("Somebody is in that room. Close it first, then forget it.");
+		case "media_server_unreachable":
+			return t("The media servers are not answering, so this could not be checked. Nothing was changed.");
 		case "store_unwritable":
 			return t("The change could not be written down, so nothing was changed.");
 		case "store_unavailable":
@@ -609,6 +615,23 @@ export const api = {
 	 * carries it out, not the call ending. Nothing moves: the meeting in
 	 * progress stays where it is, and this is about where the next one goes.
 	 */
+	/**
+	 * Remove a name and everything written against it.
+	 *
+	 * Distinct from closing a room, which ends a meeting and leaves the name, and
+	 * from freeRoom, which clears where it is held and leaves the name. This is
+	 * for a name that should not be in the list — and the placement is what makes
+	 * that worth doing, since one now stands until somebody says otherwise.
+	 *
+	 * Refused with 409 while somebody is in the room: the record is what says the
+	 * name has been used, and removing it turns the next arrival into somebody
+	 * opening a room that is already full of people.
+	 */
+	forgetRoom: (room: string) =>
+		call<{ room: string; forgotten: boolean }>(`/rooms/${encodeURIComponent(room)}/record`, {
+			method: "DELETE",
+		}),
+
 	freeRoom: (room: string) =>
 		call<{ room: string; relay: string; moved: boolean }>(
 			`/rooms/${encodeURIComponent(room)}/relay`,

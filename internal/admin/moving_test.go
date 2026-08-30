@@ -377,3 +377,18 @@ func TestAMoveThatCannotHoldTheRoomRefuses(t *testing.T) {
 			"that took an afternoon to find the first time")
 	}
 }
+
+// drop sends a DELETE, which place cannot: the method is the difference between
+// closing a room and forgetting one, and a helper that quietly used the wrong
+// one would test the wrong endpoint.
+func drop(t *testing.T, mux http.Handler, cookie, path string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	request := httptest.NewRequest(http.MethodDelete, path, nil)
+	request.Header.Set("Cookie", cookie)
+
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, request)
+
+	return recorder
+}

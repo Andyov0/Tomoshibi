@@ -384,6 +384,7 @@ func (unwritten) HeldOn(string) (string, bool) { return "", false }
 
 func (unwritten) Arrivals(string) map[string]store.Arrival { return nil }
 func (unwritten) Visits(string, int) ([]store.Visit, int)  { return nil, 0 }
+func (unwritten) ForgetRoom(string) (bool, error)          { return true, nil }
 
 // A record of names that keeps the one setting these tests are about.
 type remembers struct {
@@ -682,5 +683,118 @@ func TestTheJoiningPolicyCannotBeLoosenedFromAPage(t *testing.T) {
 			"/api/admin/policy", `{"joinedBy":"`+offered+`"}`); got.Code != http.StatusOK {
 			t.Errorf("setting the joining policy to %q answered %d, want 200", offered, got.Code)
 		}
+	}
+}
+
+// A control that says one room is in progress.
+type holding struct {
+	absent
+}
+
+func (holding) Rooms(context.Context) ([]*livekit.Room, error) {
+	return []*livekit.Room{{Name: "standup", Sid: "RM_1"}}, nil
+}
+
+/*
+ * Tidying the list must not open a door into a meeting.
+ *
+ * The record is what says a name has been used, and the join path reads exactly
+ * that to decide which of the two doors somebody is at. Remove it while a call
+ * is running and the next person to arrive is treated as opening the room —
+ * which on a deployment that lets anybody open a name means letting them in.
+ *
+ * So it refuses, with its own reason, rather than doing half of it or doing it
+ * quietly. The operator can close the room and then forget it, and being told
+ * that is more use than either half happening by itself.
+ */
+func TestForgettingARoomSomebodyIsInIsRefused(t *testing.T) {
+	admin := config.Admin{
+		Trip: room.Trip(key, "moderator"), Name: "adam",
+		Can: []string{config.Observe, config.Moderate},
+	}
+
+	api := &API{
+		conf:     &config.Config{Meet: config.Meet{Admins: []config.Admin{admin}}, LiveKit: livekitDefaults()},
+		sessions: NewSessions(func() []config.Admin { return []config.Admin{admin} }, key),
+		media:    absent{},
+		control:  holding{},
+		log:      NewLog(),
+		store:    unwritten{},
+		history:  NewHistory(nil),
+		stop:     make(chan struct{}),
+	}
+
+	mux := http.NewServeMux()
+	api.Mount(mux)
+
+	_, token, _ := api.sessions.Open("", "moderator")
+
+	busy := drop(t, mux, cookieName+"="+token, "/api/admin/rooms/standup/record")
+
+	if busy.Code != http.StatusConflict {
+		t.Errorf("forgetting a room somebody is in answered %d, want 409: the record is what "+
+			"says the name has been used, and removing it turns the next arrival into "+
+			"somebody opening a room that is already full of people", busy.Code)
+	}
+
+	// And a name nobody is in goes.
+	gone := drop(t, mux, cookieName+"="+token, "/api/admin/rooms/retro/record")
+
+	if gone.Code != http.StatusOK {
+		t.Errorf("forgetting a quiet name answered %d, want 200: %s", gone.Code, gone.Body.String())
+	}
+}
+
+// A control that cannot say what is happening.
+type mute struct {
+	absent
+}
+
+func (mute) Rooms(context.Context) ([]*livekit.Room, error) {
+	return nil, errors.New("the media server did not answer")
+}
+
+/*
+ * A room that cannot be checked is not a room that is free.
+ *
+ * The guard asked the media server whether anybody was in it and carried on
+ * when the asking failed, which turned the guard off rather than the button —
+ * so a media server that would not answer was exactly the moment a name could
+ * be forgotten out from under a call in progress. That the guard had never once
+ * run was invisible until it was pressed against a deployment whose relays do
+ * not implement the question.
+ *
+ * Forgetting a name is housekeeping and is never urgent. Refusing until the
+ * fleet answers costs an operator a retry; the other way costs somebody a door
+ * into their meeting.
+ */
+func TestForgettingARoomThatCannotBeCheckedIsRefused(t *testing.T) {
+	admin := config.Admin{
+		Trip: room.Trip(key, "moderator"), Name: "adam",
+		Can: []string{config.Observe, config.Moderate},
+	}
+
+	api := &API{
+		conf:     &config.Config{Meet: config.Meet{Admins: []config.Admin{admin}}, LiveKit: livekitDefaults()},
+		sessions: NewSessions(func() []config.Admin { return []config.Admin{admin} }, key),
+		media:    absent{},
+		control:  mute{},
+		log:      NewLog(),
+		store:    unwritten{},
+		history:  NewHistory(nil),
+		stop:     make(chan struct{}),
+	}
+
+	mux := http.NewServeMux()
+	api.Mount(mux)
+
+	_, token, _ := api.sessions.Open("", "moderator")
+
+	blind := drop(t, mux, cookieName+"="+token, "/api/admin/rooms/standup/record")
+
+	if blind.Code != http.StatusBadGateway {
+		t.Errorf("forgetting a room while the media servers were unreachable answered %d, "+
+			"want 502: not being able to ask is not the same as the answer being no",
+			blind.Code)
 	}
 }

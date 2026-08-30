@@ -82,6 +82,10 @@ type Names interface {
 	// Visits is every join recorded against a room, newest first, which is a
 	// different question from who is in it now and outlives the call.
 	Visits(room string, limit int) ([]store.Visit, int)
+
+	// ForgetRoom removes a name and everything written against it, which is a
+	// different action from clearing where it is held.
+	ForgetRoom(room string) (bool, error)
 }
 
 // Roster is where the administrators are kept.
@@ -473,6 +477,7 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/rooms/{room}/participants/{identity}/mute", a.moderate(a.muteOne))
 	mux.HandleFunc("PUT /api/admin/rooms/{room}/relay", a.moderate(a.placeRoom))
 	mux.HandleFunc("DELETE /api/admin/rooms/{room}/relay", a.moderate(a.freeRoom))
+	mux.HandleFunc("DELETE /api/admin/rooms/{room}/record", a.moderate(a.forgetRoom))
 	mux.HandleFunc("PUT /api/admin/rooms/{room}/participants/{identity}/relay", a.moderate(a.placePerson))
 }
 
@@ -1408,4 +1413,81 @@ func (a *API) visits(_ Session, w http.ResponseWriter, r *http.Request) {
 	}
 
 	respond(w, answer)
+}
+
+// forgetRoom removes a name from the list of names this server has seen.
+//
+// Its own path rather than the one that closes a room, because they are
+// different things done for different reasons: closing ends a meeting and
+// leaves the name, and this leaves any meeting alone and removes the name. A
+// deployment that used one verb for both would have an operator ending a call
+// while trying to tidy a list.
+//
+// What it is for is the placement. A name carries where an operator said it
+// goes, and that now stands until somebody says otherwise — so a name used once
+// for a test keeps a machine assigned to it until it ages out, and there was no
+// way to be rid of it except waiting. Clearing the placement alone is the other
+// control on this row; this is for a name that should not be in the list at all.
+func (a *API) forgetRoom(session Session, w http.ResponseWriter, r *http.Request) {
+	if a.store == nil {
+		a.detached(w)
+		return
+	}
+
+	name := strings.ToLower(r.PathValue("room"))
+
+	// Not while somebody is in it.
+	//
+	// The record is what says the name has been used, and removing it turns the
+	// room back into a name nobody has opened — so the next person to arrive at
+	// a call that is still running is treated as opening it, and on a deployment
+	// that lets anybody open a name, let in. Tidying a list must not open a door
+	// into a meeting in progress.
+	//
+	// Said as a refusal with its own reason rather than done quietly, because
+	// the operator can close the room first and then do this, and being told
+	// that is more use than either half happening on its own.
+	// And only where that could actually be established.
+	//
+	// The first version asked and carried on when the asking failed, which is
+	// the wrong direction and was invisible: a media server that will not answer
+	// turned the guard off rather than turning the button off, so an outage was
+	// exactly when a name could be forgotten out from under a call in progress.
+	// Caught by pressing it against a deployment whose relays do not implement
+	// the question — the guard had never once run.
+	//
+	// A deployment with no media at all is a different thing and not a failure:
+	// it holds no calls, so there is nothing to be in the way.
+	if a.attached() {
+		live, err := a.control.Rooms(r.Context())
+		if err != nil {
+			slog.Error("failed to check whether a room is in use before forgetting it",
+				"room", name, "error", err)
+			refuse(w, http.StatusBadGateway, "media_server_unreachable")
+			return
+		}
+
+		for _, one := range live {
+			if strings.EqualFold(one.GetName(), name) {
+				refuse(w, http.StatusConflict, "room_in_use")
+				return
+			}
+		}
+	}
+
+	found, err := a.store.ForgetRoom(name)
+	if err != nil {
+		a.record(session, "forget room", name, "", err)
+		refuse(w, http.StatusInternalServerError, "store_unavailable")
+		return
+	}
+
+	if !found {
+		refuse(w, http.StatusNotFound, "no_such_room")
+		return
+	}
+
+	a.record(session, "forget room", name, "", nil)
+
+	respond(w, map[string]any{"room": name, "forgotten": true})
 }

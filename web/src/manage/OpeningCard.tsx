@@ -79,8 +79,16 @@ export function OpeningCard({
 						disabled={!canModerate || saving || !value}
 						onChoose={() => choose("anyone")}
 					/>
+					{/* Named for what it is rather than for what it sounds like.
+					
+					    It was "Users & administrators", which reads as "people with
+					    accounts" and is not what the setting does: it admits
+					    anybody who typed anything into the passphrase box. With
+					    "Accounts only" beside it the two looked like the same
+					    option written twice, and the one that actually asks for an
+					    account was the one that looked redundant. */}
 					<Choice
-						label={t("Users & administrators")}
+						label={t("Anybody with a passphrase")}
 						describes={t(
 							"Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.",
 						)}

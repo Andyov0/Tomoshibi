@@ -50,9 +50,27 @@ const (
 	ByAdmins Opening = "admins"
 )
 
-// Valid reports whether this is one of the four.
+// Valid reports whether this is a setting this server understands.
 func (o Opening) Valid() bool {
 	return o == ByAnyone || o == BySigned || o == ByAccounts || o == ByAdmins
+}
+
+// Offered reports whether this is a setting the management pages put in front
+// of somebody.
+//
+// The two that are not offered both mean "anybody may start a meeting here",
+// and one of them looks as though it does not. ByAnyone says so plainly.
+// BySigned asks for a signature, which is made by typing anything at all into
+// the passphrase box — so as a barrier to starting a meeting it is the same
+// barrier, and sitting between ByAnyone and ByAccounts in a list it reads as a
+// step between them rather than as the other end.
+//
+// They stay settable in a file. A deployment whose identity model is a
+// passphrase and which has no accounts wants BySigned, and one that is open on
+// purpose wants ByAnyone — but both are then a line somebody wrote meaning it,
+// said in the log at every start, rather than the first two options on a page.
+func (o Opening) Offered() bool {
+	return o == ByAccounts || o == ByAdmins
 }
 
 // InEffect resolves a policy against how many administrators there are to

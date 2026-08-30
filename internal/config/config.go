@@ -545,6 +545,16 @@ func Load(path string) (*Config, error) {
 			meet.Rooms.JoinedBy, room.ByInvitation, room.ByAccount, room.ByWhoeverKnows)
 	}
 
+	// Understood, not offered, and said every time. Both mean anybody may start
+	// a meeting on this deployment's machines — "signed" included, since the
+	// signature it asks for is made by typing anything at all.
+	if meet.Rooms.OpenedBy == room.ByAnyone || meet.Rooms.OpenedBy == room.BySigned {
+		slog.Warn("rooms.opened_by lets anybody start a meeting on this deployment: "+
+			"\"signed\" asks for a passphrase and a passphrase is whatever somebody types. "+
+			"The management pages do not offer either; both are set in the configuration file",
+			"setting", meet.Rooms.OpenedBy)
+	}
+
 	if !meet.Rooms.OpenedBy.Valid() {
 		return nil, fmt.Errorf(
 			// All three, because there are three. This listed two and left out

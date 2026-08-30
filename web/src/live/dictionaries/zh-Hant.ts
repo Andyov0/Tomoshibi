@@ -358,6 +358,7 @@ const zhHant: Dictionary = {
 	"Media": "媒體",
 	"Move": "遷移",
 	"Move now, ending this call": "立刻遷移,結束這通通話",
+	"Set in the configuration file to let anybody start a meeting here — \"signed\" included, since a passphrase is whatever somebody types. Change it there.": "設定檔裡設成了「任何人都能開會」——包括 signed,因為口令就是隨便輸的東西。要改請改設定檔。",
 	"Somebody is in that room. Close it first, then forget it.": "這個房間裡有人。先關掉它,再刪記錄。",
 	"The media servers are not answering, so this could not be checked. Nothing was changed.": "媒體伺服器沒有應答,沒法確認房間是否在用,什麼都沒改。",
 	"Forget it?": "刪掉這條?",
@@ -495,8 +496,6 @@ const zhHant: Dictionary = {
 	"Too many attempts. Wait a minute and try again.": "嘗試次數太多,等一分鐘再試。",
 
 	"Signing in…": "登入中…",
-	"Anybody with a link can start one.": "\u4efb\u4f55\u62ff\u5230\u9023\u7d50\u7684\u4eba\u90fd\u80fd\u958b\u3002",
-	"Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.": "\u8a2d\u904e\u5bc6\u8a9e\u7684\u4eba\u90fd\u80fd\u958b\u3002\u5176\u4ed6\u4eba\u4f9d\u7136\u53ef\u4ee5\u52a0\u5165\u5df2\u6709\u9023\u7d50\u7684\u623f\u9593\u3002",
 	"Only administrators can start one. Rooms already in use stay open.": "\u53ea\u6709\u7ba1\u7406\u54e1\u80fd\u958b\u3002\u5df2\u7d93\u5728\u7528\u7684\u623f\u9593\u4e0d\u53d7\u5f71\u97ff\u3002",
 	". This setting wins.": "\u3002\u4ee5\u9019\u88e1\u7684\u8a2d\u5b9a\u70ba\u6e96\u3002",
 	"administrators": "\u7ba1\u7406\u54e1",

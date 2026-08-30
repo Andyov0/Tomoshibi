@@ -358,6 +358,7 @@ const ja: Dictionary = {
 	"Media": "メディア",
 	"Move": "移す",
 	"Move now, ending this call": "今すぐ移す（この通話は終わります）",
+	"Set in the configuration file to let anybody start a meeting here — \"signed\" included, since a passphrase is whatever somebody types. Change it there.": "設定ファイルで誰でも会議を開ける状態です(signed も含む。合言葉は入力するだけのものなので)。変更は設定ファイルで。",
 	"Somebody is in that room. Close it first, then forget it.": "そのルームには人がいます。先に閉じてから削除してください。",
 	"The media servers are not answering, so this could not be checked. Nothing was changed.": "メディアサーバーが応答せず確認できませんでした。何も変更していません。",
 	"Forget it?": "削除しますか?",
@@ -495,8 +496,6 @@ const ja: Dictionary = {
 	"Too many attempts. Wait a minute and try again.": "試行回数が多すぎます。1分ほど待ってからもう一度お試しください。",
 
 	"Signing in…": "サインイン中…",
-	"Anybody with a link can start one.": "\u30ea\u30f3\u30af\u3092\u6301\u3063\u3066\u3044\u308b\u4eba\u306a\u3089\u8ab0\u3067\u3082\u958b\u3051\u307e\u3059\u3002",
-	"Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.": "\u5408\u8a00\u8449\u3092\u8a2d\u5b9a\u3057\u305f\u4eba\u304c\u958b\u3051\u307e\u3059\u3002\u307b\u304b\u306e\u4eba\u3082\u3001\u30ea\u30f3\u30af\u306e\u3042\u308b\u90e8\u5c4b\u306b\u306f\u5165\u308c\u307e\u3059\u3002",
 	"Only administrators can start one. Rooms already in use stay open.": "\u7ba1\u7406\u8005\u3060\u3051\u304c\u958b\u3051\u307e\u3059\u3002\u3059\u3067\u306b\u4f7f\u308f\u308c\u3066\u3044\u308b\u90e8\u5c4b\u306f\u305d\u306e\u307e\u307e\u3067\u3059\u3002",
 	". This setting wins.": "\u3002\u3053\u3061\u3089\u306e\u8a2d\u5b9a\u304c\u512a\u5148\u3055\u308c\u307e\u3059\u3002",
 	"administrators": "\u7ba1\u7406\u8005",

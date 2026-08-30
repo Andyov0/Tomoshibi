@@ -72,38 +72,20 @@ export function OpeningCard({
 				  * question. Each row now carries its own consequence.
 				  */}
 				<div role="radiogroup" aria-label={t("Who can start a new room")} className="flex flex-col">
-					<Choice
-						label={t("Anyone")}
-						describes={t("Anybody with a link can start one.")}
-						chosen={value?.chosen === "anyone"}
-						disabled={!canModerate || saving || !value}
-						onChoose={() => choose("anyone")}
-					/>
-					{/* Named for what it is rather than for what it sounds like.
+					{/* Two, not four.
 					
-					    It was "Users & administrators", which reads as "people with
-					    accounts" and is not what the setting does: it admits
-					    anybody who typed anything into the passphrase box. With
-					    "Accounts only" beside it the two looked like the same
-					    option written twice, and the one that actually asks for an
-					    account was the one that looked redundant. */}
-					<Choice
-						label={t("Anybody with a passphrase")}
-						describes={t(
-							"Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.",
-						)}
-						chosen={value?.chosen === "signed"}
-						disabled={!canModerate || saving || !value}
-						onChoose={() => choose("signed")}
-					/>
-					{/* The setting the one above reads as.
+					    "Anyone" and "Anybody with a passphrase" both mean anybody
+					    may start a meeting on these machines — the second asks for
+					    a signature, and a signature is made by typing anything at
+					    all into the passphrase box. As a barrier it is the same
+					    barrier, and sitting between the other two in a list it read
+					    as a step between them rather than as the other end of the
+					    same thing.
 					
-					    "Users & administrators" is `signed`, and signed there means
-					    a signature — which anybody makes by typing anything into
-					    the passphrase box. So a deployment that had chosen it and
-					    thought about who may start a meeting was still one where a
-					    stranger could start one and use the bandwidth. This is the
-					    one that asks for an account. */}
+					    Both are still settable in the configuration file, by
+					    somebody who meant it and with a line in the log at every
+					    start. That is a different act from pressing the first
+					    option on a page. */}
 					<Choice
 						label={t("Accounts only")}
 						describes={t(
@@ -121,6 +103,18 @@ export function OpeningCard({
 						onChoose={() => choose("admins")}
 					/>
 				</div>
+
+				{/* Where a deployment is on one of the two the pages no longer
+				    offer, said here rather than drawn as a row that appears to be
+				    unselected — which is what every option above would look like,
+				    with nothing explaining why. */}
+				{(value?.chosen === "anyone" || value?.chosen === "signed") && (
+					<p className="text-[11.5px] text-tally leading-relaxed">
+						{t(
+							"Set in the configuration file to let anybody start a meeting here — \"signed\" included, since a passphrase is whatever somebody types. Change it there.",
+						)}
+					</p>
+				)}
 
 				{value && <HowLongItLasts remember={value.remember} />}
 				{value && <WhereItLives policy={value} />}

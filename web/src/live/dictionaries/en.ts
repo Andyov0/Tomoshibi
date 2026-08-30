@@ -389,6 +389,7 @@ const en = {
 	"Media": "Media",
 	"Move": "Move",
 	"Move now, ending this call": "Move now, ending this call",
+	"Set in the configuration file to let anybody start a meeting here — \"signed\" included, since a passphrase is whatever somebody types. Change it there.": "Set in the configuration file to let anybody start a meeting here — \"signed\" included, since a passphrase is whatever somebody types. Change it there.",
 	"Somebody is in that room. Close it first, then forget it.": "Somebody is in that room. Close it first, then forget it.",
 	"The media servers are not answering, so this could not be checked. Nothing was changed.": "The media servers are not answering, so this could not be checked. Nothing was changed.",
 	"Forget it?": "Forget it?",
@@ -526,8 +527,6 @@ const en = {
 	"Too many attempts. Wait a minute and try again.": "Too many attempts. Wait a minute and try again.",
 
 	"Signing in…": "Signing in…",
-	"Anybody with a link can start one.": "Anybody with a link can start one.",
-	"Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.": "Anybody who has set a passphrase can start one. Everybody else can still join a room they have a link to.",
 	"Only administrators can start one. Rooms already in use stay open.": "Only administrators can start one. Rooms already in use stay open.",
 	". This setting wins.": ". This setting wins.",
 	"administrators": "administrators",

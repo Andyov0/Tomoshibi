@@ -659,15 +659,38 @@ func TestTheJoiningPolicyCannotBeLoosenedFromAPage(t *testing.T) {
 		sessions: NewSessions(func() []config.Admin { return []config.Admin{admin} }, key),
 		media:    absent{},
 		log:      NewLog(),
-		store:    unwritten{},
-		history:  NewHistory(nil),
-		stop:     make(chan struct{}),
+		// One that can be written to, because half of this checks that the
+		// settings which are offered still take. unwritten refuses every write
+		// by design and would have passed the refusals and failed the rest.
+		store:   &remembers{},
+		history: NewHistory(nil),
+		stop:    make(chan struct{}),
 	}
 
 	mux := http.NewServeMux()
 	api.Mount(mux)
 
 	_, token, _ := api.sessions.Open("", "moderator")
+
+	// The opening half, which has two of these rather than one. Both let
+	// anybody start a meeting on the deployment's machines, and "signed" is the
+	// one that does not look like it does: the signature it asks for is made by
+	// typing anything at all into the passphrase box, so as a barrier it is the
+	// same barrier as none.
+	for _, open := range []string{"anyone", "signed"} {
+		if got := place(t, mux, cookieName+"="+token,
+			"/api/admin/policy", `{"openedBy":"`+open+`"}`); got.Code != http.StatusBadRequest {
+			t.Errorf("a page set the opening policy to %q and answered %d; nothing on a page "+
+				"may leave this deployment open to whoever finds it", open, got.Code)
+		}
+	}
+
+	for _, open := range []string{"accounts", "admins"} {
+		if got := place(t, mux, cookieName+"="+token,
+			"/api/admin/policy", `{"openedBy":"`+open+`"}`); got.Code != http.StatusOK {
+			t.Errorf("setting the opening policy to %q answered %d, want 200", open, got.Code)
+		}
+	}
 
 	loosen := place(t, mux, cookieName+"="+token, "/api/admin/policy", `{"joinedBy":"anyone"}`)
 

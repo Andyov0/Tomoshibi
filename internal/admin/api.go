@@ -1119,7 +1119,11 @@ func (a *API) setPolicy(session Session, w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if !body.OpenedBy.Valid() {
+	// Offered rather than Valid, for the reason the joining half is: the two
+	// settings that let anybody start a meeting are written in a file by
+	// somebody who meant them, not chosen from a list by whoever has the page
+	// open.
+	if !body.OpenedBy.Offered() {
 		refuse(w, http.StatusBadRequest, "no_such_policy")
 		return
 	}

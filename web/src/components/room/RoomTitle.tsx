@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useLinkWorks } from "@/hooks/useJoining";
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import { type Joining, type Opening, deployment } from "@/live/api";
@@ -58,6 +59,7 @@ export function RoomTitle({
 	const opening = said?.opening ?? "anyone";
 	const joining = said?.joining;
 	const field = useRef<HTMLInputElement>(null);
+	const linkWorks = useLinkWorks();
 
 	// Asked once, here, because this is the only line on the screen it changes.
 	// Starting at the answer every deployment has until somebody changes it, so
@@ -161,15 +163,24 @@ export function RoomTitle({
 						</Button>
 					)}
 
-					<Button
-						variant="ghost"
-						size="icon"
-						className="-mt-0.5 size-7 shrink-0"
-						aria-label={copied ? t("Link copied") : t("Copy link")}
-						onClick={copy}
-					>
-						{copied ? <Check className="size-3.5 text-tally" /> : <Copy className="size-3.5" />}
-					</Button>
+					{/* Only where a plain link is a way in.
+					    Where the door asks for an invitation this button copies
+					    an address that opens for nobody, and somebody who sends
+					    it has invited a person to be turned away — while
+					    believing they invited them. The host panel mints the
+					    thing that does work; this is not a smaller version of
+					    it. */}
+					{linkWorks && (
+						<Button
+							variant="ghost"
+							size="icon"
+							className="-mt-0.5 size-7 shrink-0"
+							aria-label={copied ? t("Link copied") : t("Copy link")}
+							onClick={copy}
+						>
+							{copied ? <Check className="size-3.5 text-tally" /> : <Copy className="size-3.5" />}
+						</Button>
+					)}
 				</div>
 			)}
 

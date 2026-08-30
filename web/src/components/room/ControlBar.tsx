@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useIdle } from "@/hooks/useIdle";
 import { useT } from "@/hooks/useT";
+import type { Placement } from "@/live/controls";
 import { retune, share } from "@/live/room";
 import type { Room } from "livekit-client";
 import { MessageSquare, Mic, MicOff, Video, VideoOff, Volume2 } from "lucide-react";
@@ -34,6 +36,8 @@ export function ControlBar({
 	onListen,
 	onLeave,
 	host,
+	where,
+	onPlace,
 }: {
 	room: Room;
 	/* Raised here and drawn on the tiles, so both come from one place: a
@@ -54,10 +58,33 @@ export function ControlBar({
 	onLeave: () => void;
 	/** Whether this person may end the meeting rather than only leave it. */
 	host: boolean;
+	/** Where these sit, and whether they step aside. See live/controls.ts. */
+	where: Placement;
+	onPlace: (where: Placement) => void;
 }) {
 	const t = useT();
 	const local = useLocalState(room);
 	const [busy, setBusy] = useState(false);
+
+	// Whether the pointer is on these, or somebody is on them with a keyboard.
+	//
+	// Without it the bar disappears out from under a menu somebody has just
+	// opened: nothing here is a quick press, and the device list in particular
+	// is read rather than glanced at. Held rather than done in CSS because a
+	// hidden bar has been translated off the screen, where :hover never fires
+	// again and there is no way back.
+	//
+	// Focus counts only where the browser would draw a focus ring for it.
+	// Focus left behind by a click does not: a dropdown returns focus to its
+	// trigger when it closes, and that trigger is in here — so pressing any
+	// button once pinned the bar open for the rest of the call, which is a
+	// setting that appears to do nothing. Somebody arriving by keyboard is the
+	// case this is for, and that is exactly what :focus-visible means.
+	const [near, setNear] = useState(false);
+
+	const idle = useIdle(where === "idle" && !near);
+	const away = hidden || idle;
+	const side = where === "side";
 
 	// Every toggle is awaited and guarded, because each one asks the browser for
 	// a device and a second click while that prompt is open leaves the button
@@ -93,18 +120,44 @@ export function ControlBar({
 				// happening in it. Floating gives the pictures the whole window
 				// and puts the controls on the same layer as everything else
 				// that appears over them: the panel, the notices, the bubbles.
-				"-translate-x-1/2 absolute left-1/2 z-20 flex items-center gap-1.5",
-				// Clear of the home indicator, which the document asks to draw
-				// under and nothing here was reading. Twenty points from the
-				// bottom of the screen is underneath it on every phone that has
-				// one.
-				"bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))]",
+				"absolute z-20 flex gap-1.5",
 				"rounded-full border border-border bg-surface/90 p-1.5 shadow-2xl backdrop-blur-md",
+				side
+					? // Down the right edge, vertically centred. Costs width,
+						// which a wide window has and a tall one does not.
+						"top-1/2 right-3 -translate-y-1/2 flex-col items-center"
+					: cn(
+							"-translate-x-1/2 left-1/2 items-center",
+							// Clear of the home indicator, which the document asks
+							// to draw under and nothing here was reading. Twenty
+							// points from the bottom of the screen is underneath it
+							// on every phone that has one.
+							"bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))]",
+						),
 				// Steps aside when the stage takes the screen: somebody who asked
-				// for the whole screen asked for the whole screen.
+				// for the whole screen asked for the whole screen. And on the
+				// same path, when the room has been left alone and the choice is
+				// to have these out of the way.
 				"transition-[transform,opacity] duration-200",
-				hidden && "pointer-events-none translate-y-24 opacity-0",
+				away && "pointer-events-none opacity-0",
+				away && (side ? "translate-x-24" : "translate-y-24"),
 			)}
+			onPointerEnter={() => setNear(true)}
+			onPointerLeave={() => setNear(false)}
+			onFocusCapture={(event) => {
+				try {
+					if ((event.target as Element).matches(":focus-visible")) setNear(true);
+				} catch {
+					// A browser without :focus-visible keeps the older behaviour,
+					// which is to stay put while anything here has focus.
+					setNear(true);
+				}
+			}}
+			onBlurCapture={(event) => {
+				// Only when focus has actually left, rather than moved between two
+				// buttons inside.
+				if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setNear(false);
+			}}
 		>
 			<Toggle
 				on={local.microphone}
@@ -167,9 +220,9 @@ export function ControlBar({
 				<Volume2 />
 			</Toggle>
 
-			<DeviceMenu room={room} />
+			<DeviceMenu room={room} where={where} onPlace={onPlace} />
 
-			<span className="mx-1 h-5 w-px bg-border" />
+			<span className={cn("bg-border", side ? "my-1 h-px w-5" : "mx-1 h-5 w-px")} />
 
 			{/* Leaving and, for whoever runs the room, ending it. Together
 			    because they are the same intention at two scales — somebody is

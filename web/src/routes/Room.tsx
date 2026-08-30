@@ -41,6 +41,8 @@ import { type Surface, owner, surfaces } from "@/live/surface";
 import { type Standing, useStanding } from "@/live/host";
 import { useWatchers, useWatching } from "@/live/watching";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
+import { placement, remember as rememberPlacement } from "@/live/controls";
+import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 
 export interface RoomProps {
@@ -64,6 +66,9 @@ export interface RoomProps {
  */
 const CLEAR_OF_CONTROLS = "bottom-[calc(max(1.25rem,env(safe-area-inset-bottom)+0.5rem)+4rem)]";
 
+/** The same room with the controls out of the way at the bottom. */
+const NOTHING_TO_CLEAR = "bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))]";
+
 export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	// Both here, because both are drawn in two places: the bar sends them and
 	// the tiles show them. A reaction is an event, so holding it in each would
@@ -75,6 +80,11 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	// One at a time, because both float over the same corner and the second
 	// would simply be drawn on top of the first.
 	const [panel, setPanel] = useState<"messages" | "sound">();
+
+	// Where the controls sit. Held here rather than read where they are drawn,
+	// because what is drawn around them depends on it: a card that clears the
+	// bottom of the screen has nothing to clear when they are down the side.
+	const [where, setWhere] = useState(placement);
 	const chat = useChat(room, panel === "messages");
 	const screen = useFullscreen<HTMLDivElement>();
 
@@ -124,6 +134,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				screen={screen}
 				onClosePanel={() => setPanel(undefined)}
 				onOpenSound={() => setPanel("sound")}
+				aside={where === "side"}
 			/>
 			<ControlBar
 				room={room}
@@ -138,6 +149,11 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				onListen={() => setPanel(listening ? undefined : "sound")}
 				onLeave={onLeave}
 				host={standing.yours}
+				where={where}
+				onPlace={(chosen) => {
+					setWhere(chosen);
+					rememberPlacement(chosen);
+				}}
 			/>
 			{/* Outside the stage on purpose: what people can hear must not depend
 			    on what the layout happens to be drawing. */}
@@ -157,6 +173,7 @@ function Stage({
 	relay,
 	carrying,
 	standing,
+	aside,
 	onClosePanel,
 	onOpenSound,
 }: {
@@ -169,6 +186,8 @@ function Stage({
 	relay?: string;
 	carrying?: string;
 	standing: Standing;
+	/** The controls are down the side, so nothing has to clear the bottom. */
+	aside: boolean;
 	chat: ReturnType<typeof useChat>;
 	chatting: boolean;
 	listening: boolean;
@@ -426,9 +445,14 @@ function Stage({
 			    link — alone in a room, waiting — had its button covered whole and
 			    unpressable. It was never a phone problem; it was every screen. */}
 			{rest.length === 0 && !pinned && state === ConnectionState.Connected && (
-				<div className={`pointer-events-none absolute inset-x-0 flex justify-center ${CLEAR_OF_CONTROLS}`}>
+				<div
+					className={cn(
+						"pointer-events-none absolute inset-x-0 flex justify-center",
+						aside ? NOTHING_TO_CLEAR : CLEAR_OF_CONTROLS,
+					)}
+				>
 					<div className="pointer-events-auto">
-						<EmptyRoom />
+						<EmptyRoom room={room} host={standing.yours} />
 					</div>
 				</div>
 			)}

@@ -4,6 +4,7 @@ import {
 	ContextMenuItem,
 	ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useLinkWorks } from "@/hooks/useJoining";
 import { useT } from "@/hooks/useT";
 import { Link2 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -23,6 +24,12 @@ import type { ReactNode } from "react";
  */
 export function RoomItems() {
 	const t = useT();
+	const linkWorks = useLinkWorks();
+
+	// Nothing at all where a plain link opens for nobody. See useJoining: an
+	// offer to copy the address reads as an offer to invite somebody, and under
+	// an invitation-only door it is the opposite.
+	if (!linkWorks) return null;
 
 	return (
 		<ContextMenuItem

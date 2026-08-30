@@ -8,6 +8,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useBlur } from "@/hooks/useBlur";
+import type { Placement } from "@/live/controls";
 import { useT } from "@/hooks/useT";
 import { type Room, supportsAudioOutputSelection } from "livekit-client";
 import { ChevronUp, Loader2 } from "lucide-react";
@@ -28,7 +29,11 @@ import { useEffect, useState } from "react";
  * setting, and come back. Offered only where the browser can act on it — Safari
  * cannot, and a control that silently does nothing is worse than its absence.
  */
-export function DeviceMenu({ room }: { room: Room }) {
+export function DeviceMenu({
+	room,
+	where,
+	onPlace,
+}: { room: Room; where: Placement; onPlace: (where: Placement) => void }) {
 	const t = useT();
 	const background = useBlur(room);
 
@@ -55,6 +60,31 @@ export function DeviceMenu({ room }: { room: Room }) {
 				<DropdownMenuSeparator />
 				<DropdownMenuLabel>{t("Camera")}</DropdownMenuLabel>
 				<Devices room={room} kind="videoinput" />
+
+				{/* Where the controls themselves are, which is the one setting in
+				    this menu that is not about a device. It is here because this
+				    is the only menu in the room, and because a control that
+				    covers what somebody is looking at has to be adjustable from
+				    the control itself — anywhere else is a setting nobody finds
+				    while being annoyed by the thing it fixes. */}
+				<DropdownMenuSeparator />
+				<DropdownMenuLabel>{t("Controls")}</DropdownMenuLabel>
+
+				{(
+					[
+						["always", t("Always shown")],
+						["idle", t("Hide when nothing is happening")],
+						["side", t("At the side")],
+					] as const
+				).map(([which, said]) => (
+					<DropdownMenuCheckboxItem
+						key={which}
+						checked={where === which}
+						onCheckedChange={() => onPlace(which)}
+					>
+						{said}
+					</DropdownMenuCheckboxItem>
+				))}
 
 				{/* Under the camera, because it is a property of the picture and
 				    not a thing of its own. Absent entirely where the browser

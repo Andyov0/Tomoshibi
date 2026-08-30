@@ -4,6 +4,11 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Track } from "livekit-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PictureMenu } from "./PictureMenu";
+
+// These are about which menu opens, not about who may join. The item's own gate
+// has its own test in RoomMenu.test.tsx; here the door is open so the item is
+// there to be found.
+vi.mock("@/hooks/useJoining", () => ({ useLinkWorks: () => true, useJoining: () => "anyone" }));
 import { RoomMenu } from "./RoomMenu";
 
 /*

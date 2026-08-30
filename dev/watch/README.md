@@ -75,14 +75,24 @@ A read-only administrator, in `/etc/tomoshibi/watch.env`, mode 600. Nothing here
 changes anything, and a credential on a cron job that could close every meeting
 on the deployment is a credential worth stealing.
 
-It stopped being read-only once, by accident and from the other end: the account
-was given `moderate` because a person needed it for something else, and the cron
-job silently inherited that. Whoever this credential belongs to should belong to
+It stopped being read-only twice, by accident and from the other end: the
+account was given `moderate` because a person needed it for something else, and
+the cron job silently inherited that. The second time went unnoticed for long
+enough that it was found while looking for something else entirely, which is
+what this drift is like — nothing fails, and the only symptom is a credential
+on a timer that can end every meeting on the deployment.
+
+There is a fingerprint worth knowing. `roster` writes either `[observe]` or
+`[observe moderate]` and cannot produce anything else, so an entry reading
+`[moderate]` on its own was not written by it — `PATCH /api/admin/admins/{trip}`
+takes the list verbatim, and that endpoint is the management pages. A capability
+that arrived from a screen is one nobody recorded a reason for. Whoever this credential belongs to should belong to
 nothing else — a second account costs one `roster` line, and sharing one means
 every later change to it arrives here without anybody deciding that it should.
-Checked by trying rather than by reading the roster: signing in works, the three
-reads work, and closing a room, moving one, freeing one and taking a relay out of
-service all answer 403.
+Checked by trying rather than by reading the roster: signing in works, the reads
+work, and the writes answer 403. Point the writes at a name nothing has — a
+check that would take a relay out of service if it were wrong about the
+capability is a check that takes a relay out of service on the day it matters.
 
 `dev/roster` mints one:
 

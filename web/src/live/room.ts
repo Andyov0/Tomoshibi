@@ -9,7 +9,7 @@ import {
 } from "livekit-client";
 import type { Join } from "./api";
 import { installNoValidate } from "./novalidate";
-import { type Uplink, follow } from "./uplink";
+import { type Uplink, follow, settled } from "./uplink";
 import { seal, sealing } from "./secrecy";
 
 /**
@@ -450,7 +450,7 @@ export async function share(
 	wanted: boolean,
 	frameRate: ShareFrameRate,
 	quality: ShareQuality = "auto",
-	hold = true,
+	hold = false,
 ): Promise<LocalTrackPublication | undefined> {
 	const profile = settingsFor(frameRate, quality);
 
@@ -542,21 +542,31 @@ export async function share(
 	following?.stop();
 	following = undefined;
 
-	// Held at the ceiling unless somebody asks for the other thing.
+	// The bitrate follows the line, and the size and the rate do not move.
 	//
-	// Lowering the bitrate to what the line will take is the right answer to a
-	// line that cannot carry the picture, and it is the wrong default here. A
-	// share is looked at rather than glanced at: text that has gone soft is not
-	// a degraded version of the thing being shared, it is a different and
-	// useless thing, and somebody who chose 1440p chose it. The stutter that
-	// comes of holding the ceiling is at least legible between the stutters.
+	// This held at the ceiling for a while, on the argument that somebody who
+	// chose 1440p chose it and soft text is a different and useless thing. The
+	// first half of that is right and is why the size and the rate are pinned.
+	// The second half turned out to be an argument for the wrong thing.
 	//
-	// So the default holds, and giving ground is a choice. That is the same
-	// principle as the size and rate above — every named quality is a person
-	// saying what they want and is sent at the ceiling for it — and this now
-	// follows it rather than quietly undoing it.
+	// Three things can give when the bits run out: how many pixels, how many
+	// frames, and how hard each frame is compressed. degradationPreference
+	// chooses between the first two and has no setting for keeping both — so
+	// the only way to hold the size and the rate is to hand the encoder a
+	// target it can actually meet, which is to say the third.
+	//
+	// Holding the ceiling does not avoid that choice, it makes it badly: the
+	// encoder is told to send more than the line can carry, the excess is lost
+	// rather than compressed, and what arrives is a judder that costs the
+	// sharpness anyway — because a frame that did not arrive is not a sharp
+	// frame. Twenty-two megabits at 1440p120 on a home upload is that, for as
+	// long as the share lasts.
+	//
+	// So it follows. The picture stays the size and the rate that were asked
+	// for; when the line dips the text goes a little softer and comes back,
+	// which is the one of the three costs that is temporary and reversible.
 	if (published && wanted && !hold) {
-		following = follow(published, profile.maxBitrate);
+		following = follow(published, profile.maxBitrate, settled());
 	}
 
 	return published;

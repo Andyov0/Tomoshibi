@@ -212,3 +212,56 @@ describe("stopping", () => {
 		expect(applied).toEqual([]);
 	});
 });
+
+/*
+ * What the line took last time is where the next share starts.
+ *
+ * The ceiling a share opens at comes from its size and rate and knows nothing
+ * about the connection: 1440p at 120 frames asks for twenty-two megabits, and
+ * on a line that carries six the follower needs five halvings to arrive. That
+ * is twenty seconds of loss at the start of every share, every time, for an
+ * answer this line has already given.
+ *
+ * A starting point and not a cap. A line that has improved is found again by
+ * the ordinary easing up; one that has got worse pays the ordinary back-off.
+ */
+describe("a line that has been measured before", () => {
+	it("starts where it left off rather than at the ceiling", async () => {
+		const started = follow(publication(), WANTED, 1_500_000);
+
+		// Straight away, not after the first round: the point is not to spend
+		// four seconds at a number the line has already refused.
+		expect(applied[0]).toBe(1_500_000);
+		expect(started.at()).toBe(1_500_000);
+
+		started.stop();
+	});
+
+	it("never starts above what this picture is worth", async () => {
+		// A big share, then a small one. The remembered number is about the line
+		// and must not become a ceiling the small picture was never asking for.
+		const started = follow(publication(), 800_000, 20_000_000);
+
+		expect(started.at()).toBe(800_000);
+		expect(applied).toEqual([]);
+
+		started.stop();
+	});
+
+	it("still climbs back to what the picture is worth", async () => {
+		stats = [{ qualityLimitationReason: "none", framesSent: 0, nackCount: 0 }];
+
+		const started = follow(publication(), WANTED, 1_500_000);
+
+		// Quiet rounds, which is what earns more.
+		for (let at = 1; at <= 4; at++) {
+			stats = [{ qualityLimitationReason: "none", framesSent: at * 120, nackCount: 0 }];
+			await rounds(1);
+		}
+
+		expect(started.at()).toBeGreaterThan(1_500_000);
+		expect(started.at()).toBeLessThanOrEqual(WANTED);
+
+		started.stop();
+	});
+});

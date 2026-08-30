@@ -67,6 +67,42 @@ const FLOOR = 1_200_000;
 const EASE_UP = 1.125;
 const BACK_OFF = 0.5;
 
+/**
+ * Where this line settled last time, so the next share does not start by
+ * finding out again.
+ *
+ * The ceiling a share opens at is worked out from its size and rate and knows
+ * nothing about the connection — 1440p at 120 frames asks for 22 Mb/s, and on a
+ * line that can carry six the follower needs five halvings to get there. That
+ * is twenty seconds of loss at the start of every single share, every time, for
+ * an answer the line already gave.
+ *
+ * Kept per browser rather than per room, because it is a fact about the line
+ * and not about the meeting. A starting point rather than a cap: the follower
+ * eases back up as usual, so a line that has improved is found out again within
+ * the minute, and one that has got worse costs the ordinary back-off.
+ */
+const SETTLED_KEY = "meet-live.uplink";
+
+/** What the line took last time, or nothing if it has never been measured. */
+export function settled(): number {
+	try {
+		const said = Number(localStorage.getItem(SETTLED_KEY));
+		return Number.isFinite(said) && said > 0 ? said : 0;
+	} catch {
+		return 0;
+	}
+}
+
+function remember(bits: number) {
+	try {
+		localStorage.setItem(SETTLED_KEY, String(Math.round(bits)));
+	} catch {
+		// A browser refusing storage costs the next share its head start and
+		// nothing else.
+	}
+}
+
 export interface Uplink {
 	/** Stop following. */
 	stop: () => void;
@@ -81,10 +117,13 @@ export interface Uplink {
  * lowers a ceiling and gives it back, and does not invent bandwidth somebody
  * did not ask to use.
  */
-export function follow(publication: LocalTrackPublication, wanted: number): Uplink {
+export function follow(publication: LocalTrackPublication, wanted: number, from = 0): Uplink {
 	const track = publication.track as LocalVideoTrack | undefined;
 
-	let ceiling = wanted;
+	// Where the line was last time, never above what this picture is worth.
+	// Somebody sharing a small window after a big one should not open at the
+	// big one's number.
+	let ceiling = from > 0 ? Math.min(wanted, from) : wanted;
 	let quiet = 0;
 	let live = true;
 
@@ -152,6 +191,7 @@ export function follow(publication: LocalTrackPublication, wanted: number): Upli
 			if (lower < ceiling) {
 				ceiling = lower;
 				await apply(ceiling);
+				remember(ceiling);
 			}
 
 			return;
@@ -163,7 +203,13 @@ export function follow(publication: LocalTrackPublication, wanted: number): Upli
 		quiet = 0;
 		ceiling = Math.min(wanted, Math.round(ceiling * EASE_UP));
 		await apply(ceiling);
+		remember(ceiling);
 	};
+
+	// Applied straight away where there is something to apply, because the point
+	// of starting from last time is not to spend the first four seconds at a
+	// number the line has already refused.
+	if (ceiling < wanted) void apply(ceiling);
 
 	const timer = setInterval(() => void look(), EVERY_MS);
 

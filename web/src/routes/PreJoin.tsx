@@ -1,12 +1,14 @@
 import { Identity } from "@/components/room/Identity";
 import { LanguagePicker } from "@/components/room/LanguagePicker";
 import { MicLevel } from "@/components/room/MicLevel";
+import { Knocking } from "@/components/room/Knocking";
 import { RoomTitle } from "@/components/room/RoomTitle";
 import { Sealed } from "@/components/room/Sealed";
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
-import { chosenRelay, deployment, rememberRelay } from "@/live/api";
+import { Refused, chosenRelay, deployment, rememberRelay } from "@/live/api";
+import { keepInvite } from "@/live/account";
 import { devicesAvailable, insecureReason } from "@/live/context";
 import { ServerPicker } from "@/components/room/ServerPicker";
 import { parseName } from "@/live/name";
@@ -261,6 +263,10 @@ function Source() {
 }
 
 function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoinProps) {
+	// Whether the door turned this person away for wanting an invitation, which
+	// is the one refusal there is something to do about from this screen.
+	const [refused, setRefused] = useState(false);
+
 	const t = useT();
 	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
 	const [secret, setSecret] = useState(() => localStorage.getItem(PASSPHRASE_KEY) ?? "");
@@ -414,11 +420,19 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 				relay: as ? as.relay : relay,
 				...devices,
 			});
-		} catch {
+		} catch (whatever) {
 			// Reported by whoever tried, which holds the room object that has to
 			// be torn down and the words for what went wrong. Caught here all the
 			// same, because a rejection nobody catches is a red line in a console
 			// and nothing at all on the screen.
+			//
+			// One of them is answered here rather than only reported: a door that
+			// asks for an invitation is a door somebody can knock on, and the
+			// moment they were turned away is the moment that is worth offering.
+			// Matched on the code rather than the sentence, which is translated.
+			if (whatever instanceof Refused && whatever.reason === "not_invited") {
+				setRefused(true);
+			}
 		} finally {
 			/*
 			 * Put back whether it worked or not, which it was not doing at all.
@@ -554,7 +568,7 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 							</h1>
 						</div>
 					) : (
-						<RoomTitle room={room} onChange={onRoomChange} fixed={guest} />
+						<RoomTitle room={room} onChange={onRoomChange} fixed={guest} invited={guest} />
 					)}
 
 					{/*
@@ -620,6 +634,33 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 					<Button type="submit" variant="primary" size="lg" className="w-full" disabled={!display || joining}>
 						{joining ? t("Joining…") : t("Join")}
 					</Button>
+
+					{/* Only after the door has said so. Most people pressing Join
+					    have a link and never see this; somebody who was turned
+					    away is exactly who it is for, and at that moment it is the
+					    only thing on the screen worth pressing. */}
+					{refused && (
+						<Knocking
+							room={room}
+							name={display}
+							onAdmitted={(invite) => {
+								// Straight in, carrying the invite the answer produced.
+								// There is one way through this door and this is being
+								// handed it, rather than a second.
+								//
+								// Kept and re-submitted rather than written into the
+								// address bar and reloaded. The reload worked and was
+								// wrong: it threw away the name, the devices and the
+								// sealing word, and put somebody who had waited two
+								// minutes back on the form they filled in to press Join
+								// a second time. Everything the join needs is already on
+								// this screen; only the token was missing.
+								keepInvite(invite);
+								setRefused(false);
+								void submit();
+							}}
+						/>
+					)}
 				</form>
 			</div>
 		</Page>

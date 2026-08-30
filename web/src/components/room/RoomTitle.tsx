@@ -37,7 +37,8 @@ export function RoomTitle({
 	room,
 	onChange,
 	fixed = false,
-}: { room: string; onChange: (room: string) => void; fixed?: boolean }) {
+	invited = false,
+}: { room: string; onChange: (room: string) => void; fixed?: boolean; invited?: boolean }) {
 	const t = useT();
 	const [editing, setEditing] = useState(false);
 	const [copied, setCopied] = useState(false);
@@ -186,7 +187,12 @@ export function RoomTitle({
 			    exists", which was true of every deployment until there was a
 			    setting that made it false — and it went on saying so to people
 			    about to be turned away with no idea what would have worked. */}
-			{!said ? null : joining && joining !== "anyone" ? (
+			{/* Not to somebody holding one. The door notice tells a reader to
+			    open the link they were sent, and a person who arrived on that
+			    link was being told to go and do the thing they had just done —
+			    beside the line saying they were invited, so the screen said both
+			    at once and contradicted itself. */}
+			{!said || invited ? null : joining && joining !== "anyone" ? (
 				<p className="text-fg-muted text-xs leading-snug">
 					{joining === "accounts"
 						? t("Sign in to join a room here.")

@@ -180,7 +180,7 @@ export function App() {
 					// moment ago and the devices go back exactly as they were, so
 					// nothing is turned on that was off.
 					if (landing.rejoin) {
-						void onJoin({
+						onJoin({
 							name: rememberedName(),
 							passphrase: "",
 							// Empty, and that is the honest answer.
@@ -194,7 +194,7 @@ export function App() {
 							secret: "",
 							relay: chosenRelay(),
 							...remembered(),
-						});
+						}).catch(unattended);
 					}
 
 					return;
@@ -209,14 +209,14 @@ export function App() {
 				if (landing.at === "ready" && account) {
 					setFront({ at: "ready", me: account, relay: chosenRelay() });
 
-					void onJoin({
+					onJoin({
 						name: account.name,
 						passphrase: "",
 						// See above: a reload cannot recover a word nothing stored.
 						secret: "",
 						relay: chosenRelay(),
 						...remembered(),
-					});
+					}).catch(unattended);
 
 					return;
 				}
@@ -353,10 +353,36 @@ export function App() {
 				setMoving(undefined);
 
 				joinFailed(err instanceof Error ? err.message : String(err));
+
+				// And thrown on, which it was not.
+				//
+				// Saying it is not the same as answering it. The pre-join screen
+				// turns one refusal — a room that asks for an invitation — into
+				// an offer to knock on the door, and it can only do that if the
+				// rejection reaches the button somebody pressed. It never did:
+				// this caught it, said it, and returned normally, so the screen
+				// saw a join that had worked and left nothing to press. The
+				// waiting room was written, wired and dead on arrival for a week
+				// before two browsers found it.
+				//
+				// The message stays here because every caller wants it said and
+				// none of them should have to. Only the answering moves out.
+				throw err;
 			}
 		},
 		[room],
 	);
+
+	/**
+	 * A join the page started by itself, where nobody is waiting on an answer.
+	 *
+	 * Three of them: coming back after a reload, an account walking into its own
+	 * lobby, and the far side of a move. onJoin reports its own failures and
+	 * then rethrows for whoever pressed something; these three pressed nothing,
+	 * so the rejection is discarded here rather than left to surface as a red
+	 * line in a console.
+	 */
+	const unattended = useCallback(() => {}, []);
 
 	const onLeave = useCallback(() => {
 		void current.current?.disconnect();
@@ -498,7 +524,7 @@ export function App() {
 				setLive(undefined);
 				current.current = undefined;
 
-				void onJoin({
+				onJoin({
 					name: front.at === "lobby" || front.at === "ready" ? front.me.name : rememberedName(),
 					// Carried, so somebody comes back as who they were rather than
 					// as a stranger with their name.
@@ -506,7 +532,7 @@ export function App() {
 					secret: sealed.current,
 					relay: "",
 					...remembered(),
-				});
+				}).catch(unattended);
 
 				return;
 			}

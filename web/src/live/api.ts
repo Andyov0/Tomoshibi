@@ -30,6 +30,24 @@ export type Opening = "anyone" | "signed" | "accounts" | "admins";
 /** Who may enter a room that already exists. */
 export type Joining = "anyone" | "invited" | "accounts";
 
+/**
+ * A join the server turned away, carrying why.
+ *
+ * The message is the sentence somebody reads and the reason is the code the
+ * interface acts on — a screen that wants to offer "ask to be let in" after a
+ * refusal has to know it was that refusal, and matching on the sentence would
+ * be matching on a translation.
+ */
+export class Refused extends Error {
+	readonly reason: string;
+
+	constructor(reason: string | undefined, said: string) {
+		super(said);
+		this.name = "Refused";
+		this.reason = reason ?? "";
+	}
+}
+
 /** What the server said about itself. */
 export interface Deployment {
 	openedBy: Opening;
@@ -210,7 +228,7 @@ export async function join(
 			.then((body) => (body as { error?: string }).error)
 			.catch(() => undefined);
 
-		throw new Error(explain(reason, room));
+		throw new Refused(reason, explain(reason, room));
 	}
 
 	const result = (await response.json()) as Join;

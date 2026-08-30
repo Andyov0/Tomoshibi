@@ -1,6 +1,8 @@
 import { Flagged } from "@/components/room/Flag";
 import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
+import { type Door, AtTheDoor, useTheDoor } from "./AtTheDoor";
+import { tokenFor } from "@/live/room";
 import type { Phrase } from "@/live/i18n";
 import {
 	dissolve,
@@ -13,7 +15,7 @@ import {
 	useOthers,
 	type Standing,
 } from "@/live/host";
-import { actionDone, actionFailed } from "@/live/notices";
+import { actionDone, actionFailed, atTheDoor } from "@/live/notices";
 import { cn } from "@/lib/utils";
 import type { Room } from "livekit-client";
 import {
@@ -50,10 +52,12 @@ import { useEffect, useState } from "react";
  * list, where somebody about to use it will read it.
  */
 export function HostPanel({
+	door,
 	room,
 	standing,
 	onClose,
 }: {
+	door: Door;
 	room: Room;
 	standing: Standing;
 	onClose: () => void;
@@ -146,6 +150,11 @@ export function HostPanel({
 					)}
 					{copied ? t("Link copied") : t("Invite somebody")}
 				</button>
+
+				{/* Who is outside, under the control for letting people in — the
+				    two are the same thought, and a knock is only ever answered by
+				    somebody who was already deciding who is in the room. */}
+				<AtTheDoor {...door} />
 
 				{link && (
 					<>
@@ -345,6 +354,26 @@ export function Hosting({ room, standing }: { room: Room; standing: Standing }) 
 	const [open, setOpen] = useState(false);
 	const { mounted, leaving } = useLingering(open);
 
+	// Watched from here rather than from inside the panel, because the panel is
+	// behind this button and is mounted only while it is open. See useTheDoor:
+	// somebody knocked, waited, and gave up, with the host in the call.
+	//
+	// Only for whoever runs the room. Everybody else calls this hook and it does
+	// nothing, which is a hook that has to be called unconditionally rather than
+	// a branch above it.
+	const door = useTheDoor(room.name, tokenFor(room), standing.yours);
+	const waiting = door.waiting.length;
+
+	// Said out loud, and taken back the moment the door is empty. A count on a
+	// small crown in the corner is not something somebody looking at a face
+	// notices, and this is the one thing in the room where nobody noticing means
+	// a person waits outside until they give up.
+	useEffect(() => {
+		if (waiting === 0 || open) return;
+
+		return atTheDoor(waiting, () => setOpen(true));
+	}, [waiting, open]);
+
 	if (!standing.yours) return null;
 
 	return (
@@ -358,14 +387,22 @@ export function Hosting({ room, standing }: { room: Room; standing: Standing }) 
 					"flex items-center gap-1.5 rounded-full bg-surface-hi/90 px-2.5 py-1.5 shadow backdrop-blur",
 					"text-xs transition-colors hover:bg-surface-hi",
 					open && "text-tally",
+					// Coloured rather than only counted: the number is four pixels
+					// tall and the colour is the thing seen out of the corner of an
+					// eye.
+					!open && waiting > 0 && "text-warn",
 				)}
 			>
 				<Crown className="size-3.5" />
+
+				{waiting > 0 && (
+					<span className="readout text-[11px] leading-none">{waiting}</span>
+				)}
 			</button>
 
 			{mounted && (
 				<div className={leaving ? "animate-depart" : undefined}>
-					<HostPanel room={room} standing={standing} onClose={() => setOpen(false)} />
+					<HostPanel door={door} room={room} standing={standing} onClose={() => setOpen(false)} />
 				</div>
 			)}
 		</div>

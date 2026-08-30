@@ -170,3 +170,33 @@ export function audioBlocked(resume: () => void): () => void {
 
 	return () => toast.dismiss(id);
 }
+
+/**
+ * Somebody is waiting to be let in.
+ *
+ * This exists because the panel did not reach anybody. Who is at the door was
+ * drawn inside the crown, which is a panel the host opens when they already
+ * suspect something — so the first time this was tried end to end, a stranger
+ * knocked, waited the full two and a half minutes and gave up, while the host
+ * sat in the call with no indication that anything had happened at all. A
+ * waiting room nobody is told about is a locked door.
+ *
+ * No duration, because it is still true. Somebody is outside until they are
+ * answered or they leave, and a notice that fades after four seconds is one the
+ * host misses by looking at a face. Dismissed by the caller the moment the door
+ * is empty, which is what makes an undismissable notice bearable.
+ *
+ * The action opens the panel rather than admitting anybody. Letting somebody in
+ * is a decision, and one made from a toast is one made without reading the name
+ * or where they came from.
+ */
+export function atTheDoor(waiting: number, open: () => void): () => void {
+	const id = toast(
+		waiting === 1
+			? t("Somebody is waiting to be let in")
+			: t("{count} people are waiting to be let in", { count: String(waiting) }),
+		{ duration: Number.POSITIVE_INFINITY, action: { label: t("Answer"), onClick: open } },
+	);
+
+	return () => toast.dismiss(id);
+}

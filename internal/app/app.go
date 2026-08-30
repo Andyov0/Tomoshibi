@@ -195,6 +195,14 @@ func (a *App) sweep() {
 		slog.Info("swept expired invites", "gone", gone)
 	}
 
+	// On the same timer as the arrivals, because a knock is the shortest-lived
+	// record here and one nobody swept would be a bucket that only grows.
+	if gone, err := a.store.SweepKnocks(now); err != nil {
+		slog.Error("failed to sweep knocks", "error", err)
+	} else if gone > 0 {
+		slog.Info("swept knocks nobody answered", "gone", gone)
+	}
+
 	if gone, err := a.store.SweepArrivals(now, a.conf.Meet.Rooms.Remember); err != nil {
 		slog.Error("failed to sweep the arrivals", "error", err)
 	} else if gone > 0 {
@@ -376,6 +384,7 @@ func (a *App) Handler() http.Handler {
 
 	a.mountHost(mux)
 	a.mountInvites(mux)
+	a.mountKnocks(mux)
 
 	mux.HandleFunc("GET /account", a.ownAccount)
 	mux.HandleFunc("GET /account/", a.ownAccount)

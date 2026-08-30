@@ -64,6 +64,23 @@ export async function signOut(): Promise<void> {
 /** Where a spent invite is kept for this tab, so a reload is not a refusal. */
 export const INVITE_KEY = "meet-live.invite";
 
+/**
+ * Keep an invite this tab was given rather than arrived with.
+ *
+ * Being let in through the waiting room produces one, and the alternative was
+ * to put it in the address bar and reload — which works, and costs the whole
+ * page, and lands somebody who has already waited two minutes back on a form
+ * they have already filled in, to press a button they have already pressed.
+ */
+export function keepInvite(token: string): void {
+	try {
+		sessionStorage.setItem(INVITE_KEY, token);
+	} catch {
+		// A tab that will not keep it can still use it: the join that follows
+		// reads this and then asks the server, and only a reload needs the copy.
+	}
+}
+
 export function inviteToken(): string {
 	const said = new URLSearchParams(window.location.search).get("invite");
 	if (said) return said;

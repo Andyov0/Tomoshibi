@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 import { Refused, chosenRelay, deployment, rememberRelay } from "@/live/api";
 import { keepInvite } from "@/live/account";
+import { blur, possible as blurPossible, remember as rememberBlur, wanted as blurWanted } from "@/live/blur";
 import { devicesAvailable, insecureReason } from "@/live/context";
 import { ServerPicker } from "@/components/room/ServerPicker";
 import { parseName } from "@/live/name";
@@ -16,7 +17,7 @@ import { type Relay as OfferedRelay, relays } from "@/live/relays";
 import { remember } from "@/live/remember";
 import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { cn } from "@/lib/utils";
-import { ArrowLeft, Mic, MicOff, ShieldAlert, UserRound, Video, VideoOff } from "lucide-react";
+import { ArrowLeft, Loader2, Mic, MicOff, ShieldAlert, Sparkles, UserRound, Video, VideoOff } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 /*
@@ -272,6 +273,34 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 	const [secret, setSecret] = useState(() => localStorage.getItem(PASSPHRASE_KEY) ?? "");
 	const [devices, setDevices] = useState(remembered);
 	const [track, setTrack] = useState<LocalVideoTrack>();
+
+	// Whether the preview is blurred, and whether it is busy becoming so. The
+	// first press loads two and a half megabytes of runtime and model, which on
+	// a slow line is several seconds of a button that has to look like it is
+	// doing something.
+	const [blurring, setBlurring] = useState(false);
+	const [blurLoading, setBlurLoading] = useState(false);
+
+	const toggleBlur = async () => {
+		const made = current.current;
+		if (!made) return;
+
+		const wants = !blurring;
+
+		setBlurLoading(true);
+
+		try {
+			const now = await blur(made, wants);
+
+			// What happened rather than what was asked for. A model that would
+			// not load leaves the switch off, which is the truth about the
+			// picture being sent.
+			setBlurring(now);
+			rememberBlur(now);
+		} finally {
+			setBlurLoading(false);
+		}
+	};
 	const [joining, setJoining] = useState(false);
 
 	// Empty means whichever measures fastest, which is what nearly everybody
@@ -325,6 +354,17 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 				}
 				current.current = made;
 				setTrack(made);
+
+				// Where this browser asked for it last time. The preview is the
+				// only chance somebody gets to check what the room will see
+				// before the room sees it, so a preview that ignores the setting
+				// is a preview of the wrong thing.
+				if (blurWanted() && blurPossible()) {
+					setBlurLoading(true);
+					void blur(made, true)
+						.then((worked) => live && setBlurring(worked))
+						.finally(() => live && setBlurLoading(false));
+				}
 			})
 			.catch(() => {
 				// A refused camera is an answer. The switch falls back to off so
@@ -491,6 +531,23 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 							>
 								{devices.camera ? <Video /> : <VideoOff />}
 							</Button>
+
+							{/* Third, and only where the browser can do it. A
+							    switch that says a browser cannot blur is a switch
+							    somebody presses and reads an apology from. */}
+							{blurPossible() && (
+								<Button
+									variant={blurring ? "secondary" : "ghost"}
+									size="round"
+									className="size-9"
+									disabled={!devices.camera || blurLoading}
+									aria-label={blurring ? t("Show my background") : t("Blur my background")}
+									aria-pressed={blurring}
+									onClick={() => void toggleBlur()}
+								>
+									{blurLoading ? <Loader2 className="animate-spin" /> : <Sparkles />}
+								</Button>
+							)}
 						</div>
 					</SelfView>
 

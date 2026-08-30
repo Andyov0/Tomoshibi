@@ -27,6 +27,36 @@ func Web(files fs.FS) http.Handler {
 			name = index
 		}
 
+		// A copy compressed once at build time, where there is one and the
+		// browser will take it.
+		//
+		// This exists for one file. Background blur needs MediaPipe's vision
+		// runtime, which is nine megabytes of WebAssembly, and every way of
+		// getting it is worse than this one: the published copies live on
+		// jsdelivr and on Google's storage, and neither is reachable from
+		// mainland China, which is where most of the people using this are. So
+		// it is served from here, and nine megabytes in the binary is nine
+		// megabytes copied to every relay on every deployment.
+		//
+		// Compressed it is under two. Only the compressed copy is kept, because
+		// keeping both would be four megabytes to save a request from a browser
+		// that predates 2016 — and a browser that old cannot run the blur it
+		// would be downloading. Where one is not accepted the file is simply not
+		// there, which the client already handles: it offers blur only where it
+		// works and says so once when it does not.
+		//
+		// Content-Type comes from the real name rather than the stored one, or
+		// WebAssembly.instantiateStreaming refuses a wasm file served as
+		// application/x-brotli and the failure reads as a corrupt module.
+		if encoded, kind := precompressed(files, name, r.Header.Get("Accept-Encoding")); encoded != nil {
+			w.Header().Set("Content-Encoding", kind)
+			w.Header().Set("Vary", "Accept-Encoding")
+			w.Header().Set("Cache-Control", caching(name))
+			http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(encoded))
+
+			return
+		}
+
 		content, err := fs.ReadFile(files, name)
 		if err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
@@ -57,6 +87,51 @@ func Web(files fs.FS) http.Handler {
 		// files on disk are named after their contents anyway.
 		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(content))
 	})
+}
+
+// precompressed finds a copy of name that was compressed at build time.
+//
+// Brotli only. gzip would be a second stored copy of everything this covers for
+// the sake of browsers that take gzip and not brotli, and that set is empty
+// among browsers that can hold a video call.
+func precompressed(files fs.FS, name, accepts string) (content []byte, kind string) {
+	if !acceptsBrotli(accepts) {
+		return nil, ""
+	}
+
+	content, err := fs.ReadFile(files, name+".br")
+	if err != nil {
+		return nil, ""
+	}
+
+	return content, "br"
+}
+
+// acceptsBrotli reads an Accept-Encoding header for brotli.
+//
+// Split on the comma and compared whole, rather than searched for "br" — every
+// header that mentions "brotli" contains it, and so does every one that
+// mentions a "br"-prefixed anything. A quality of zero is a refusal and is the
+// one q value worth reading: "br;q=0" means the browser is telling us not to,
+// and honouring it costs nothing.
+func acceptsBrotli(accepts string) bool {
+	for _, one := range strings.Split(accepts, ",") {
+		name, rest, _ := strings.Cut(strings.TrimSpace(one), ";")
+		if !strings.EqualFold(strings.TrimSpace(name), "br") {
+			continue
+		}
+
+		for _, parameter := range strings.Split(rest, ";") {
+			key, value, found := strings.Cut(parameter, "=")
+			if found && strings.EqualFold(strings.TrimSpace(key), "q") && strings.TrimSpace(value) == "0" {
+				return false
+			}
+		}
+
+		return true
+	}
+
+	return false
 }
 
 // caching decides how long a file may be kept.

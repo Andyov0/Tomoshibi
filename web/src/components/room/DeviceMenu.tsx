@@ -7,9 +7,10 @@ import {
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useBlur } from "@/hooks/useBlur";
 import { useT } from "@/hooks/useT";
 import { type Room, supportsAudioOutputSelection } from "livekit-client";
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 /**
@@ -29,6 +30,7 @@ import { useEffect, useState } from "react";
  */
 export function DeviceMenu({ room }: { room: Room }) {
 	const t = useT();
+	const background = useBlur(room);
 
 	return (
 		<DropdownMenu>
@@ -53,6 +55,32 @@ export function DeviceMenu({ room }: { room: Room }) {
 				<DropdownMenuSeparator />
 				<DropdownMenuLabel>{t("Camera")}</DropdownMenuLabel>
 				<Devices room={room} kind="videoinput" />
+
+				{/* Under the camera, because it is a property of the picture and
+				    not a thing of its own. Absent entirely where the browser
+				    cannot do it: an option that explains why it does not work is
+				    an option somebody reads once and resents. */}
+				{background.possible && (
+					<>
+						<DropdownMenuSeparator />
+						<DropdownMenuLabel>{t("Background")}</DropdownMenuLabel>
+
+						<DropdownMenuCheckboxItem
+							checked={background.on}
+							disabled={background.busy}
+							onSelect={(event) => {
+								// Kept open. Turning this on takes a moment the first
+								// time — the model has to be fetched — and a menu that
+								// closes over that looks like a press that did nothing.
+								event.preventDefault();
+							}}
+							onCheckedChange={() => void background.toggle()}
+						>
+							{background.busy && <Loader2 className="mr-1.5 size-3.5 animate-spin" />}
+							{background.on ? t("Blurred") : t("Not blurred")}
+						</DropdownMenuCheckboxItem>
+					</>
+				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

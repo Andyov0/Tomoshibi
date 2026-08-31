@@ -113,3 +113,33 @@ describe("every animation a class asks for", () => {
 		).toEqual([]);
 	});
 });
+
+/*
+That the controls, when they are down the side, have the side to themselves.
+
+Five things float at the right of a room — the paging arrows, the reaction
+bubbles, the messages card, the sound panel, and the list of who has a share
+open — and every one of them was written at right-3 by somebody who did not know
+the control island could be moved there. Choosing the side put the bar through
+all five. Measured before the fix: the messages card ran from y 472 to 888 and
+the bar from 253 to 648, so the card covered the lower half of the controls,
+leaving included.
+
+One margin fixes all five, because they are all positioned against the same
+element. That is also what makes it worth a test: five components depend on one
+line in a sixth, none of them mentions it, and deleting it breaks nothing that
+any of them can see. The failure is a button underneath a card.
+*/
+describe("the controls' lane", () => {
+	it("is reserved by the stage rather than by the things that would sit in it", () => {
+		const room = code.find(({ path }) => path.endsWith("routes/Room.tsx"));
+
+		expect(room, "Room.tsx has moved").toBeTruthy();
+
+		expect(
+			/aside && "mr-\[/.test(room?.text ?? ""),
+			"the stage no longer gives up a margin when the controls are down the side, so " +
+				"everything anchored to the right edge is drawing on top of them again",
+		).toBe(true);
+	});
+});

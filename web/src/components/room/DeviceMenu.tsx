@@ -8,6 +8,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useBlur } from "@/hooks/useBlur";
+import { warm } from "@/live/blur";
 import type { Placement } from "@/live/controls";
 import { useT } from "@/hooks/useT";
 import { type Room, supportsAudioOutputSelection } from "livekit-client";
@@ -38,7 +39,14 @@ export function DeviceMenu({
 	const background = useBlur(room);
 
 	return (
-		<DropdownMenu>
+		<DropdownMenu
+			// Opening this is the first moment anybody is plausibly about to
+			// blur, and the last moment the runtime can be fetched without the
+			// press waiting on it. Free for everybody who never opens it.
+			onOpenChange={(open) => {
+				if (open && background.possible) void warm();
+			}}
+		>
 			<DropdownMenuTrigger asChild>
 				<Button variant="ghost" size="round" aria-label={t("Devices")}>
 					<ChevronUp />

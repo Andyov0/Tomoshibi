@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useIdle } from "@/hooks/useIdle";
+import { useRoomForSide } from "@/hooks/useRoomFor";
 import { useT } from "@/hooks/useT";
 import type { Placement } from "@/live/controls";
 import { retune, share } from "@/live/room";
@@ -84,7 +85,16 @@ export function ControlBar({
 
 	const idle = useIdle(where === "idle" && !near);
 	const away = hidden || idle;
-	const side = where === "side";
+	// Asked unconditionally and combined after, not `where === "side" && …`.
+	// That reads well and is a hook behind a short circuit: the moment somebody
+	// changes the setting the hook order changes with it, and React tears the
+	// room down rather than moving a button.
+	const roomy = useRoomForSide();
+
+	// Down the side only where the window is tall enough to hold a column. See
+	// useRoomForSide: at a phone's landscape height the ends of the bar are off
+	// the screen and cannot be pressed.
+	const side = where === "side" && roomy;
 
 	// Every toggle is awaited and guarded, because each one asks the browser for
 	// a device and a second click while that prompt is open leaves the button

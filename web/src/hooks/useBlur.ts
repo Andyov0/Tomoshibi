@@ -49,11 +49,17 @@ export function useBlur(room: Room) {
 	 */
 	const applying = useRef(false);
 
-	// Fetched as soon as somebody is in a call, so the switch never has to.
-	// See warm(): a processor installed while its runtime is still arriving
-	// draws nothing at all, and the wait is the whole of the difference.
+	// Fetched for somebody who already blurs, and for nobody else.
+	//
+	// This used to run on every call. It is two and a half megabytes, and on the
+	// connections most of the people here are on that is a real cost, charged to
+	// everybody for a feature most of them never turn on — a head start bought
+	// with somebody else's data. The switch is not what needs the runtime to
+	// have arrived: the republish above is what makes a cold install safe. So
+	// the fetch is for the person whose next call will use it anyway, and the
+	// menu asks for it when somebody opens the menu.
 	useEffect(() => {
-		void warm();
+		if (wanted()) void warm();
 	}, []);
 
 	const camera = useCallback(

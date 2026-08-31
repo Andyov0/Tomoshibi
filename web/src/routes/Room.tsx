@@ -41,6 +41,7 @@ import { type Surface, owner, surfaces } from "@/live/surface";
 import { type Standing, useStanding } from "@/live/host";
 import { useWatchers, useWatching } from "@/live/watching";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
+import { useRoomForSide } from "@/hooks/useRoomFor";
 import { placement, remember as rememberPlacement } from "@/live/controls";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
@@ -85,6 +86,16 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	// because what is drawn around them depends on it: a card that clears the
 	// bottom of the screen has nothing to clear when they are down the side.
 	const [where, setWhere] = useState(placement);
+
+	// What the rest of the room has to work around. The same condition the bar
+	// itself uses, because a panel that moves aside for a bar that stayed at the
+	// bottom is a gap for nothing.
+	//
+	// The hook is called on its own line rather than after a short circuit: put
+	// behind one, it stops being called the moment the setting is anything else,
+	// and a hook that comes and goes takes the room down with it.
+	const roomy = useRoomForSide();
+	const aside = where === "side" && roomy;
 	const chat = useChat(room, panel === "messages");
 	const screen = useFullscreen<HTMLDivElement>();
 
@@ -134,7 +145,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				screen={screen}
 				onClosePanel={() => setPanel(undefined)}
 				onOpenSound={() => setPanel("sound")}
-				aside={where === "side"}
+				aside={aside}
 			/>
 			<ControlBar
 				room={room}
@@ -362,7 +373,32 @@ function Stage({
 	};
 
 	return (
-		<main className="relative h-full">
+		<main
+			className={cn(
+				"relative h-full",
+				/*
+				 * A lane for the controls, and the reason nothing else has to
+				 * know about them.
+				 *
+				 * Everything that floats at the right of a room is positioned
+				 * against this element: the paging arrows, the reaction bubbles,
+				 * the messages card, the sound panel, the list of who has a share
+				 * open. All five were written to sit at right-3, none of them
+				 * knew the controls could be moved there, and choosing the side
+				 * put the bar through every one of them — the messages card
+				 * covered the lower half of it, leaving included, as soon as
+				 * anybody said anything.
+				 *
+				 * Threading a flag into five components would fix it five times
+				 * and leave the sixth to be written wrong. A margin here narrows
+				 * the box they are all measured against, so the lane belongs to
+				 * the bar and nothing inside can reach into it — including the
+				 * pictures, which is right: a room with a strip of controls down
+				 * the side is a narrower room.
+				 */
+				aside && "mr-[5.75rem]",
+			)}
+		>
 			{/* Top left, out of the way of the room's own name in the middle and of
 			    anything a menu opens on the right. Pointer events off on the frame so
 			    it never eats a click meant for a picture underneath. */}

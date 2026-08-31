@@ -19,14 +19,24 @@ export type AtTheDoor = "knocking" | "admitted" | "refused";
 export const ASK_EVERY = 3000;
 
 /**
- * How long to keep asking.
+ * A backstop, and nothing more.
  *
- * Somebody waits at a door for a couple of minutes. Past that the honest thing
- * is to stop and say so, rather than leave a page spinning at somebody who has
- * already gone to look for the link themselves — and the knock on the server
- * has expired by then anyway.
+ * What ends the waiting is the door: a knock the server has stopped holding
+ * answers "refused", which is the same thing from out here as being turned
+ * away, and the poll stops on it. So this is not the length of the wait — it is
+ * the length of time a browser goes on asking a server that never answers at
+ * all, which is the only case the door cannot end.
+ *
+ * It used to be the wait itself, at two and a half minutes against the five the
+ * server holds a knock for. Between those two numbers the host still saw
+ * somebody at the door and could still let them in, and the person had stopped
+ * listening — so the admission worked, the invitation was minted, and nobody
+ * arrived. From inside it read as somebody being let in and not coming.
+ *
+ * Twice the longest the server will hold anything, so it can only ever be the
+ * dead-network case rather than a second opinion about who is still waiting.
  */
-export const WAIT_FOR = 150_000;
+export const GIVE_UP_AFTER = 600_000;
 
 async function ask<T>(path: string, init?: RequestInit): Promise<T> {
 	const response = await fetch(path, {

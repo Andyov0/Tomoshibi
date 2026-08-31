@@ -1,6 +1,6 @@
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
-import { ASK_EVERY, WAIT_FOR, atTheDoor, knock } from "@/live/knock";
+import { ASK_EVERY, GIVE_UP_AFTER, atTheDoor, knock } from "@/live/knock";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -56,7 +56,9 @@ export function Knocking({
 		if (!asking) return;
 
 		let live = true;
-		const until = Date.now() + WAIT_FOR;
+		// The door decides when this is over, not a clock out here. See
+		// GIVE_UP_AFTER: this one is only for a server that never answers.
+		const until = Date.now() + GIVE_UP_AFTER;
 
 		const look = async () => {
 			if (!live || !token.current) return;

@@ -6,6 +6,7 @@ import { chosenRelay, leftRoom, rememberRelay, wasIn } from "@/live/api";
 import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { connect, create } from "@/live/room";
+import { forgetMeeting, keepMeeting, meetingToken } from "@/live/meeting";
 import { useT } from "@/hooks/useT";
 import { joinFailed } from "@/live/notices";
 import { Lobby, SignIn } from "@/routes/Lobby";
@@ -69,6 +70,8 @@ type Front =
 	| { at: "lobby"; me: Me }
 	| { at: "ready"; me: Me; relay: string }
 	| { at: "invited"; room: string }
+	/** Waiting on a meeting somebody arranged; `me` where the person is signed in. */
+	| { at: "arranged"; token: string; me?: Me }
 	| { at: "done" };
 
 export function App() {
@@ -128,6 +131,7 @@ export function App() {
 		let live = true;
 
 		const token = inviteToken();
+		const meeting = meetingToken();
 
 		void Promise.all([deployment(), whoAmI(), token ? invited(token) : undefined]).then(
 			([said, account, invitation]) => {
@@ -169,6 +173,7 @@ export function App() {
 					address: initialRoom(),
 					wasIn: wasIn(),
 					account: Boolean(account),
+					meeting: meeting || undefined,
 					opening: said.openedBy,
 				});
 
@@ -218,6 +223,15 @@ export function App() {
 						...remembered(),
 					}).catch(unattended);
 
+					return;
+				}
+
+				if (landing.at === "arranged") {
+					// Kept for the tab and taken out of the address bar, for the
+					// reason ?invite= is: it is a day's entry once the meeting
+					// begins, and people share their screens.
+					keepMeeting(landing.token);
+					setFront({ at: "arranged", token: landing.token, me: account ?? undefined });
 					return;
 				}
 
@@ -404,6 +418,11 @@ export function App() {
 		// can usefully do here.
 		setFront((was) => {
 			if (was.at === "invited") return { at: "done" };
+			if (was.at === "arranged") {
+				forgetMeeting();
+				window.history.replaceState(null, "", window.location.pathname);
+				return was.me ? { at: "lobby", me: was.me } : { at: "done" };
+			}
 
 			// And back to the lobby rather than to the device screen, which is a
 			// page for a room they have just left. The address goes with them,
@@ -682,7 +701,17 @@ export function App() {
 			// to need one. Showing the field would be showing them a question
 			// they cannot answer, next to a name they did choose.
 			guest={front.at === "invited"}
-			as={front.at === "ready" ? { name: front.me.name, relay: front.relay } : undefined}
+			arranged={front.at === "arranged" ? { token: front.token, me: front.me } : undefined}
+			as={
+				front.at === "ready"
+					? { name: front.me.name, relay: front.relay }
+					: // A signed-in host on their own meeting link joins as themselves.
+						// Their relay is whatever they arranged; the server places the
+						// room there whatever is sent, so the picker is not offered.
+						front.at === "arranged" && front.me
+						? { name: front.me.name, relay: chosenRelay() }
+						: undefined
+			}
 			onBack={
 				front.at === "ready"
 					? () => {

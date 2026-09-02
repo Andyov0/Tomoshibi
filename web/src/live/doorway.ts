@@ -41,6 +41,8 @@ export type Arriving = {
 	wasIn: string;
 	/** Whether somebody is signed in. */
 	account: boolean;
+	/** The token of an arranged meeting the address carried, if any. */
+	meeting?: string;
 	opening: Opening;
 };
 
@@ -55,6 +57,8 @@ export type Landing =
 	| { at: "open" }
 	/** The join screen, on a name minted for the occasion. */
 	| { at: "open"; mint: true }
+	/** The join screen, waiting on a meeting somebody arranged. */
+	| { at: "arranged"; token: string }
 	| { at: "lobby" }
 	| { at: "sign in" };
 
@@ -81,6 +85,25 @@ export function doorway(arriving: Arriving): Landing {
 	// Back into the call rather than to the screen in front of it. They were on
 	// the microphone a second ago; the surprising thing is not it carrying on,
 	// it is a call that stops because a page was reloaded.
+	/*
+	 * A meeting link, after an invitation and after a call this tab was in,
+	 * and before anything that would join straight away.
+	 *
+	 * After the invitation, because a person holding both has already been let
+	 * in once and the invitation is the shorter way back. After the call this
+	 * tab was in, because the token is kept for the tab: a reload during the
+	 * meeting would otherwise land on the waiting screen and ask the host to
+	 * start a meeting they are already in.
+	 *
+	 * Before the signed-in rule, and this is the one that matters: a host who
+	 * opens their own link is signed in and on the room's address, and the rule
+	 * below would walk them straight into the room — which begins the meeting
+	 * with no moment to see that that is what pressing Join now means.
+	 */
+	if (arriving.meeting) {
+		return { at: "arranged", token: arriving.meeting };
+	}
+
 	if (arriving.account && arriving.address) {
 		return { at: "ready", rejoin: true };
 	}

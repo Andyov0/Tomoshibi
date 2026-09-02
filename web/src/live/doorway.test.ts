@@ -99,3 +99,48 @@ describe("a bare address", () => {
 		expect(doorway(arriving({ account: true, opening }))).toEqual({ at: "lobby" });
 	});
 });
+
+/*
+ * A meeting link, and where it ranks.
+ *
+ * Three things could be true of somebody arriving with one, and each has a
+ * different right answer. Holding an invitation as well: the invitation, which
+ * is the shorter way back for somebody already let in once. Reloading during the
+ * call: back into the call, not onto a waiting screen asking the host to start
+ * what they are in. And signed in on the room's own address, which is exactly
+ * what the host opening their own link looks like: the waiting screen, so that
+ * the press that begins the meeting is a press and not an arrival.
+ */
+describe("a meeting link", () => {
+	it("lands on the waiting screen", () => {
+		expect(doorway(arriving({ meeting: "tok", address: "standup" }))).toEqual({
+			at: "arranged",
+			token: "tok",
+		});
+	});
+
+	it("gives way to an invitation already held", () => {
+		expect(doorway(arriving({ meeting: "tok", invitation: "standup", address: "standup" }))).toEqual({
+			at: "invited",
+			room: "standup",
+			rejoin: false,
+		});
+	});
+
+	it("gives way to the call this tab was in", () => {
+		expect(doorway(arriving({ meeting: "tok", address: "standup", wasIn: "standup" }))).toEqual({
+			at: "invited",
+			room: "standup",
+			rejoin: true,
+		});
+	});
+
+	it("wins over being signed in on the room, which is the host opening their own link", () => {
+		for (const opening of settings) {
+			expect(doorway(arriving({ meeting: "tok", address: "standup", account: true, opening }))).toEqual({
+				at: "arranged",
+				token: "tok",
+			});
+		}
+	});
+});

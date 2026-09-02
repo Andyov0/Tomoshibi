@@ -296,3 +296,21 @@ func (s *Store) SweepInvites(now time.Time) (gone int, err error) {
 
 	return gone, err
 }
+
+/*
+DropInvite withdraws one invitation by its token.
+
+DropInvites takes every invitation to a room, which is right for a room being
+closed and wrong for a meeting being cancelled: the host may have made others
+on purpose, and cancelling one arrangement is not closing the room.
+*/
+func (s *Store) DropInvite(token string) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(invites)
+		if bucket == nil {
+			return nil
+		}
+
+		return bucket.Delete(held(token))
+	})
+}

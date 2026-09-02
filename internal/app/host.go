@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/livekit/protocol/auth"
 
@@ -426,6 +427,12 @@ func (a *App) dissolve(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.store.ReleaseRoom(name); err != nil {
 		slog.Error("failed to release a closed room", "room", name, "error", err)
+	}
+
+	// The meeting arranged here, if there was one, is over: a link opened
+	// tomorrow should say so rather than hand out the invitation just dropped.
+	if err := a.store.End(name, time.Now().UTC()); err != nil {
+		slog.Error("failed to end a closed room's arranged meeting", "room", name, "error", err)
 	}
 
 	if err := a.acting(r, func(control admin.Control) error {

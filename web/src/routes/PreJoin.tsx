@@ -2,13 +2,14 @@ import { Identity } from "@/components/room/Identity";
 import { LanguagePicker } from "@/components/room/LanguagePicker";
 import { MicLevel } from "@/components/room/MicLevel";
 import { Knocking } from "@/components/room/Knocking";
+import { Waiting } from "@/components/room/Waiting";
 import { RoomTitle } from "@/components/room/RoomTitle";
 import { Sealed } from "@/components/room/Sealed";
 import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 import { Refused, chosenRelay, deployment, rememberRelay } from "@/live/api";
-import { keepInvite } from "@/live/account";
+import { type Me, keepInvite } from "@/live/account";
 import { blur, possible as blurPossible, remember as rememberBlur, wanted as blurWanted } from "@/live/blur";
 import { devicesAvailable, insecureReason } from "@/live/context";
 import { ServerPicker } from "@/components/room/ServerPicker";
@@ -127,6 +128,8 @@ export interface PreJoinProps {
 	 * invitation.
 	 */
 	guest?: boolean;
+	/** Arrived on a meeting link: wait for it to begin rather than join. */
+	arranged?: { token: string; me?: Me };
 	/**
 	 * Somebody already signed in, and the machine they chose in the lobby.
 	 *
@@ -141,7 +144,7 @@ export interface PreJoinProps {
 	onBack?: () => void;
 }
 
-export function PreJoin({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoinProps) {
+export function PreJoin({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged }: PreJoinProps) {
 	// Checked before anything reaches for a device, so the page explains why it
 	// cannot rather than failing on a property that is simply not there.
 	if (!devicesAvailable()) {
@@ -156,6 +159,7 @@ export function PreJoin({ room, onRoomChange, onJoin, guest = false, as, onBack 
 			guest={guest}
 			as={as}
 			onBack={onBack}
+			arranged={arranged}
 		/>
 	);
 }
@@ -263,7 +267,7 @@ function Source() {
 	);
 }
 
-function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoinProps) {
+function Form({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged }: PreJoinProps) {
 	// Whether the door turned this person away for wanting an invitation, which
 	// is the one refusal there is something to do about from this screen.
 	const [refused, setRefused] = useState(false);
@@ -625,7 +629,12 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 							</h1>
 						</div>
 					) : (
-						<RoomTitle room={room} onChange={onRoomChange} fixed={guest} invited={guest} />
+						<RoomTitle
+							room={room}
+							onChange={onRoomChange}
+							fixed={guest || arranged !== undefined}
+							invited={guest || arranged !== undefined}
+						/>
 					)}
 
 					{/*
@@ -688,9 +697,30 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack }: PreJoin
 						/>
 					)}
 
-					<Button type="submit" variant="primary" size="lg" className="w-full" disabled={!display || joining}>
-						{joining ? t("Joining…") : t("Join")}
-					</Button>
+					{/* On a meeting link the button waits for the meeting, and the
+					    join happens when it begins — carrying the invitation the meeting
+					    produced, through the same path an admission from the waiting room
+					    takes. See Waiting for why nothing is asked until this is pressed. */}
+					{arranged ? (
+						<Waiting
+							token={arranged.token}
+							name={display}
+							onArranged={(said) => {
+								// The room is what the server says it is, not what the hash says.
+								if (said.room && said.room !== room) onRoomChange(said.room);
+							}}
+							onGo={(invite) => {
+								keepInvite(invite);
+								setRefused(false);
+								void submit();
+							}}
+							onStart={() => void submit()}
+						/>
+					) : (
+						<Button type="submit" variant="primary" size="lg" className="w-full" disabled={!display || joining}>
+							{joining ? t("Joining…") : t("Join")}
+						</Button>
+					)}
 
 					{/* Only after the door has said so. Most people pressing Join
 					    have a link and never see this; somebody who was turned

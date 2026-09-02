@@ -203,6 +203,12 @@ func (a *App) sweep() {
 		slog.Info("swept knocks nobody answered", "gone", gone)
 	}
 
+	if gone, err := a.store.SweepMeetings(now); err != nil {
+		slog.Error("failed to sweep arranged meetings", "error", err)
+	} else if gone > 0 {
+		slog.Info("swept arranged meetings nobody can still be waiting for", "gone", gone)
+	}
+
 	if gone, err := a.store.SweepArrivals(now, a.conf.Meet.Rooms.Remember); err != nil {
 		slog.Error("failed to sweep the arrivals", "error", err)
 	} else if gone > 0 {
@@ -385,6 +391,7 @@ func (a *App) Handler() http.Handler {
 	a.mountHost(mux)
 	a.mountInvites(mux)
 	a.mountKnocks(mux)
+	a.mountMeetings(mux)
 
 	mux.HandleFunc("GET /account", a.ownAccount)
 	mux.HandleFunc("GET /account/", a.ownAccount)
@@ -784,6 +791,17 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// about a dead one.
 	held, placed := a.store.HeldOn(name)
 
+	// A host walking into a meeting they arranged goes where they said it would
+	// be held, and that is read as a deliberate placement so the branch below
+	// treats it exactly as one made from the management pages. Written down as
+	// such the moment the meeting begins; this is only for the join that begins
+	// it, which has nothing written down yet. See beginArranged.
+	if held == "" {
+		if there, ok := a.arrangedPlacement(name, grant, time.Now().UTC()); ok {
+			held, placed = there, true
+		}
+	}
+
 	// An instruction is carried out; a guess is checked first.
 	//
 	// Moving a room ends the call that is being moved, so at the moment the note
@@ -915,6 +933,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// fault this guards against, and it would be invisible until somebody used
 	// it.
 	a.hostOnOpening(name, grant)
+	a.beginArranged(name, grant, holding)
 
 	// Written down because nothing else will know it.
 	//

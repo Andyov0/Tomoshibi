@@ -1,5 +1,4 @@
-import { Refused } from "@/live/api";
-import { type Arrangement, arrange, arrangements, cancel, linkFor, whenSaid } from "@/live/meeting";
+import { Schedule } from "@/components/lobby/Schedule";
 import { LanguagePicker } from "@/components/room/LanguagePicker";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
@@ -8,7 +7,7 @@ import { signIn, signOut } from "@/live/account";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { actionFailed } from "@/live/notices";
 import { cn } from "@/lib/utils";
-import { ArrowRight, CalendarClock, Check, Copy, Eye, EyeOff, KeyRound, Loader2, LogOut, Plus, Shield, UserRound, X } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, KeyRound, Loader2, LogOut, Plus, Shield, UserRound } from "lucide-react";
 import { ServerList } from "@/components/room/ServerPicker";
 import { meeting } from "@/live/account";
 import { type Relay, relays } from "@/live/relays";
@@ -349,31 +348,6 @@ export function SignIn({ onSignedIn }: { onSignedIn: (me: Me) => void }) {
 }
 
 /** Say what you want. */
-function explainArranging(whatever: unknown, t: ReturnType<typeof useT>): string {
-	const reason = whatever instanceof Refused ? whatever.reason : "";
-
-	switch (reason) {
-		case "room_already_arranged":
-			return t("That room already has a meeting arranged.");
-		case "bad_time":
-			return t("That time is not one a meeting can be arranged for.");
-		case "meetings_need_invites":
-			return t("Meetings here ask for an account, so a link cannot let anybody in.");
-		case "not_yours":
-			return t("That is somebody else's room.");
-		case "too_many_meetings":
-			return t("You have as many meetings arranged as you can have.");
-		case "invalid_room":
-			return t("Room names can only use lowercase letters, numbers and dashes.");
-		case "relay_not_allowed":
-			return t("Access denied. That server is for administrators.");
-		case "not_signed_in":
-			return t("Your session has expired. Sign in again.");
-		default:
-			return t("Something went wrong. Try again.");
-	}
-}
-
 export function Lobby({
 	me,
 	onOpen,
@@ -393,83 +367,9 @@ export function Lobby({
 	// have, and where it is held is part of that.
 	const [servers, setServers] = useState<Relay[]>([]);
 	const [server, setServer] = useState("");
+	// While the schedule card is open it shows the server list itself.
+	const [scheduling, setScheduling] = useState(false);
 
-	// Arranging one ahead of time. The room name and the server are the same
-	// two questions the forms above ask; the third is when.
-	const [planning, setPlanning] = useState("");
-	const [when, setWhen] = useState("");
-	const [arranging, setArranging] = useState(false);
-	const [mine, setMine] = useState<Arrangement[]>([]);
-	const [copied, setCopied] = useState<string>();
-
-	useEffect(() => {
-		void arrangements()
-			.then(setMine)
-			.catch(() => {
-				// A list that could not be read is an empty list, not an error
-				// worth a notice: the forms above still work.
-			});
-	}, []);
-
-	useEffect(() => {
-		if (!copied) return;
-		const timer = setTimeout(() => setCopied(undefined), 1600);
-		return () => clearTimeout(timer);
-	}, [copied]);
-
-	const plan = async () => {
-		if (arranging) return;
-
-		const room = validRoomName(normaliseRoomName(planning)) ? normaliseRoomName(planning) : generateRoomName();
-		const at = new Date(when);
-		if (Number.isNaN(at.getTime())) return;
-
-		setArranging(true);
-
-		try {
-			const made = await arrange(room, at, server);
-			setMine((was) => [...was, made].sort((a, b) => a.at.localeCompare(b.at)));
-			setPlanning("");
-			setWhen("");
-
-			// Straight onto the clipboard, because the link is the whole point
-			// and the next thing anybody does with it is paste it somewhere.
-			await navigator.clipboard.writeText(linkFor(made)).then(
-				() => setCopied(made.id),
-				() => undefined,
-			);
-		} catch (whatever) {
-			actionFailed(explainArranging(whatever, t));
-		} finally {
-			setArranging(false);
-		}
-	};
-
-	const copyLink = (one: Arrangement) => {
-		void navigator.clipboard.writeText(linkFor(one)).then(
-			() => setCopied(one.id),
-			() => undefined,
-		);
-	};
-
-	const drop = async (one: Arrangement) => {
-		try {
-			await cancel(one.id);
-			setMine((was) => was.filter((m) => m.id !== one.id));
-		} catch (whatever) {
-			actionFailed(explainArranging(whatever, t));
-		}
-	};
-
-	// The earliest a meeting can be arranged for, as the field wants it: local
-	// wall-clock, no zone. The value is turned back into an instant on the way
-	// out (see live/meeting.ts arrange).
-	const earliest = (() => {
-		const d = new Date();
-		d.setSeconds(0, 0);
-		const pad = (n: number) => String(n).padStart(2, "0");
-		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-	})();
 
 	useEffect(() => {
 		void relays().then((offered) => {
@@ -646,99 +546,9 @@ export function Lobby({
 				 */}
 				{/* The list carries its own heading, because it also carries the
 				    control for measuring again and the two belong on one line. */}
-				<form
-					onSubmit={(event) => {
-						event.preventDefault();
-						void plan();
-					}}
-					className={cn(
-						"animate-rise [animation-delay:180ms]",
-						"flex flex-col gap-3 rounded-xl border border-border bg-surface p-4",
-					)}
-				>
-					<span className="flex items-center gap-3.5">
-						<span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-hi text-fg-muted">
-							<CalendarClock className="size-5" />
-						</span>
-						<span className="flex min-w-0 flex-col gap-0.5">
-							<span className="font-medium text-[14px]">{t("Schedule a meeting")}</span>
-							<span className="text-[12px] text-fg-muted leading-snug">
-								{t("Pick a time and hand out the link before it starts.")}
-							</span>
-						</span>
-					</span>
+				<Schedule servers={servers} server={server} onServer={setServer} onOpenChange={setScheduling} />
 
-					<div className="flex flex-col gap-2 sm:flex-row">
-						<input
-							value={planning}
-							onChange={(event) => setPlanning(event.target.value)}
-							placeholder={t("Room name")}
-							aria-label={t("Name for the new room")}
-							maxLength={64}
-							className={cn(
-								"h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-hi px-3 text-sm text-fg",
-								"outline-none transition-[border-color,box-shadow] placeholder:text-fg-muted",
-								"focus-visible:border-fg/40 focus-visible:ring-2 focus-visible:ring-fg/25",
-							)}
-						/>
-						<input
-							type="datetime-local"
-							value={when}
-							min={earliest}
-							onChange={(event) => setWhen(event.target.value)}
-							aria-label={t("Date and time")}
-							required
-							className={cn(
-								"h-10 min-w-0 rounded-lg border border-border bg-surface-hi px-3 text-sm text-fg",
-								"outline-none transition-[border-color,box-shadow]",
-								"focus-visible:border-fg/40 focus-visible:ring-2 focus-visible:ring-fg/25",
-							)}
-						/>
-						<Button type="submit" variant="secondary" disabled={!when || arranging}>
-							{arranging ? <Loader2 className="size-4 animate-spin" /> : t("Arrange")}
-						</Button>
-					</div>
-
-					{mine.length > 0 && (
-						<ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
-							{mine.map((one) => (
-								<li key={one.id} className="flex items-center gap-2 px-3 py-2">
-									<span className="flex min-w-0 flex-1 flex-col">
-										<span className="readout truncate text-[13px]">{one.room}</span>
-										<span className="truncate text-[11.5px] text-fg-muted">
-											{whenSaid(one.at)}
-											{one.ended ? ` · ${t("Over")}` : one.started ? ` · ${t("Under way")}` : ""}
-										</span>
-									</span>
-
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										className="size-8"
-										aria-label={copied === one.id ? t("Link copied") : t("Copy link")}
-										onClick={() => copyLink(one)}
-									>
-										{copied === one.id ? <Check className="size-4 text-tally" /> : <Copy className="size-4" />}
-									</Button>
-
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										className="size-8 text-fg-muted"
-										aria-label={t("Cancel meeting")}
-										onClick={() => void drop(one)}
-									>
-										<X className="size-4" />
-									</Button>
-								</li>
-							))}
-						</ul>
-					)}
-				</form>
-
-				{servers.length > 1 && (
+				{servers.length > 1 && !scheduling && (
 					<div className="animate-rise [animation-delay:240ms]">
 						<ServerList relays={servers} value={server} onChange={setServer} />
 					</div>

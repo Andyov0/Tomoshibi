@@ -367,6 +367,8 @@ function explainArranging(whatever: unknown, t: ReturnType<typeof useT>): string
 			return t("Room names can only use lowercase letters, numbers and dashes.");
 		case "relay_not_allowed":
 			return t("Access denied. That server is for administrators.");
+		case "not_signed_in":
+			return t("Your session has expired. Sign in again.");
 		default:
 			return t("Something went wrong. Try again.");
 	}

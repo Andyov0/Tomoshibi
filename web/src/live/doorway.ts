@@ -66,7 +66,17 @@ export function doorway(arriving: Arriving): Landing {
 	// An invitation wins over everything. Somebody holding one was sent to a
 	// particular meeting, and asking them to sign in first is asking them for
 	// something they were never given.
-	if (arriving.invitation) {
+	/*
+	 * Except when it is for somewhere else. A tab keeps the last invitation it
+	 * was let in on, and a person opening a meeting link for one room while
+	 * holding last week's invitation to another was being sent to last week's
+	 * room. The link in hand names where they mean to be; an invitation to the
+	 * same room is the shorter way in, and to any other room it is a stale
+	 * scrap of a different day.
+	 */
+	const elsewhere = Boolean(arriving.meeting && arriving.address && arriving.invitation !== arriving.address);
+
+	if (arriving.invitation && !elsewhere) {
 		return { at: "invited", room: arriving.invitation, rejoin: false };
 	}
 

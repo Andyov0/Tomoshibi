@@ -114,9 +114,9 @@ type arrangement struct {
 	Mine bool `json:"mine,omitempty"`
 	// Invite is the way in, said only once it has begun and while it is good.
 	Invite string `json:"invite,omitempty"`
-	// Live is whether the room is actually being held right now, which a
-	// begun meeting whose host has left is not.
-	Live bool `json:"live"`
+	// From is when the host may begin it, which is before At. Said so the
+	// screen can say so, rather than offering a Start that begins nothing.
+	From string `json:"from"`
 }
 
 func (a *App) told(m store.Meeting) arrangement {
@@ -127,6 +127,7 @@ func (a *App) told(m store.Meeting) arrangement {
 		Relay:   m.Held,
 		Started: m.Begun(),
 		Ended:   m.Over(),
+		From:    m.At.Add(-store.BeginsFrom).UTC().Format(time.RFC3339),
 	}
 }
 
@@ -233,6 +234,11 @@ func (a *App) arrange(w http.ResponseWriter, r *http.Request) {
 
 // arrangements lists the caller's own, with their links.
 func (a *App) arrangements(w http.ResponseWriter, r *http.Request) {
+	if !a.limit.Allow(r) {
+		fail(w, http.StatusTooManyRequests, reasonRateLimited)
+		return
+	}
+
 	account, ok := a.signedIn(r)
 	if !ok || account.Blocked {
 		fail(w, http.StatusUnauthorized, reasonNotSignedIn)
@@ -247,7 +253,6 @@ func (a *App) arrangements(w http.ResponseWriter, r *http.Request) {
 		said := a.told(m)
 		said.Token = store.MeetingToken(a.tripKey, m.ID)
 		said.Mine = true
-		said.Live = a.meetingLive(r, m)
 		all = append(all, said)
 	}
 
@@ -277,7 +282,6 @@ func (a *App) arranged(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC()
 	said := a.told(meeting)
-	said.Live = a.meetingLive(r, meeting)
 
 	if account, ok := a.signedIn(r); ok && account.Trip == meeting.Host {
 		said.Mine = true
@@ -293,6 +297,11 @@ func (a *App) arranged(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) cancelMeeting(w http.ResponseWriter, r *http.Request) {
+	if !a.limit.Allow(r) {
+		fail(w, http.StatusTooManyRequests, reasonRateLimited)
+		return
+	}
+
 	account, ok := a.signedIn(r)
 	if !ok || account.Blocked {
 		fail(w, http.StatusUnauthorized, reasonNotSignedIn)
@@ -316,13 +325,18 @@ func (a *App) cancelMeeting(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// meetingLive is whether the room a meeting names is being held right now.
-func (a *App) meetingLive(r *http.Request, m store.Meeting) bool {
-	if !m.Begun() || m.Over() {
-		return false
-	}
+/*
+reservedFor says whether a name is somebody else's while their meeting is
+pending, so the join can refuse to open it to anybody else.
 
-	return a.meeting(r, m.Room)
+See the store's header for why this is a refusal rather than a takeover. The
+claimant is the trip the join will mint — an account's, or a passphrase's, or
+nothing for a stranger — and an administrator is never asked.
+*/
+func (a *App) reservedFor(name, claimant string, now time.Time) bool {
+	meeting, ok := a.store.ArrangedFor(name, now)
+
+	return ok && !meeting.Begun() && meeting.Host != claimant
 }
 
 /*
@@ -334,6 +348,14 @@ exists — a relay taken out of the fleet between arranging and meeting is not a
 place anybody can be sent. Answers nothing for everybody else, and nothing once
 the meeting has begun, because by then the placement has been written down
 where every join reads it.
+
+The join asks this whenever the room's record is not a deliberate placement,
+and not only when it is empty. A record that holds a guess — the note every
+join leaves for two hours — is exactly what the host's own camera test on the
+name leaves behind, and an arrangement is an instruction where a guess is a
+measurement; the first version asked only for an empty record, so the host's
+own earlier visit made their choice disappear, and the guess was then written
+down as if it had been chosen.
 */
 func (a *App) arrangedPlacement(name string, grant room.Grant, now time.Time) (string, bool) {
 	mark, ok := room.SignatureOf(grant.Identity)
@@ -361,23 +383,35 @@ beginArranged is the moment a meeting starts: its host has just joined.
 
 Everything here is best effort and says so in the log, because the join has
 already succeeded and nothing about an arrangement is allowed to turn a host's
-own join into a refusal. Three things happen when a meeting actually begins:
+own join into a refusal. Two things happen when a meeting actually begins:
 
 The invitation is minted and kept, so the link can hand it out.
 
-The room's placement is written as a deliberate one, so every guest's join
+And the room's placement is written as a deliberate one, so every guest's join
 reads it from the record — never asking the media server, never ageing out —
 which is what makes the host's choice hold across a call that may not have a
-single participant yet when the first guest's join arrives.
+single participant yet when the first guest's join arrives. Only where the host
+chose a machine: a meeting arranged for wherever suits is not pinned to
+wherever the first join happened to land.
 
-And the arranger is made the room's host outright. Ordinarily the first proven
-person to open a name is its host; for an arranged meeting the host was decided
-when it was arranged, and somebody who happened to open the name first is a
-guest who arrived early.
+Nothing here makes anybody the host. The first version did, unconditionally,
+and that let any account take any room whose name had gone quiet: arrange a
+meeting on it, walk in, and the room was theirs. The name is reserved for the
+arranger while the meeting is pending instead (see reservedFor), so by the time
+this runs the room's host is the arranger or nobody, and where it is somebody
+else after all — an administrator opened it, say — the meeting does not begin
+in their room.
 */
-func (a *App) beginArranged(name string, grant room.Grant, holding store.Relay) {
+func (a *App) beginArranged(name string, grant room.Grant) {
 	mark, ok := room.SignatureOf(grant.Identity)
 	if !ok || !mark.Proven {
+		return
+	}
+
+	if host := a.store.HostOf(name); host != "" && host != mark.Trip {
+		slog.Warn("an arranged meeting's name answers to somebody else, so the meeting does not begin",
+			"room", name)
+
 		return
 	}
 
@@ -405,21 +439,21 @@ func (a *App) beginArranged(name string, grant room.Grant, holding store.Relay) 
 		return
 	}
 
+	// Written down before the invitation is handed out, so the first guest's
+	// join — which may arrive within the poll — reads a placed room.
+	if began.Held != "" {
+		if _, found := a.relays.everywhere(began.Held); found {
+			if err := a.store.PlaceRoom(name, began.Held); err != nil {
+				slog.Error("failed to place an arranged meeting", "room", name, "relay", began.Held, "error", err)
+			}
+		}
+	}
+
 	if err := a.store.KeepInvite(minted, store.Invite{
 		Room: name, By: mark.Trip, Created: now, Expires: now.Add(inviteFor),
 	}); err != nil {
 		slog.Error("failed to keep an arranged meeting's invite", "room", name, "error", err)
 	}
 
-	if holding.Name != "" {
-		if err := a.store.PlaceRoom(name, holding.Name); err != nil {
-			slog.Error("failed to place an arranged meeting", "room", name, "relay", holding.Name, "error", err)
-		}
-	}
-
-	if err := a.store.SetHost(name, mark.Trip); err != nil {
-		slog.Error("failed to make the arranger the host", "room", name, "error", err)
-	}
-
-	slog.Info("an arranged meeting began", "room", name, "relay", holding.Name)
+	slog.Info("an arranged meeting began", "room", name, "relay", began.Held)
 }

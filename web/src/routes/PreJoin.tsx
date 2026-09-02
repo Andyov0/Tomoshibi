@@ -9,7 +9,7 @@ import { SelfView } from "@/components/room/SelfView";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 import { Refused, chosenRelay, deployment, rememberRelay } from "@/live/api";
-import { type Me, keepInvite } from "@/live/account";
+import { keepInvite } from "@/live/account";
 import { blur, possible as blurPossible, remember as rememberBlur, wanted as blurWanted } from "@/live/blur";
 import { devicesAvailable, insecureReason } from "@/live/context";
 import { ServerPicker } from "@/components/room/ServerPicker";
@@ -129,7 +129,7 @@ export interface PreJoinProps {
 	 */
 	guest?: boolean;
 	/** Arrived on a meeting link: wait for it to begin rather than join. */
-	arranged?: { token: string; me?: Me };
+	arranged?: { token: string };
 	/**
 	 * Somebody already signed in, and the machine they chose in the lobby.
 	 *

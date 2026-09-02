@@ -35,8 +35,8 @@ export interface Arrangement {
 	relay?: string;
 	started: boolean;
 	ended: boolean;
-	/** Whether the room is actually being held right now. */
-	live: boolean;
+	/** RFC 3339: when the host may begin it, which is before `at`. */
+	from?: string;
 	/** The secret in the link, said only to the host. */
 	token?: string;
 	/** Whether whoever is asking arranged it. */

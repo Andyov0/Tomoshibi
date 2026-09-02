@@ -345,6 +345,12 @@ export function App() {
 				current.current = made;
 				setLive(made);
 
+				// The meeting link has done its work: the invitation it produced is
+				// kept for the tab and is the shorter way back in. Left in place, a
+				// reload during the call would land on the waiting screen again and
+				// ask the host to start what they are in.
+				forgetMeeting();
+
 				// Back. Whatever this was, it is over.
 				setMoving(undefined);
 
@@ -701,7 +707,7 @@ export function App() {
 			// to need one. Showing the field would be showing them a question
 			// they cannot answer, next to a name they did choose.
 			guest={front.at === "invited"}
-			arranged={front.at === "arranged" ? { token: front.token, me: front.me } : undefined}
+			arranged={front.at === "arranged" ? { token: front.token } : undefined}
 			as={
 				front.at === "ready"
 					? { name: front.me.name, relay: front.relay }
@@ -712,17 +718,18 @@ export function App() {
 						? { name: front.me.name, relay: chosenRelay() }
 						: undefined
 			}
-			onBack={
-				front.at === "ready"
-					? () => {
-							// The address goes back with them, or a reload would land
-							// on this screen again for a meeting they walked away
-							// from.
-							window.history.replaceState(null, "", window.location.pathname);
-							setFront({ at: "lobby", me: front.me });
-						}
-					: undefined
-			}
+			onBack={(() => {
+				// Somebody with a lobby to go back to: signed in, whether they came
+				// through it or straight to their own meeting link.
+				const me = front.at === "ready" || front.at === "arranged" ? front.me : undefined;
+				if (!me) return undefined;
+			
+				return () => {
+					forgetMeeting();
+					window.history.replaceState(null, "", window.location.pathname);
+					setFront({ at: "lobby", me });
+				};
+			})()}
 		/>,
 	);
 }

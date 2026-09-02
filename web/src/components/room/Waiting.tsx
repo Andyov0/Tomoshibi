@@ -13,29 +13,46 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * to have those settled before the meeting. What changes is the button: the
  * meeting may not have begun, and until it has there is nothing to join.
  *
+ * ## Three branches, not two
+ *
+ * Somebody waiting presses and waits. Somebody who arrived after it began
+ * presses Join and goes in with the invitation the link now carries. And the
+ * person who arranged it presses Start and goes in outright — their join is
+ * the event everybody else is waiting for. The first version had the first two
+ * and sent the host down the waiting path, where they waited for themselves.
+ *
+ * The host is offered Start only inside the window in which the server will
+ * actually begin the meeting. Outside it the join goes through and begins
+ * nothing, which from the host's chair is a Start that silently did not.
+ *
  * ## The shape is the waiting room's
  *
  * Nothing here happens until the button is pressed. An earlier draft began
  * asking the moment the page opened and joined the moment the answer came, and
- * that had two dead ends. A person still typing their name when the host
+ * that had two dead ends: a person still typing their name when the host
  * arrived was joined with no name, which the join refuses silently; and a
  * person who opened the link after it began was joined before they had looked
  * at their own camera, which is the one thing they were told they would get to
- * do first. So the button is pressed with a name in place, the asking starts
- * then, and where the meeting has already begun the button is simply Join.
+ * do first.
  *
- * ## What it says while waiting
+ * ## What it says while waiting, and when it stops
  *
- * When the meeting is for, in the reader's own clock and zone. Somebody who
- * opened a link at ten for a meeting at eleven should be told it is at eleven,
- * not left to wonder whether the waiting is the software being slow.
+ * When the meeting is for, in the reader's own clock and zone. It stops when
+ * the host has come, when the meeting has ended or been cancelled, or two
+ * hours after the arranged time with no host — said, with a way to ask again,
+ * because a screen that waits for ever is indistinguishable from one that is
+ * broken and a screen that gives up for ever is a reload away from working.
  *
- * ## When it stops
- *
- * When the host has come, when the meeting has ended or been cancelled, or two
- * hours after the arranged time with no host — which is said, because a screen
- * that waits for ever is indistinguishable from one that is broken.
+ * A read that fails is retried, and after the first failure says so. A first
+ * read that failed used to leave the button disabled for good with nothing on
+ * the screen to explain it, which is the same shape of fault as the black tile
+ * elsewhere in this codebase: nothing wrong to look at, nothing to press.
  */
+
+/** How often to retry a read that did not answer. Slower than the poll: a
+ * server that is not answering is not helped by being asked faster. */
+const RETRY_EVERY = 30_000;
+
 export function Waiting({
 	token,
 	name,
@@ -55,8 +72,6 @@ export function Waiting({
 	 *
 	 * A separate door from onGo because the host carries no invitation and
 	 * needs none: their own join is the event everybody else is waiting for.
-	 * The first version sent the host down the waiting path with everybody
-	 * else, and the host then waited — for themselves.
 	 */
 	onStart: () => void;
 }) {
@@ -65,6 +80,10 @@ export function Waiting({
 	const [meeting, setMeeting] = useState<Arrangement>();
 	const [gone, setGone] = useState<"ended" | "cancelled" | "not-coming">();
 	const [asking, setAsking] = useState(false);
+	const [unreachable, setUnreachable] = useState(false);
+	// A clock, so the host's button comes alive when the window opens without
+	// anybody reloading the page.
+	const [now, setNow] = useState(() => Date.now());
 
 	const told = useRef(onArranged);
 	told.current = onArranged;
@@ -73,31 +92,61 @@ export function Waiting({
 	const start = useRef(onStart);
 	start.current = onStart;
 
-	// Read once on arrival so the screen can say what it is for, before anybody
-	// presses anything.
 	const look = useCallback(async (): Promise<Arrangement | undefined> => {
 		try {
 			const said = await arranged(token);
 			setMeeting(said);
+			setUnreachable(false);
 			told.current(said);
+
+			if (said.ended) setGone("ended");
 
 			return said;
 		} catch (whatever) {
 			if (whatever instanceof Refused && whatever.reason === "no_such_meeting") {
 				setGone("cancelled");
+				return undefined;
 			}
 
-			// Anything else — a rate limit, a lost connection — is not an answer
-			// and changes nothing on the screen.
+			// A rate limit, a lost connection: not an answer. Said, and tried
+			// again below, rather than left as a button that never enables.
+			setUnreachable(true);
+
 			return undefined;
 		}
 	}, [token]);
 
+	// Read on arrival so the screen can say what it is for, and again until it
+	// can.
 	useEffect(() => {
-		void look();
+		let live = true;
+		let timer = 0;
+
+		const tick = async () => {
+			if (!live) return;
+
+			const said = await look();
+
+			if (!live || said) return;
+
+			timer = window.setTimeout(tick, RETRY_EVERY);
+		};
+
+		timer = window.setTimeout(tick, 0);
+
+		return () => {
+			live = false;
+			window.clearTimeout(timer);
+		};
 	}, [look]);
 
-	// The waiting itself.
+	useEffect(() => {
+		const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+
+		return () => window.clearInterval(timer);
+	}, []);
+
+	// Asking until the door answers, once somebody has pressed.
 	useEffect(() => {
 		if (!asking) return;
 
@@ -113,7 +162,6 @@ export function Waiting({
 
 			if (said?.ended) {
 				setAsking(false);
-				setGone("ended");
 				return;
 			}
 
@@ -130,7 +178,9 @@ export function Waiting({
 				return;
 			}
 
-			timer = window.setTimeout(tick, askEvery(said?.at ?? new Date().toISOString(), Date.now()));
+			// A read that failed is not a reason to ask faster.
+			const next = said ? askEvery(said.at, Date.now()) : RETRY_EVERY;
+			timer = window.setTimeout(tick, next);
 		};
 
 		timer = window.setTimeout(tick, 0);
@@ -152,22 +202,47 @@ export function Waiting({
 	}
 
 	if (gone === "not-coming") {
-		return <p className="text-fg-muted text-sm">{t("The host has not started this meeting.")}</p>;
+		return (
+			<div className="flex flex-col gap-2">
+				<p className="text-fg-muted text-sm">{t("The host has not started this meeting.")}</p>
+				<Button
+					type="button"
+					variant="secondary"
+					onClick={() => {
+						setGone(undefined);
+						setAsking(true);
+					}}
+				>
+					{t("Ask again")}
+				</Button>
+			</div>
+		);
 	}
 
 	// Begun, and the invitation in hand: the ordinary button, because there is
 	// nothing to wait for. Begun with no invitation means the room was closed
-	// and the link has not caught up; the wait below finds that out.
-	const ready = meeting?.started && meeting.invite;
+	// and the link has not caught up; the wait finds that out.
+	const ready = Boolean(meeting?.started && meeting.invite);
+
+	// The host may begin only from `from`. Before that the button is disabled
+	// and says when, rather than offering a Start that begins nothing.
+	const opens = meeting ? new Date(meeting.from ?? meeting.at).getTime() : 0;
+	const tooEarly = Boolean(meeting?.mine && !ready && now < opens);
 
 	return (
 		<div className="flex flex-col gap-2">
 			{meeting && !ready && (
 				<p className="text-fg-muted text-xs leading-snug">
 					{meeting.mine
-						? t("Your meeting is arranged for {when}. Joining starts it.", { when })
+						? tooEarly
+							? t("Your meeting can start from {when}.", { when: whenSaid(new Date(opens).toISOString()) })
+							: t("Your meeting is arranged for {when}. Joining starts it.", { when })
 						: t("This meeting is arranged for {when}.", { when })}
 				</p>
+			)}
+
+			{unreachable && !meeting && (
+				<p className="text-fg-muted text-xs leading-snug">{t("Could not reach the meeting. Trying again.")}</p>
 			)}
 
 			<Button
@@ -175,7 +250,7 @@ export function Waiting({
 				variant="primary"
 				size="lg"
 				className="w-full"
-				disabled={!name.trim() || asking || !meeting}
+				disabled={!name.trim() || asking || !meeting || tooEarly}
 				onClick={() => {
 					if (ready && meeting?.invite) {
 						go.current(meeting.invite);

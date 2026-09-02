@@ -127,6 +127,15 @@ describe("a meeting link", () => {
 		});
 	});
 
+	it("is not overridden by a stale invitation to some other room", () => {
+		// Last week's invitation, still in the tab. The link in hand names
+		// where they mean to be today.
+		expect(doorway(arriving({ meeting: "tok", invitation: "last-weeks-room", address: "standup" }))).toEqual({
+			at: "arranged",
+			token: "tok",
+		});
+	});
+
 	it("gives way to the call this tab was in", () => {
 		expect(doorway(arriving({ meeting: "tok", address: "standup", wasIn: "standup" }))).toEqual({
 			at: "invited",

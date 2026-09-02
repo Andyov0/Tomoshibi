@@ -19,8 +19,8 @@ describe("saying when a meeting is", () => {
 		const said = whenSaid("2026-09-02T08:44:00.000Z");
 
 		expect(said).toMatch(/2026/);
-		// Some zone name, in some script.
-		expect(said.length).toBeGreaterThan(12);
+		// A zone, said: an abbreviation, or an offset where the locale has none.
+		expect(said).toMatch(/GMT|UTC|[A-Z]{2,5}|[+-]\d{1,2}(:\d{2})?/);
 	});
 });
 

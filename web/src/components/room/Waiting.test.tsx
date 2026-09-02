@@ -21,6 +21,7 @@ const meeting = (over: Record<string, unknown>) => ({
 	id: "m",
 	room: "standup",
 	at: new Date(Date.now() + 5 * 60_000).toISOString(),
+	from: new Date(Date.now() - 55 * 60_000).toISOString(),
 	started: false,
 	ended: false,
 	live: false,
@@ -47,6 +48,7 @@ it("joins outright for the host, which is what begins the meeting", async () => 
 	render(<Waiting token="tok" name="Ada" onArranged={() => {}} onGo={onGo} onStart={onStart} />);
 
 	const button = await screen.findByRole("button", { name: "Start the meeting" });
+	await waitFor(() => expect(button).toHaveProperty("disabled", false));
 	fireEvent.click(button);
 
 	expect(onStart).toHaveBeenCalledTimes(1);
@@ -62,7 +64,9 @@ it("waits for everybody else, then goes in with the invite once it has begun", a
 
 	render(<Waiting token="tok" name="Bo" onArranged={() => {}} onGo={onGo} onStart={onStart} />);
 
-	fireEvent.click(await screen.findByRole("button", { name: "Wait for the host" }));
+	const wait = await screen.findByRole("button", { name: "Wait for the host" });
+	await waitFor(() => expect(wait).toHaveProperty("disabled", false));
+	fireEvent.click(wait);
 	expect(await screen.findByText(/Waiting for the host/)).toBeTruthy();
 	expect(onStart).not.toHaveBeenCalled();
 
@@ -81,6 +85,26 @@ it("is plainly Join for somebody who opened the link after it began", async () =
 
 	render(<Waiting token="tok" name="Cy" onArranged={() => {}} onGo={onGo} onStart={() => {}} />);
 
-	fireEvent.click(await screen.findByRole("button", { name: "Join" }));
+	const join = await screen.findByRole("button", { name: "Join" });
+	await waitFor(() => expect(join).toHaveProperty("disabled", false));
+	fireEvent.click(join);
 	expect(onGo).toHaveBeenCalledWith("inv-2");
+});
+
+
+it("does not offer the host a Start that would begin nothing", async () => {
+	// An hour and a half out: the server begins a meeting from an hour before
+	// its time, so a join now would go through and begin nothing.
+	const later = Date.now() + 90 * 60_000;
+	answers(meeting({ mine: true, at: new Date(later).toISOString(), from: new Date(later - 60 * 60_000).toISOString() }));
+	const onStart = vi.fn();
+
+	render(<Waiting token="tok" name="Ada" onArranged={() => {}} onGo={() => {}} onStart={onStart} />);
+
+	expect(await screen.findByText(/can start from/)).toBeTruthy();
+	const button = screen.getByRole("button", { name: "Start the meeting" });
+	expect(button).toHaveProperty("disabled", true);
+
+	fireEvent.click(button);
+	expect(onStart).not.toHaveBeenCalled();
 });

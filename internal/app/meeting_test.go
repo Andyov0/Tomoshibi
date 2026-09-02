@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"tomoshibi/internal/config"
 	"tomoshibi/internal/room"
 	"tomoshibi/internal/store"
 )
@@ -212,10 +213,11 @@ func TestTheHostsJoinBeginsTheMeetingAndOpensTheDoor(t *testing.T) {
 		t.Errorf("a stranger reading the link was told %+v; the token and ownership are the host's", said)
 	}
 
-	// Somebody else with an account walks in first. That does not begin the
-	// meeting, whoever they are.
-	if answer := joinArranged(t, mux, "planning", "Bob", other, ""); answer.Code != http.StatusOK {
-		t.Fatalf("bob joining early: %d %s", answer.Code, answer.Body)
+	// Somebody else with an account tries to walk in first. The name is the
+	// arranger's while the meeting is pending, so the door is not open to him
+	// — which is what keeps an early arrival from becoming the room's host.
+	if answer := joinArranged(t, mux, "planning", "Bob", other, ""); answer.Code != http.StatusForbidden {
+		t.Fatalf("bob opened a name reserved for ada's meeting: %d %s", answer.Code, answer.Body)
 	}
 
 	if said, _ := readMeeting(t, mux, made.Token, nil); said.Started {
@@ -242,8 +244,13 @@ func TestTheHostsJoinBeginsTheMeetingAndOpensTheDoor(t *testing.T) {
 		t.Errorf("the invitation the link handed out did not open the door: %d %s", answer.Code, answer.Body)
 	}
 
-	// The room is now the arranger's, however early Bob was, and it is placed
-	// where the arranger said.
+	// And now that it has begun, Bob may come in like anybody with an account.
+	if answer := joinArranged(t, mux, "planning", "Bob", other, ""); answer.Code != http.StatusOK {
+		t.Errorf("bob joining after the meeting began: %d %s", answer.Code, answer.Body)
+	}
+
+	// The room is the arranger's, because they were the first through a door
+	// nobody else could open, and it is placed where the arranger said.
 	if got := st.HostOf("planning"); got != "adaadaadaa" {
 		t.Errorf("host of the room = %q, want the arranger", got)
 	}
@@ -383,5 +390,87 @@ func TestForgottenMeetingsAreSwept(t *testing.T) {
 
 	if _, err := st.Arranged("tok"); err == nil {
 		t.Error("a meeting two days past its time survived the sweep")
+	}
+}
+
+/*
+The arranged machine wins over whatever note the record already holds.
+
+Every join leaves a two-hour note saying where the room was last held, and a
+host who visits the name before their meeting — a camera test half an hour
+early — leaves one too. The first version consulted the arrangement only when
+the record was empty, so that visit made the host's choice disappear, and the
+guess was then written down as if it had been chosen. Two relays here, so the
+assertion can tell them apart; with one it could not.
+*/
+func TestTheArrangedRelayBeatsTheNoteAnEarlierVisitLeft(t *testing.T) {
+	mux, st, _ := controlWithStore(t, config.PickProbe,
+		store.Relay{Name: "shanghai", URL: "wss://sh.example.invalid"},
+		store.Relay{Name: "tokyo", URL: "wss://tokyo.example.invalid"},
+	)
+	byInvitation(t, st)
+	host := signedInAs(t, st, "ada", "adaadaadaa")
+
+	answer := arrangeAs(t, mux, host, `{"room":"offsite","at":"`+soon()+`","relay":"tokyo"}`)
+	if answer.Code != http.StatusOK {
+		t.Fatalf("arranging: %d %s", answer.Code, answer.Body)
+	}
+
+	// The record an earlier visit leaves behind: the room exists, and it was
+	// last held in Shanghai, as a guess.
+	if _, err := st.OpenRoom("offsite", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := st.HoldRoom("offsite", "shanghai"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The host arrives, dialling Shanghai like everybody in this fixture.
+	if answer := joinArranged(t, mux, "offsite", "Ada", host, ""); answer.Code != http.StatusOK {
+		t.Fatalf("the host joining: %d %s", answer.Code, answer.Body)
+	}
+
+	held, placed := st.HeldOn("offsite")
+	if held != "tokyo" || !placed {
+		t.Errorf("held on %q placed=%v; want tokyo as a deliberate placement, whatever the note said", held, placed)
+	}
+}
+
+/*
+The three refusals at arranging that would otherwise never be exercised.
+*/
+func TestArrangingIsBoundedAndRefusedWhereInvitesAreIgnored(t *testing.T) {
+	mux, st := hosted(t)
+	host := signedInAs(t, st, "ada", "adaadaadaa")
+
+	// Where joining asks for an account, an invitation is ignored at the door
+	// and everything a meeting hands out would be refused on the day.
+	if err := st.SetJoining(room.ByAccount); err != nil {
+		t.Fatal(err)
+	}
+
+	if answer := arrangeAs(t, mux, host, `{"room":"standup","at":"`+soon()+`"}`); answer.Code != http.StatusConflict {
+		t.Errorf("arranging under accounts-only joining: %d, want 409", answer.Code)
+	}
+
+	byInvitation(t, st)
+
+	// Not two months out.
+	far := time.Now().UTC().Add(61 * 24 * time.Hour).Format(time.RFC3339)
+	if answer := arrangeAs(t, mux, host, `{"room":"standup","at":"`+far+`"}`); answer.Code != http.StatusBadRequest {
+		t.Errorf("a meeting two months out was accepted: %d", answer.Code)
+	}
+
+	// And not more than a week's worth of names at once.
+	for n := 0; n < arrangesAtOnce; n++ {
+		name := "room-" + string(rune('a'+n))
+		if answer := arrangeAs(t, mux, host, `{"room":"`+name+`","at":"`+soon()+`"}`); answer.Code != http.StatusOK {
+			t.Fatalf("arranging %s: %d %s", name, answer.Code, answer.Body)
+		}
+	}
+
+	if answer := arrangeAs(t, mux, host, `{"room":"one-too-many","at":"`+soon()+`"}`); answer.Code != http.StatusTooManyRequests {
+		t.Errorf("the %dth pending meeting was accepted: %d", arrangesAtOnce+1, answer.Code)
 	}
 }

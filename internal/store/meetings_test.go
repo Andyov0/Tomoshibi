@@ -110,12 +110,12 @@ func TestAMeetingBeginsOnlyInsideItsWindow(t *testing.T) {
 	}
 
 	// Just too early.
-	if _, err := st.Begin("standup", "h", "inv-early", thursday.Add(-beginsFrom-time.Minute)); !errors.Is(err, ErrNoSuchMeeting) {
+	if _, err := st.Begin("standup", "h", "inv-early", thursday.Add(-BeginsFrom-time.Minute)); !errors.Is(err, ErrNoSuchMeeting) {
 		t.Errorf("a join a minute before the window got %v, want %v", err, ErrNoSuchMeeting)
 	}
 
 	// Setting up early, which is the ordinary case.
-	began, err := st.Begin("standup", "h", "inv-ok", thursday.Add(-beginsFrom+time.Minute))
+	began, err := st.Begin("standup", "h", "inv-ok", thursday.Add(-BeginsFrom+time.Minute))
 	if err != nil {
 		t.Fatalf("a join inside the window: %v", err)
 	}
@@ -344,5 +344,63 @@ func TestTheLinkIsDerivedFromTheIdAndTheKey(t *testing.T) {
 
 	if len(one) < 24 {
 		t.Errorf("token is %d characters, too short to be unguessable", len(one))
+	}
+}
+
+/*
+Yesterday's meeting that nobody closed does not stop today's.
+
+A host who leaves without ending the meeting leaves a record that is begun and
+not over for a day. Today's arrangement on the same name is allowed — only a
+pending meeting holds a name — and when the host walks in, it is today's that
+begins. The first version picked whichever record the walk met last, which is
+the order of token hashes, and so began yesterday's about half the time; and
+closing the room ended only one of the two.
+*/
+func TestYesterdaysUnclosedMeetingDoesNotBlockTodays(t *testing.T) {
+	st := open(t)
+	now := time.Now().UTC()
+	yesterday := now.Add(-23 * time.Hour)
+
+	if err := st.Arrange("tok-y", Meeting{ID: "y", Room: "standup", At: yesterday, Host: "h"}, yesterday.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := st.Begin("standup", "h", "inv-y", yesterday); err != nil {
+		t.Fatal(err)
+	}
+
+	// Still "going" as far as the store can tell: begun, not ended, not a day
+	// old yet. That is the record that used to get in the way.
+	if err := st.Arrange("tok-t", Meeting{ID: "t", Room: "standup", At: now.Add(10 * time.Minute), Host: "h"}, now); err != nil {
+		t.Fatalf("today's meeting could not be arranged beside yesterday's un-closed one: %v", err)
+	}
+
+	if found, ok := st.ArrangedFor("standup", now); !ok || found.ID != "t" {
+		t.Errorf("the room's meeting is %q, want today's (t): the one still to come wins", found.ID)
+	}
+
+	began, err := st.Begin("standup", "h", "inv-t", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if began.ID != "t" || !began.Started.Equal(now) || began.Invite != "inv-t" {
+		t.Errorf("began %+v; want today's, begun now, with today's invite", began)
+	}
+
+	if err := st.End("standup", now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tok := range []string{"tok-y", "tok-t"} {
+		m, err := st.Arranged(tok)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !m.Over() {
+			t.Errorf("%s is not ended; closing the room closes every meeting under way on the name", m.ID)
+		}
 	}
 }

@@ -52,6 +52,22 @@ arrangement on the same name is refused rather than queued: at the door there
 would be no telling which meeting a person had come for, and the window rule
 would begin whichever one was nearest.
 
+## The name is the host's while the meeting is pending
+
+Between arranging and beginning, nobody but the arranger may open the name. Not
+because a room is anything more than a name — it is not — but because the
+alternative was worse in both directions. Let anybody open it and an early
+guest with an account becomes its host by walking in first, and then either the
+meeting cannot begin or the arranger has to take the room from them; taking it
+was tried, and it let any account take any room whose name had gone quiet for
+three days. Refusing the door to everybody else for the length of the
+arrangement is the smaller rule, and the join says what it always says about a
+name that is not open: ask the organiser for the link.
+
+Arranging is offered in the lobby, and the lobby exists only where opening a
+room asks for an account. A deployment that lets anybody open anything has no
+lobby and no arranging, which is consistent: it has no accounts to be a host.
+
 ## Who may start one
 
 The host, meaning whoever arranged it, identified the way everybody here is
@@ -90,21 +106,21 @@ meeting that ran long is not swept out from under the people in it.
 const meetingFor = 24 * time.Hour
 
 /*
-How early a host may begin one.
+BeginsFrom is how early a host may begin one.
 
 An hour, because a host who arrives early to set the room up is the ordinary
 case and must not find their own meeting refusing to begin; and not more,
 because the bound exists to keep an unrelated call on the same name from
 beginning the wrong meeting.
 */
-const beginsFrom = time.Hour
+const BeginsFrom = time.Hour
 
 // ErrNoSuchMeeting is what a token nobody arranged answers, and what a room
 // with no meeting to begin answers.
-var ErrNoSuchMeeting = errors.New("no such meeting")
+var ErrNoSuchMeeting = errors.New("no meeting has been arranged there; check the link, or arrange one")
 
 // ErrNotTheHost is somebody trying to start a meeting they did not arrange.
-var ErrNotTheHost = errors.New("not the host")
+var ErrNotTheHost = errors.New("only whoever arranged this meeting can begin it")
 
 // ErrRoomArranged is a second meeting arranged on a name that has one pending.
 var ErrRoomArranged = errors.New("that room already has a meeting arranged")
@@ -170,7 +186,13 @@ func (m Meeting) pending(now time.Time) bool {
 
 // CanBegin says whether now is inside the window a join may begin this in.
 func (m Meeting) CanBegin(now time.Time) bool {
-	return m.pending(now) && !now.Before(m.At.Add(-beginsFrom)) && now.Sub(m.At) <= meetingFor
+	return m.pending(now) && !now.Before(m.At.Add(-BeginsFrom)) && now.Sub(m.At) <= meetingFor
+}
+
+// going is a meeting that has begun and is still being held, as far as this
+// store can tell.
+func (m Meeting) going(now time.Time) bool {
+	return m.Begun() && !m.Over() && !m.stale(now)
 }
 
 // stale is a meeting nobody can still be waiting for.
@@ -284,8 +306,7 @@ something arranged here, and where it was to be held.
 func (s *Store) ArrangedFor(name string, now time.Time) (Meeting, bool) {
 	name = strings.ToLower(strings.TrimSpace(name))
 
-	var found Meeting
-	var ok bool
+	var pending, going *Meeting
 
 	_ = s.db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(meetings)
@@ -299,15 +320,39 @@ func (s *Store) ArrangedFor(name string, now time.Time) (Meeting, bool) {
 				return nil
 			}
 
-			if meeting.pending(now) || (meeting.Begun() && !meeting.Over() && !meeting.stale(now)) {
-				found, ok = meeting, true
+			// The one still to come wins over the one under way, and the
+			// soonest of several to come wins; among several under way — a
+			// host who never closed yesterday's — the latest begun. Chosen
+			// rather than left to bucket order, which is the hash of a token
+			// and so is as good as random: an earlier version answered
+			// yesterday's un-closed meeting about half the time, and today's
+			// then could not begin.
+			switch {
+			case meeting.pending(now):
+				if pending == nil || meeting.At.Before(pending.At) {
+					m := meeting
+					pending = &m
+				}
+			case meeting.going(now):
+				if going == nil || meeting.Started.After(going.Started) {
+					m := meeting
+					going = &m
+				}
 			}
 
 			return nil
 		})
 	})
 
-	return found, ok
+	if pending != nil {
+		return *pending, true
+	}
+
+	if going != nil {
+		return *going, true
+	}
+
+	return Meeting{}, false
 }
 
 /*
@@ -337,11 +382,16 @@ meeting starting early.
 func (s *Store) Begin(name, host, invite string, now time.Time) (Meeting, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
 
+	type held struct {
+		key     []byte
+		meeting Meeting
+	}
+
 	var (
-		key   []byte
-		found Meeting
-		seen  bool
-		mine  bool
+		toBegin  *held // pending, inside its window, this host's
+		begun    *held // already under way, this host's
+		anybody  bool  // something on this name that is live in some sense
+		answered Meeting
 	)
 
 	err := s.db.Update(func(tx *bolt.Tx) error {
@@ -356,23 +406,33 @@ func (s *Store) Begin(name, host, invite string, now time.Time) (Meeting, error)
 				return nil
 			}
 
-			// Only a meeting that is live in some sense: begun and going, or
-			// inside the window in which a join begins it. Anything else on
-			// this name is not the meeting this person walked into.
-			going := meeting.Begun() && !meeting.Over() && !meeting.stale(now)
-			if !going && !meeting.CanBegin(now) {
+			// Only a meeting that is live in some sense: under way, or inside
+			// the window in which a join begins it. Anything else on this name
+			// is not the meeting this person walked into.
+			if !meeting.going(now) && !meeting.CanBegin(now) {
 				return nil
 			}
 
-			// The one it is, even where it is somebody else's, so the answer
-			// can be "not yours" rather than "no such meeting" — the two are
-			// different and only one of them is worth acting on.
-			seen = true
-			found = meeting
+			anybody = true
 
-			if meeting.Host == host && host != "" {
-				mine = true
-				key = append([]byte(nil), at...)
+			if meeting.Host != host || host == "" {
+				return nil
+			}
+
+			one := &held{key: append([]byte(nil), at...), meeting: meeting}
+
+			// The one to begin wins over the one already begun, and the
+			// soonest wins among several to begin. A host who never closed
+			// yesterday's meeting must still be able to begin today's.
+			switch {
+			case meeting.CanBegin(now):
+				if toBegin == nil || meeting.At.Before(toBegin.meeting.At) {
+					toBegin = one
+				}
+			default:
+				if begun == nil || meeting.Started.After(begun.meeting.Started) {
+					begun = one
+				}
 			}
 
 			return nil
@@ -380,33 +440,35 @@ func (s *Store) Begin(name, host, invite string, now time.Time) (Meeting, error)
 			return err
 		}
 
-		if !seen {
+		if !anybody {
 			return ErrNoSuchMeeting
 		}
 
-		if !mine {
+		if toBegin == nil && begun == nil {
 			return ErrNotTheHost
 		}
 
-		if found.Begun() {
+		if toBegin == nil {
+			answered = begun.meeting
 			return nil
 		}
 
-		found.Started = now
-		found.Invite = invite
+		answered = toBegin.meeting
+		answered.Started = now
+		answered.Invite = invite
 
-		encoded, err := json.Marshal(found)
+		encoded, err := json.Marshal(answered)
 		if err != nil {
 			return err
 		}
 
-		return bucket.Put(key, encoded)
+		return bucket.Put(toBegin.key, encoded)
 	})
 	if err != nil {
 		return Meeting{}, err
 	}
 
-	return found, nil
+	return answered, nil
 }
 
 /*
@@ -424,14 +486,20 @@ func (s *Store) End(name string, now time.Time) error {
 			return nil
 		}
 
-		var key []byte
-		var found Meeting
+		type held struct {
+			key     []byte
+			meeting Meeting
+		}
 
+		var open []held
+
+		// Every one that is under way, because a name can carry more than one
+		// — yesterday's that was never closed and today's — and closing the
+		// room closes the room.
 		if err := bucket.ForEach(func(at, raw []byte) error {
 			var meeting Meeting
 			if json.Unmarshal(raw, &meeting) == nil && meeting.Room == name && meeting.Begun() && !meeting.Over() {
-				key = append([]byte(nil), at...)
-				found = meeting
+				open = append(open, held{key: append([]byte(nil), at...), meeting: meeting})
 			}
 
 			return nil
@@ -439,18 +507,20 @@ func (s *Store) End(name string, now time.Time) error {
 			return err
 		}
 
-		if key == nil {
-			return nil
+		for _, one := range open {
+			one.meeting.Ended = now
+
+			encoded, err := json.Marshal(one.meeting)
+			if err != nil {
+				return err
+			}
+
+			if err := bucket.Put(one.key, encoded); err != nil {
+				return err
+			}
 		}
 
-		found.Ended = now
-
-		encoded, err := json.Marshal(found)
-		if err != nil {
-			return err
-		}
-
-		return bucket.Put(key, encoded)
+		return nil
 	})
 }
 

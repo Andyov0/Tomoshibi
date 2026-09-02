@@ -711,6 +711,22 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// off, because this is no longer only an observation: whether the name has
 	// ever been used is the answer, and it has to be settled before anybody is
 	// authorised for it.
+	// A name somebody else has arranged a meeting on is theirs until it begins.
+	// Refused here, at the opening, rather than sorted out afterwards by
+	// taking the room from whoever got there first — see the store's header
+	// for what taking it cost. Administrators are not refused anything.
+	if !known && !isAdmin {
+		claimant := signature
+		if claimant == "" && !body.Passphrase.Empty() {
+			claimant = room.Trip(a.tripKey, strings.TrimSpace(string(body.Passphrase)))
+		}
+
+		if a.reservedFor(name, claimant, time.Now().UTC()) {
+			fail(w, http.StatusForbidden, reasonNotOpen)
+			return
+		}
+	}
+
 	switch _, err := a.store.OpenRoom(name, mayOpen); {
 	case errors.Is(err, store.ErrNotOpen):
 		fail(w, http.StatusForbidden, reasonNotOpen)
@@ -793,10 +809,11 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 
 	// A host walking into a meeting they arranged goes where they said it would
 	// be held, and that is read as a deliberate placement so the branch below
-	// treats it exactly as one made from the management pages. Written down as
-	// such the moment the meeting begins; this is only for the join that begins
-	// it, which has nothing written down yet. See beginArranged.
-	if held == "" {
+	// treats it exactly as one made from the management pages. Over a guess,
+	// not only over nothing: the record may hold the note the host's own
+	// earlier visit left, and a note is not a choice. Written down as a
+	// placement the moment the meeting begins. See arrangedPlacement.
+	if !placed {
 		if there, ok := a.arrangedPlacement(name, grant, time.Now().UTC()); ok {
 			held, placed = there, true
 		}
@@ -933,7 +950,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// fault this guards against, and it would be invisible until somebody used
 	// it.
 	a.hostOnOpening(name, grant)
-	a.beginArranged(name, grant, holding)
+	a.beginArranged(name, grant)
 
 	// Written down because nothing else will know it.
 	//

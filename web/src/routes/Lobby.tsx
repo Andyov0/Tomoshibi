@@ -546,7 +546,13 @@ export function Lobby({
 				 */}
 				{/* The list carries its own heading, because it also carries the
 				    control for measuring again and the two belong on one line. */}
-				<Schedule servers={servers} server={server} onServer={setServer} onOpenChange={setScheduling} />
+				<Schedule
+					servers={servers}
+					server={server}
+					onServer={setServer}
+					onOpenChange={setScheduling}
+					onSignedOut={onSignedOut}
+				/>
 
 				{servers.length > 1 && !scheduling && (
 					<div className="animate-rise [animation-delay:240ms]">

@@ -1,3 +1,4 @@
+import { act, renderHook } from "@testing-library/react";
 /**
  * What these guard is a light that says the wrong thing.
  *
@@ -13,10 +14,10 @@
  * not, the numbers are the ones missing something.
  */
 
-import { ConnectionQuality } from "livekit-client";
-import { describe, expect, it } from "vitest";
+import { ConnectionQuality, type Room, Track } from "livekit-client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { grade } from "./connection";
+import { grade, useConnectionQuality } from "./connection";
 
 const fine = ConnectionQuality.Excellent;
 
@@ -62,5 +63,143 @@ describe("the connection light", () => {
 
 		// Already worse than the server thinks: the local numbers stand.
 		expect(grade(ConnectionQuality.Excellent, 900, 20)).toBe("poor");
+	});
+});
+
+/*
+ * What the share row says about why it is held back, sample after sample.
+ *
+ * The browser reports a reason on every outbound-rtp entry: "cpu",
+ * "bandwidth", "other", or "none". The row carried the last reason forward
+ * whenever a sample had no reason to give, which was meant for a sample taken
+ * while the encoder was reconfiguring — and it treated "none" as no reason to
+ * give. So a share held back by the CPU for ten seconds went on saying so for
+ * the rest of the call, and the person reading it moved to a nearer machine
+ * or closed their browser tabs for a fault that had already gone.
+ *
+ * Tested through the hook with a fake room handing out reports in sequence,
+ * because the fault was in the merge and not in the function that reads the
+ * string.
+ */
+describe("the reason a share is held back", () => {
+	function reportOf(entry: Record<string, unknown> | null) {
+		const entries = entry ? [{ type: "outbound-rtp", id: "o1", bytesSent: 0, packetsSent: 0, ...entry }] : [];
+		return { forEach: (fn: (e: unknown) => void) => entries.forEach(fn) } as unknown as RTCStatsReport;
+	}
+
+	function roomWith(sequence: Array<Record<string, unknown> | null>) {
+		let n = 0;
+		const publication = {
+			source: Track.Source.ScreenShare,
+			track: { getRTCStatsReport: async () => reportOf(sequence[Math.min(n++, sequence.length - 1)] ?? null) },
+		};
+
+		return {
+			localParticipant: { trackPublications: new Map([["s", publication]]) },
+			remoteParticipants: new Map(),
+			on: () => {},
+			off: () => {},
+		} as unknown as Room;
+	}
+
+	// The hook looks once on mount and then every two seconds. `settle` takes
+	// the mount sample; each `sample` after it takes the next report.
+	async function settle() {
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(0);
+		});
+	}
+
+	async function sample() {
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(2000);
+		});
+	}
+
+	beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: false }));
+	afterEach(() => vi.useRealTimers());
+
+	it("clears the warning when the browser says the limitation is gone", async () => {
+		const room = roomWith([
+			{ ssrc: 1, qualityLimitationReason: "cpu" },
+			{ ssrc: 1, qualityLimitationReason: "none" },
+		]);
+		const { result } = renderHook(() => useConnectionQuality(room));
+
+		await settle();
+		expect(result.current.share?.limited).toBe("cpu");
+
+		await sample();
+		expect(result.current.share?.limited).toBeUndefined();
+	});
+
+	it("switches from one reason to another", async () => {
+		const room = roomWith([
+			{ ssrc: 1, qualityLimitationReason: "bandwidth" },
+			{ ssrc: 1, qualityLimitationReason: "cpu" },
+			{ ssrc: 1, qualityLimitationReason: "none" },
+		]);
+		const { result } = renderHook(() => useConnectionQuality(room));
+
+		await settle();
+		expect(result.current.share?.limited).toBe("bandwidth");
+		await sample();
+		expect(result.current.share?.limited).toBe("cpu");
+		await sample();
+		expect(result.current.share?.limited).toBeUndefined();
+	});
+
+	it("keeps a reason across one sample that did not say, and not for ever", async () => {
+		const room = roomWith([
+			{ ssrc: 1, qualityLimitationReason: "cpu" },
+			{ ssrc: 1 },
+			{ ssrc: 1 },
+			{ ssrc: 1 },
+			{ ssrc: 1 },
+		]);
+		const { result } = renderHook(() => useConnectionQuality(room));
+
+		await settle();
+		expect(result.current.share?.limited).toBe("cpu");
+
+		// A gap in the measurement, not a recovery.
+		await sample();
+		expect(result.current.share?.limited).toBe("cpu");
+
+		// But a browser that has stopped saying is not still saying "cpu".
+		await sample();
+		await sample();
+		await sample();
+		expect(result.current.share?.limited).toBeUndefined();
+	});
+
+	it("does not hand one share's reason to the next one", async () => {
+		const room = roomWith([
+			{ ssrc: 1, qualityLimitationReason: "cpu" },
+			// A different track, which happens to have no reason on its first
+			// report. It starts clean.
+			{ ssrc: 2 },
+		]);
+		const { result } = renderHook(() => useConnectionQuality(room));
+
+		await settle();
+		expect(result.current.share?.limited).toBe("cpu");
+		await sample();
+		expect(result.current.share?.limited).toBeUndefined();
+	});
+
+	it("starts clean in a new room", async () => {
+		const first = roomWith([{ ssrc: 1, qualityLimitationReason: "cpu" }]);
+		const second = roomWith([{ ssrc: 1 }]);
+		const { result, rerender } = renderHook(({ room }) => useConnectionQuality(room), {
+			initialProps: { room: first },
+		});
+
+		await settle();
+		expect(result.current.share?.limited).toBe("cpu");
+
+		rerender({ room: second });
+		await settle();
+		expect(result.current.share?.limited).toBeUndefined();
 	});
 });

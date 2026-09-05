@@ -11,7 +11,7 @@ import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names
 import { actionFailed } from "@/live/notices";
 import { cn } from "@/lib/utils";
 import { CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Arranging a meeting, from the lobby.
@@ -37,11 +37,25 @@ import { useEffect, useMemo, useState } from "react";
  * The hour and the minute stay platform selects. A list of twenty-four is a
  * list, and the platform draws lists well.
  */
+/**
+ * How far ahead the server lets a meeting be arranged. The grid offers the same
+ * sixty days, but by whole days: the sixtieth day is on offer all day, and the
+ * server's bound is sixty days from this minute, so a time late on that day is
+ * refused there and has to be refused here first, with a reason.
+ */
+const AHEAD_MS = 60 * 24 * 60 * 60_000;
+
+/** How often the card checks the clock while it is open. Every half minute is
+ * enough to notice the chosen minute pass; the page becoming visible again
+ * checks at once. */
+const TICK_MS = 30_000;
+
 export function Schedule({
 	servers,
 	server,
 	onServer,
 	onOpenChange,
+	onSignedOut,
 }: {
 	servers: Relay[];
 	server: string;
@@ -49,6 +63,8 @@ export function Schedule({
 	/** Said so the lobby can put its own server list away while this is open:
 	 * the list is the same list, and two of it on one screen is a mistake. */
 	onOpenChange: (open: boolean) => void;
+	/** The way back to signing in, for a session that has lapsed. */
+	onSignedOut?: () => void;
 }) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
@@ -56,22 +72,106 @@ export function Schedule({
 	useEffect(() => onOpenChange(open), [open, onOpenChange]);
 	const { mounted, leaving } = useLingering(open);
 
+	// One reading of the clock for both halves of the starting time, so a form
+	// opened on the stroke of a quarter hour does not get the hour from one
+	// side of it and the minute from the other.
+	const [first] = useState(nextQuarter);
 	const [planning, setPlanning] = useState("");
 	const [day, setDay] = useState<Date>();
-	const [hour, setHour] = useState(() => nextQuarter().getHours());
-	const [minute, setMinute] = useState(() => nextQuarter().getMinutes());
+	const [hour, setHour] = useState(first.getHours());
+	const [minute, setMinute] = useState(first.getMinutes());
 	const [arranging, setArranging] = useState(false);
-	const [mine, setMine] = useState<Arrangement[]>([]);
 	const [copied, setCopied] = useState<string>();
+	// The meeting whose link is shown in a box to be copied by hand, because
+	// copying it for them did not work.
+	const [showing, setShowing] = useState<string>();
+
+	/*
+	 * The clock, while the card is open.
+	 *
+	 * Whether the chosen time has gone was worked out when the card last drew
+	 * itself, and the button used that answer. A form left open across the
+	 * chosen minute went on offering it, and the server's hour of grace let it
+	 * through. So the card keeps time: every half minute, and the moment the
+	 * page is looked at again after being in another tab, which is when a form
+	 * is most likely to have been left.
+	 */
+	const [now, setNow] = useState(() => Date.now());
 
 	useEffect(() => {
-		void arrangements()
-			.then(setMine)
-			.catch(() => {
-				// A list that could not be read is an empty list, not an error
-				// worth a notice: arranging still works.
-			});
+		if (!open) return;
+
+		const tick = () => setNow(Date.now());
+		const timer = window.setInterval(tick, TICK_MS);
+		const onVisible = () => {
+			if (document.visibilityState === "visible") tick();
+		};
+
+		tick();
+		document.addEventListener("visibilitychange", onVisible);
+
+		return () => {
+			window.clearInterval(timer);
+			document.removeEventListener("visibilitychange", onVisible);
+		};
+	}, [open]);
+
+	/*
+	 * The list, in four states rather than one.
+	 *
+	 * It was read once and a failure was swallowed, so a person whose request
+	 * failed saw the same empty card as one who had never arranged anything —
+	 * and had nothing to press. Now it says which it is: still reading, read
+	 * and empty, read and full, or could not be read, with a way to ask again.
+	 * A read that fails while there is already a list keeps the list and says
+	 * the refresh did not take, rather than emptying it.
+	 *
+	 * Every read carries a number, and only the latest is allowed to land. The
+	 * list is also changed directly by arranging and cancelling, and a read
+	 * that started before either of those must not undo them when it comes
+	 * back late — so those bump the number too.
+	 */
+	const [list, setList] = useState<{
+		status: "loading" | "ready" | "failed" | "signed out";
+		items: Arrangement[];
+	}>({ status: "loading", items: [] });
+	const reads = useRef(0);
+
+	const refresh = useCallback(async () => {
+		const mine = ++reads.current;
+
+		setList((was) => ({ ...was, status: "loading" }));
+
+		try {
+			const items = await arrangements();
+			if (mine !== reads.current) return;
+
+			setList({ status: "ready", items });
+		} catch (whatever) {
+			if (mine !== reads.current) return;
+
+			const lapsed = whatever instanceof Refused && (whatever.reason === "not_signed_in" || whatever.message === "401");
+			setList((was) => ({ ...was, status: lapsed ? "signed out" : "failed" }));
+		}
 	}, []);
+
+	useEffect(() => {
+		void refresh();
+	}, [refresh]);
+
+	// Opened again: read again. A list read when the page loaded is stale by
+	// the time the card is opened an hour later, and a read that failed then
+	// deserves one more try unasked. One read on opening, not one every few
+	// seconds: nothing here changes behind the person's back.
+	const opened = useRef(false);
+	useEffect(() => {
+		if (!open) return;
+		if (!opened.current) {
+			opened.current = true;
+			return;
+		}
+		void refresh();
+	}, [open, refresh]);
 
 	useEffect(() => {
 		if (!copied) return;
@@ -87,51 +187,69 @@ export function Schedule({
 		return d;
 	}, [day, hour, minute]);
 
-	// Not in the past. The server allows an hour's grace for a form filled in
-	// slowly; the button does not offer a time that has already gone.
-	const past = at !== undefined && at.getTime() < Date.now();
+	const past = at !== undefined && at.getTime() < now;
+	const tooFar = at !== undefined && at.getTime() > now + AHEAD_MS;
 
 	const plan = async () => {
-		if (arranging || !at || past) return;
+		if (arranging || !at) return;
+
+		// Read again here, not taken from the last render: this is the answer
+		// that decides whether anything is sent.
+		const moment = Date.now();
+		setNow(moment);
+		if (at.getTime() < moment || at.getTime() > moment + AHEAD_MS) return;
 
 		const room = validRoomName(normaliseRoomName(planning)) ? normaliseRoomName(planning) : generateRoomName();
 
 		setArranging(true);
 
-		try {
-			const made = await arrange(room, at, server);
-			setMine((was) => [...was, made].sort((a, b) => a.at.localeCompare(b.at)));
-			setPlanning("");
-			setDay(undefined);
+		let made: Arrangement;
 
-			// Straight onto the clipboard, because the link is the whole point
-			// and the next thing anybody does with it is paste it somewhere.
-			await navigator.clipboard.writeText(linkFor(made)).then(
-				() => setCopied(made.id),
-				() => undefined,
-			);
+		try {
+			made = await arrange(room, at, server);
 		} catch (whatever) {
 			actionFailed(explainArranging(whatever, t));
-		} finally {
 			setArranging(false);
+			return;
 		}
+
+		reads.current++;
+		setList((was) => ({ status: "ready", items: [...was.items, made].sort((a, b) => a.at.localeCompare(b.at)) }));
+		setPlanning("");
+		setDay(undefined);
+		setArranging(false);
+
+		// Straight onto the clipboard, because the link is the whole point and
+		// the next thing anybody does with it is paste it somewhere. Outside the
+		// try above, on purpose: the meeting exists now whatever the clipboard
+		// does, and a copy that failed used to be reported as the arranging
+		// having failed — which invited making it again.
+		await offer(made);
 	};
 
-	const copyLink = (one: Arrangement) => {
-		void navigator.clipboard.writeText(linkFor(one)).then(
-			() => setCopied(one.id),
-			() => undefined,
-		);
+	/** Copy a meeting's link, or show it to be copied by hand. */
+	const offer = async (one: Arrangement) => {
+		if (await copyText(linkFor(one))) {
+			setCopied(one.id);
+			setShowing(undefined);
+			return;
+		}
+
+		setShowing(one.id);
+		actionFailed(t("Could not copy the link. Copy it from the box."));
 	};
 
 	const drop = async (one: Arrangement) => {
 		try {
 			await cancel(one.id);
-			setMine((was) => was.filter((m) => m.id !== one.id));
+			reads.current++;
+			setList((was) => ({ ...was, items: was.items.filter((m) => m.id !== one.id) }));
 		} catch (whatever) {
 			actionFailed(explainArranging(whatever, t));
 		}
 	};
+
+	const mine = list.items;
 
 	return (
 		<section
@@ -207,47 +325,94 @@ export function Schedule({
 							{at
 								? past
 									? t("That time has already gone.")
-									: t("Arranged for {when}", { when: whenSaid(at.toISOString()) })
+									: tooFar
+										? t("That is more than sixty days away.")
+										: t("Arranged for {when}", { when: whenSaid(at.toISOString()) })
 								: t("Choose a day.")}
 						</span>
-						<Button type="submit" variant="primary" disabled={!at || past || arranging} className="shrink-0">
+						<Button type="submit" variant="primary" disabled={!at || past || tooFar || arranging} className="shrink-0">
 							{arranging ? <Loader2 className="size-4 animate-spin" /> : t("Arrange")}
 						</Button>
 					</div>
 
+					{list.status === "signed out" && (
+						<div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+							<span className="text-[12.5px] text-fg-muted">{t("Your session has expired. Sign in again.")}</span>
+							{onSignedOut && (
+								<Button type="button" variant="secondary" size="sm" onClick={onSignedOut}>
+									{t("Sign in")}
+								</Button>
+							)}
+						</div>
+					)}
+
+					{list.status === "failed" && (
+						<div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
+							<span className="text-[12.5px] text-fg-muted">{t("Could not load your meetings.")}</span>
+							<Button type="button" variant="secondary" size="sm" onClick={() => void refresh()}>
+								{t("Try again")}
+							</Button>
+						</div>
+					)}
+
+					{list.status === "loading" && mine.length === 0 && (
+						<div className="flex items-center gap-2 px-1 text-[12.5px] text-fg-muted">
+							<Loader2 className="size-3.5 animate-spin" />
+						</div>
+					)}
+
+					{list.status === "ready" && mine.length === 0 && (
+						<p className="px-1 text-[12.5px] text-fg-muted">{t("No meetings arranged yet.")}</p>
+					)}
+
 					{mine.length > 0 && (
 						<ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
 							{mine.map((one) => (
-								<li key={one.id} className="flex items-center gap-2 px-3 py-2">
-									<span className="flex min-w-0 flex-1 flex-col">
-										<span className="readout truncate text-[13px]">{one.room}</span>
-										<span className="truncate text-[11.5px] text-fg-muted">
-											{whenSaid(one.at)}
-											{one.ended ? ` · ${t("Over")}` : one.started ? ` · ${t("Under way")}` : ""}
+								<li key={one.id} className="flex flex-col gap-2 px-3 py-2">
+									<div className="flex items-center gap-2">
+										<span className="flex min-w-0 flex-1 flex-col">
+											<span className="readout truncate text-[13px]">{one.room}</span>
+											<span className="truncate text-[11.5px] text-fg-muted">
+												{whenSaid(one.at)}
+												{one.ended ? ` · ${t("Over")}` : one.started ? ` · ${t("Under way")}` : ""}
+											</span>
 										</span>
-									</span>
 
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										className="size-8"
-										aria-label={copied === one.id ? t("Link copied") : t("Copy link")}
-										onClick={() => copyLink(one)}
-									>
-										{copied === one.id ? <Check className="size-4 text-tally" /> : <Copy className="size-4" />}
-									</Button>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon"
+											className="size-8"
+											aria-label={copied === one.id ? t("Link copied") : t("Copy link")}
+											onClick={() => void offer(one)}
+										>
+											{copied === one.id ? <Check className="size-4 text-tally" /> : <Copy className="size-4" />}
+										</Button>
 
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon"
-										className="size-8 text-fg-muted"
-										aria-label={t("Cancel meeting")}
-										onClick={() => void drop(one)}
-									>
-										<X className="size-4" />
-									</Button>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon"
+											className="size-8 text-fg-muted"
+											aria-label={t("Cancel meeting")}
+											onClick={() => void drop(one)}
+										>
+											<X className="size-4" />
+										</Button>
+									</div>
+
+									{/* Only where copying did not work. The link is a
+									    line of noise in a list that is otherwise names
+									    and times, so it is not shown until it has to be. */}
+									{showing === one.id && (
+										<Input
+											readOnly
+											value={linkFor(one)}
+											aria-label={t("Meeting link")}
+											onFocus={(event) => event.currentTarget.select()}
+											className="readout h-9 bg-surface-hi text-[12px]"
+										/>
+									)}
 								</li>
 							))}
 						</ul>
@@ -392,6 +557,28 @@ function Clock({
 			))}
 		</select>
 	);
+}
+
+/**
+ * Put text on the clipboard, and say whether it got there.
+ *
+ * Three ways this fails and they arrive differently: no clipboard at all on a
+ * page that is not secure, a call that throws, and a call that answers with a
+ * refusal. All three used to be ignored, and the first was worse than
+ * ignored — it threw inside the arranging's own try, and the meeting that had
+ * just been made was reported as not made.
+ */
+async function copyText(text: string): Promise<boolean> {
+	try {
+		const clipboard = navigator.clipboard;
+		if (!clipboard || typeof clipboard.writeText !== "function") return false;
+
+		await clipboard.writeText(text);
+
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 function nextQuarter(): Date {

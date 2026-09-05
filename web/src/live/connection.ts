@@ -97,6 +97,15 @@ export interface Reading {
  */
 const EVERY_MS = 2000;
 
+/*
+ * How many samples with nothing to say about the reason keep the last one.
+ *
+ * Two, which is four seconds: long enough to ride out a report taken while the
+ * encoder is reconfiguring, short enough that a browser which has genuinely
+ * stopped reporting does not go on being quoted for the rest of the call.
+ */
+const MISSING_FOR = 2;
+
 /**
  * Where the bands are.
  *
@@ -135,16 +144,29 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 	const previous = useRef<Previous>();
 	// The last numbers a share reported, so a sample that lacks them does not
 	// empty the row.
-	const held = useRef<{ width?: number; height?: number; fps?: number; sending: boolean; limited?: "cpu" | "bandwidth" | "other" }>();
+	const held = useRef<{
+		id?: string;
+		width?: number;
+		height?: number;
+		fps?: number;
+		sending: boolean;
+		limited?: "cpu" | "bandwidth" | "other" | "none";
+		/* How many samples in a row have had nothing to say about the reason. */
+		missing: number;
+	}>();
 
 	// The server's own verdict, kept apart from the numbers because it arrives
 	// on an event rather than on the clock.
 	const published = useRef<ConnectionQuality>(ConnectionQuality.Excellent);
 
 	useEffect(() => {
+		// Whatever the last room said is not about this one. This used to be
+		// cleared only on leaving, so a call joined straight from another kept
+		// the other's warning until its own first sample said otherwise.
+		previous.current = undefined;
+		held.current = undefined;
+
 		if (!room) {
-			previous.current = undefined;
-			held.current = undefined;
 			setReading({ grade: "good", measured: false });
 			return;
 		}
@@ -201,21 +223,39 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 			// to time — a sample taken while the encoder was reconfiguring — and
 			// a row that empties and refills is read as a fault rather than as a
 			// gap in the measurement.
+			// The same track as last time, in the same direction. Nothing is
+			// carried across a change of either: a new share starts with a clean
+			// row, and a share being watched does not inherit what this
+			// machine's encoder said about the one it was sending.
+			const same =
+				stats.share !== undefined &&
+				held.current !== undefined &&
+				held.current.id === stats.share.id &&
+				held.current.sending === stats.share.sending;
+
+			// The reason, in three states. Said: taken as said, including
+			// "none", which clears it. Not said: the last answer is kept for a
+			// couple of samples, because a report taken while the encoder is
+			// reconfiguring has no answer and a warning that blinks is read as a
+			// fault. Not said for longer than that: it is gone, because a
+			// browser that has stopped reporting is not still reporting "cpu".
+			let limited = stats.share?.limited;
+			let missing = 0;
+
+			if (stats.share && limited === undefined && same) {
+				missing = (held.current?.missing ?? 0) + 1;
+				limited = missing <= MISSING_FOR ? held.current?.limited : undefined;
+			}
+
 			const share = stats.share
 				? {
+						id: stats.share.id,
 						sending: stats.share.sending,
-						fps: stats.share.fps ?? held.current?.fps,
-						width: stats.share.width ?? held.current?.width,
-						height: stats.share.height ?? held.current?.height,
-						// The one field here that is not a number on a row: it is
-						// the answer to why the numbers are what they are, and it
-						// was the field this carry-forward dropped. A share that
-						// stutters is the complaint somebody can do least about,
-						// and the two causes want opposite answers — an encoder
-						// that cannot keep up wants less asked of it, a path that
-						// cannot carry it wants a nearer machine. On screen they
-						// look identical, which is exactly why this is said.
-						limited: stats.share.limited ?? held.current?.limited,
+						fps: stats.share.fps ?? (same ? held.current?.fps : undefined),
+						width: stats.share.width ?? (same ? held.current?.width : undefined),
+						height: stats.share.height ?? (same ? held.current?.height : undefined),
+						limited,
+						missing,
 					}
 				: undefined;
 
@@ -226,7 +266,15 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 				holding: server?.region || undefined,
 				rttMs: stats.rttMs,
 				jitterMs: stats.jitterMs,
-				share,
+				// "none" is a fact for the merge above and nothing for the screen:
+				// a share that is not held back has no reason to show.
+				share: share && {
+					sending: share.sending,
+					fps: share.fps,
+					width: share.width,
+					height: share.height,
+					limited: share.limited === "none" ? undefined : share.limited,
+				},
 				ownAddress: stats.ownAddress,
 				lossPercent,
 				upKbps,
@@ -287,7 +335,16 @@ interface Gathered {
 		height?: number;
 		fps?: number;
 		sending: boolean;
-		limited?: "cpu" | "bandwidth" | "other";
+		/*
+		 * Three states, not two. "none" is the browser saying the limitation
+		 * has gone, and it is kept apart from a sample that had nothing to say
+		 * — the two used to collapse into one `undefined` on the way in, and a
+		 * warning that had been cleared went on being carried forward as if it
+		 * were a gap in the measurement.
+		 */
+		limited?: "cpu" | "bandwidth" | "other" | "none";
+		/* Which track this is, so nothing is carried from one to the next. */
+		id?: string;
 	};
 	totals: {
 		bytesSent: number;
@@ -481,6 +538,7 @@ function readShare(
 			// act on: a shortfall in the network and a shortfall in the machine
 			// look identical on screen and want opposite answers.
 			limited: sending ? limitation(entry.qualityLimitationReason) : undefined,
+			id: String(entry.ssrc ?? entry.trackIdentifier ?? entry.id ?? ""),
 		};
 	});
 }
@@ -493,11 +551,12 @@ function readShare(
  * "other" is kept, because it is the browser saying it knows and will not say —
  * which is worth seeing precisely once, when everything else looks fine.
  */
-function limitation(value: unknown): "cpu" | "bandwidth" | "other" | undefined {
+function limitation(value: unknown): "cpu" | "bandwidth" | "other" | "none" | undefined {
 	switch (value) {
 		case "cpu":
 		case "bandwidth":
 		case "other":
+		case "none":
 			return value;
 		default:
 			return undefined;

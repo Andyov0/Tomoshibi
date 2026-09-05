@@ -390,6 +390,8 @@ const en = {
 	"Move": "Move",
 	"Move now, ending this call": "Move now, ending this call",
 	"Somebody": "Somebody",
+	"Add to calendar": "Add to calendar",
+	"Open {room}": "Open {room}",
 	"Could not load your meetings.": "Could not load your meetings.",
 	"Try again": "Try again",
 	"No meetings arranged yet.": "No meetings arranged yet.",

@@ -359,6 +359,8 @@ const zhHans: Dictionary = {
 	"Move": "迁移",
 	"Move now, ending this call": "立刻迁移,结束这通通话",
 	"Somebody": "某人",
+	"Add to calendar": "加入日历",
+	"Open {room}": "打开 {room}",
 	"Could not load your meetings.": "读不到你的预定。",
 	"Try again": "重试",
 	"No meetings arranged yet.": "还没有预定的会议。",

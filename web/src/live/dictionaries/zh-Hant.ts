@@ -359,6 +359,8 @@ const zhHant: Dictionary = {
 	"Move": "遷移",
 	"Move now, ending this call": "立刻遷移,結束這通通話",
 	"Somebody": "某人",
+	"Add to calendar": "加入日曆",
+	"Open {room}": "打開 {room}",
 	"Could not load your meetings.": "讀不到你的預定。",
 	"Try again": "重試",
 	"No meetings arranged yet.": "還沒有預定的會議。",

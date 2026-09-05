@@ -184,3 +184,39 @@ for (const [how, broken] of [
 		expect(screen.queryByLabelText("Link copied")).toBeNull();
 	});
 }
+
+
+it("opens a meeting from its name, with the whole link", async () => {
+	vi.mocked(arrangements).mockResolvedValueOnce([made]);
+	await opened();
+
+	const entry = await screen.findByRole("link", { name: "Open standup" });
+	expect(entry.getAttribute("href")).toBe(linkFor(made));
+});
+
+it("does not offer to open a meeting that is over", async () => {
+	vi.mocked(arrangements).mockResolvedValueOnce([{ ...made, started: true, ended: true }]);
+	await opened();
+
+	await screen.findByText("standup");
+	expect(screen.queryByRole("link", { name: "Open standup" })).toBeNull();
+});
+
+it("hands the meeting to the calendar as a file", async () => {
+	vi.mocked(arrangements).mockResolvedValueOnce([made]);
+	const clicked: string[] = [];
+	const url = vi.fn(() => "blob:fake");
+	vi.stubGlobal("URL", { ...URL, createObjectURL: url, revokeObjectURL: vi.fn() });
+	const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+		clicked.push(this.download);
+	});
+
+	await opened();
+	fireEvent.click(await screen.findByRole("button", { name: "Add to calendar" }));
+
+	expect(url).toHaveBeenCalledTimes(1);
+	expect(clicked).toEqual(["standup.ics"]);
+
+	click.mockRestore();
+	vi.unstubAllGlobals();
+});

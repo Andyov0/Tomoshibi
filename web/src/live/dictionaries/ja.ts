@@ -359,6 +359,8 @@ const ja: Dictionary = {
 	"Move": "移す",
 	"Move now, ending this call": "今すぐ移す（この通話は終わります）",
 	"Somebody": "誰か",
+	"Add to calendar": "カレンダーに追加",
+	"Open {room}": "{room} を開く",
 	"Could not load your meetings.": "予約を読み込めませんでした。",
 	"Try again": "再試行",
 	"No meetings arranged yet.": "予約した会議はまだありません。",

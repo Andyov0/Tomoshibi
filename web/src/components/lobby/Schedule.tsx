@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
 import { Refused } from "@/live/api";
+import { download, fileNameFor, icsFor } from "@/live/calendar";
 import { locale } from "@/live/i18n";
 import { type Arrangement, arrange, arrangements, cancel, linkFor, whenSaid } from "@/live/meeting";
 import { type Relay } from "@/live/relays";
@@ -10,7 +11,7 @@ import { ServerList } from "@/components/room/ServerPicker";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { actionFailed } from "@/live/notices";
 import { cn } from "@/lib/utils";
-import { CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
+import { CalendarClock, CalendarPlus, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Loader2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 /**
@@ -371,7 +372,17 @@ export function Schedule({
 								<li key={one.id} className="flex flex-col gap-2 px-3 py-2">
 									<div className="flex items-center gap-2">
 										<span className="flex min-w-0 flex-1 flex-col">
-											<span className="readout truncate text-[13px]">{one.room}</span>
+											{one.ended ? (
+												<span className="readout truncate text-[13px] text-fg-muted">{one.room}</span>
+											) : (
+												<a
+													href={linkFor(one)}
+													aria-label={t("Open {room}", { room: one.room })}
+													className="readout truncate text-[13px] underline-offset-2 hover:underline focus-visible:underline"
+												>
+													{one.room}
+												</a>
+											)}
 											<span className="truncate text-[11.5px] text-fg-muted">
 												{whenSaid(one.at)}
 												{one.ended ? ` · ${t("Over")}` : one.started ? ` · ${t("Under way")}` : ""}
@@ -387,6 +398,17 @@ export function Schedule({
 											onClick={() => void offer(one)}
 										>
 											{copied === one.id ? <Check className="size-4 text-tally" /> : <Copy className="size-4" />}
+										</Button>
+
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon"
+											className="size-8"
+											aria-label={t("Add to calendar")}
+											onClick={() => download(fileNameFor(one), icsFor(one, linkFor(one)))}
+										>
+											<CalendarPlus className="size-4" />
 										</Button>
 
 										<Button

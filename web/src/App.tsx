@@ -1,7 +1,6 @@
 import { type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
 import { doorway } from "@/live/doorway";
 import { forget as forgetTimings } from "@/live/relays";
-import { sharpShares } from "@/live/sharpness";
 import { chosenRelay, leftRoom, rememberRelay, wasIn } from "@/live/api";
 import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
@@ -337,10 +336,31 @@ export function App() {
 				await made.localParticipant.setMicrophoneEnabled(microphone);
 				await made.localParticipant.setCameraEnabled(camera);
 
-				// A shared screen is not a face: it stays at full quality however
-				// small its tile is. See live/sharpness.ts.
-				const sharp = sharpShares(made);
-				made.once(RoomEvent.Disconnected, sharp);
+				/*
+				 * There was a sharpShares here, and it could only ever have made
+				 * things worse.
+				 *
+				 * It asked, for every share, that the subscription be held at the
+				 * source's full size — on the reasoning that a face in a small
+				 * tile loses nothing worth having and a page of text loses
+				 * everything. The reasoning is right and the mechanism did not
+				 * exist. RemoteTrackPublication builds its UpdateTrackSettings by
+				 * taking the *smaller* of what was requested and what adaptive
+				 * stream measured (livekit-client.esm.mjs:31104), so a request
+				 * for the full size is discarded whenever the element is small —
+				 * and `settings.quality` is only ever sent when no dimensions are
+				 * known at all, which with adaptive stream on never happens. Both
+				 * calls were inert in the case they were written for, and the
+				 * dimensions one could still lower a subscription it was meant to
+				 * raise.
+				 *
+				 * What answers the original complaint is the ladder in
+				 * live/room.ts: the rungs are sized so that no stage this draws
+				 * selects a small one, and a tile genuinely too small for the top
+				 * layer is given 720p rather than the starved picture. That is
+				 * the thing sharpShares was reaching for, done where the choice
+				 * actually gets made.
+				 */
 
 				current.current = made;
 				setLive(made);

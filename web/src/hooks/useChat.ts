@@ -6,8 +6,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 export interface Chat {
 	/** Everything said this call, oldest first. */
 	all: Said[];
-	/** What is still showing on somebody's picture, by identity. */
-	showing: Map<string, Said[]>;
+	/** What is still on screen in the corner, oldest first. */
+	arriving: Said[];
 	/** Something arrived while the panel was closed. */
 	unread: boolean;
 	/** Send, resolving when the media server has it. */
@@ -72,20 +72,23 @@ export function useChat(room: Room | undefined, open: boolean): Chat {
 		};
 	}, [room, open]);
 
-	// Nothing floats over a picture while the panel is open: the same sentence in
-	// two places makes the reader decide twice whether they have seen it.
-	const showing = useMemo(() => {
-		const by = new Map<string, Said[]>();
-		if (open) return by;
-
-		for (const said of recent) {
-			const held = by.get(said.from);
-			if (held) held.push(said);
-			else by.set(said.from, [said]);
-		}
-
-		return by;
-	}, [recent, open]);
+	/*
+	 * What the corner shows, in the order it was said.
+	 *
+	 * This used to be a Map keyed by identity, because a message was drawn on
+	 * its speaker's own picture and the picture had to be able to ask for its
+	 * own. The corner replaced that, and flattening a Map to feed it produced a
+	 * conversation ordered by speaker: two people talking in turn came out as
+	 * everything the first said and then everything the second did, and the
+	 * "same person again" rule that drops the second face then invented runs
+	 * that never happened. `recent` is already in arrival order; the grouping
+	 * had no remaining reader.
+	 *
+	 * Nothing is shown while the panel is open, which is the one part of the old
+	 * rule that survives: the same sentence in two places makes the reader decide
+	 * twice whether they have seen it.
+	 */
+	const arriving = useMemo(() => (open ? [] : recent), [recent, open]);
 
 	const send = useCallback(
 		async (body: string) => {
@@ -103,5 +106,5 @@ export function useChat(room: Room | undefined, open: boolean): Chat {
 
 	const markRead = useCallback(() => setUnread(false), []);
 
-	return { all, showing, unread, send, sending, markRead };
+	return { all, arriving, unread, send, sending, markRead };
 }

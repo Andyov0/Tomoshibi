@@ -43,7 +43,7 @@ import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useRoomForSide } from "@/hooks/useRoomFor";
 import { placement, remember as rememberPlacement } from "@/live/controls";
 import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export interface RoomProps {
 	room: LiveRoom;
@@ -130,7 +130,26 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	const standing = useStanding(room);
 
 	return (
-		<div className="relative h-full">
+		/*
+		 * The element that goes fullscreen, and it has to be this one.
+		 *
+		 * The ref used to sit on the div holding the pictures, several levels
+		 * down inside Stage, which meant fullscreen showed the pictures and
+		 * nothing else — the control island and the messages in the corner are
+		 * both drawn outside it, and an element that is not inside the fullscreen
+		 * element cannot be painted over it at all.
+		 *
+		 * That made two fixes inert at once. The controls were given the idle
+		 * rule for fullscreen so that a pointer would bring them back, and they
+		 * could not come back because they were not there; and moving every
+		 * message to the corner took the last thing that showed a message during
+		 * a fullscreen share, because the bubble it replaced had been on a tile,
+		 * and tiles are inside.
+		 *
+		 * So the fullscreen element is the room: pictures, controls and corner
+		 * together, which is also what somebody pressing it is asking for.
+		 */
+		<div ref={screen.ref} className="relative h-full">
 			<Stage
 				room={room}
 				hands={hands}
@@ -264,10 +283,7 @@ function Stage({
 	// be checked against each other.
 	const alone = all.length <= ALONE_TOGETHER ? rest[0] : undefined;
 
-	// Everything said recently, flattened out of the by-speaker map the tiles
-	// used to need. Memoised because the corner holds each card past the moment
-	// it leaves the list, and a fresh array every render would restart that.
-	const inCorner = useMemo(() => [...chat.showing.values()].flat(), [chat.showing]);
+
 
 	const plan = pinned
 		? planFocus(size, pinned.id, screen.active ? [] : shown, { fullscreen: screen.active })
@@ -403,7 +419,7 @@ function Stage({
 			    else, so a fullscreen stage is a stage rather than a room with its
 			    chrome still attached. */}
 			<RoomMenu>
-				<div ref={screen.ref} className="h-full w-full bg-bg">
+				<div className="h-full w-full bg-bg">
 					<Plane
 					measure={measure}
 					plan={plan}
@@ -500,7 +516,7 @@ function Stage({
 			    to borrow: a bubble on one tile in a grid is missed by a reader who
 			    is looking at the shared screen, which is when a message matters
 			    most. See Said.tsx. */}
-			<SaidInCorner said={inCorner} />
+			<SaidInCorner said={chat.arriving} />
 
 			{state !== ConnectionState.Connected && (
 				<div className="-translate-x-1/2 pointer-events-none absolute top-3 left-1/2 rounded-full bg-surface-hi px-3 py-1 text-fg-muted text-xs shadow">

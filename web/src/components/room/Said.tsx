@@ -83,8 +83,22 @@ function useDeparting(said: Said[]): Departing[] {
 	return held;
 }
 
+/**
+ * How many cards the corner will stack.
+ *
+ * A message stays for six seconds and nothing throttles a conversation, so a
+ * lively minute would otherwise grow a column up the side of the window and
+ * cover the pictures it is meant to sit beside. Three is what a notification
+ * stack shows; the panel holds the rest and the badge says it is there.
+ *
+ * Applied to what is held rather than to what arrives, so a card already on its
+ * way out is not shoved off the screen a frame early by the one that replaced
+ * it.
+ */
+const AT_MOST = 3;
+
 export function SaidInCorner({ said }: { said: Said[] }) {
-	const held = useDeparting(said);
+	const held = useDeparting(said).slice(-AT_MOST);
 
 	if (held.length === 0) return null;
 

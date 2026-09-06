@@ -126,52 +126,69 @@ const BITRATE_FLOOR = 8_000_000;
 const BASE_RATE = 30;
 
 /**
- * The small copy of the share, for somebody whose path cannot carry the big one.
+ * The smaller copies of a share, beneath the one that was chosen.
  *
  * A share used to be published as a single encode, and the argument for that
  * was wrong in a way worth writing down, because it reads as sound and is not.
- * It said that simulcast divides the allowance between the layers, so a
- * fallback would be paid for out of the picture everybody else is looking at.
- * It does not: `encodingsFromPresets` in the SDK hands the top layer the
- * encoding it was given, untouched, and gives each smaller layer the bitrate
- * its own preset names. The fallback costs what it costs and nothing comes off
- * the top.
+ * It said that simulcast divides the allowance between the layers, so a smaller
+ * copy would be paid for out of the picture everybody is looking at. It does
+ * not: `encodingsFromPresets` in the SDK hands the top layer the encoding it
+ * was given and gives each smaller layer the bitrate its own preset names.
  *
- * What the single encode actually produced is the fault this exists for. A
- * media server holding one layer has two moves for a subscriber who cannot take
- * it — forward it anyway, or pause the track — and both of them are a black
- * rectangle. Measured on a live call: a room held a long way from half the
- * people in it, the leg out of it carrying two megabits a second with a tenth
- * of the packets lost, and a share asking thirty-eight. The share did not
- * soften. It disappeared, while the audio went on perfectly, which is why it
- * was reported as the sharing being broken rather than as a slow network.
+ * What the single encode produced is the fault this exists for. A media server
+ * holding one layer has two moves for a subscriber who cannot take it — forward
+ * it anyway, or pause the track — and both are a black rectangle. Measured on a
+ * live call: a room held a long way from half the people in it, the leg out of
+ * it carrying two megabits a second with a tenth of the packets lost, and a
+ * share asking thirty-eight. The share did not soften. It disappeared, while the
+ * audio went on perfectly, which is why it was reported as the sharing being
+ * broken rather than as a slow network.
  *
- * ## Why these numbers
+ * ## Why two, and why these sizes
  *
- * Sized for the paths that were actually measured rather than for a fraction of
- * the top layer. The SDK's own default for a share is half the size at the same
- * frame rate and a quarter of the bitrate, which for a share asking twenty-seven
- * megabits leaves a "fallback" of nearly seven — beyond every path this is here
- * for, and so no fallback at all.
+ * The first attempt was one layer at 960x540, chosen for legibility on a
+ * starved path without asking what else selects a layer. Two things do, and the
+ * other one is the tile.
  *
- * Under a megabit, so it fits through a two-megabit path with room left for the
- * retransmissions such a path demands. 960x540 rather than 640x360 because the
- * thing being rescued is legibility: at 360 lines ordinary type is gone and
- * there is no point sending it. Fifteen frames because a starved path should
- * spend what it has on the picture — somebody who has fallen back to this is
- * reading a screen, not watching motion.
+ * A subscriber's client reports the size of the element the share is drawn
+ * into, and the server takes `requestedSize = height * 0.9` and then the
+ * smallest layer at least that tall (livekit-server mediatrackreceiver.go:1113,
+ * layerSelectionTolerance at :43). A 540-line layer is therefore selected for
+ * any element between about 400 and 640 device pixels tall — a 1366x768 laptop
+ * with the window maximised, and a phone held sideways. Those people were being
+ * handed fifteen frames a second and 800 kb/s of a screen they had both the
+ * bandwidth and the pixels to read properly, and nothing said so.
  *
- * The size is absolute, not relative: `scaleResolutionDownBy` is worked out
- * from the capture's smaller dimension, so this comes out 960x540 whether the
- * screen behind it is 1080p, 1440p or 4K.
+ * So the ladder is built around what a tile will ask for rather than around one
+ * number:
  *
- * One extra layer rather than two. A middle layer would serve somebody whose
- * path carries several megabits but not the whole ask, and it costs a third
- * encode on the machine that is already doing the hardest one. Left out until
- * there is a measurement asking for it; the paths that prompted this were
- * nowhere near a middle layer anyway.
+ *   - 640x360 sits below every real stage, so nothing but a genuinely tiny
+ *     element selects it by size. It is what congestion control falls to, and
+ *     that is the only way anybody ordinarily reaches it.
+ *   - 1280x720 is the honest answer for a small window: more than such an
+ *     element can draw, at about a tenth of the top layer's cost.
+ *
+ * ## What they cost the person sharing
+ *
+ * Nothing, until somebody needs one. `dynacast` is on, and a simulcast layer no
+ * subscriber has asked for is paused at the publisher rather than encoded and
+ * thrown away. That is the whole reason the ladder can be this generous without
+ * spending an upstream that, on the connections this has to work on, is the
+ * scarcest thing in the call: a room where everybody is watching at full size
+ * sends exactly one encode, the same as before any of this existed.
+ *
+ * The sizes are absolute rather than relative — `scaleResolutionDownBy` is
+ * worked out from the capture's smaller dimension — so these come out 640x360
+ * and 1280x720 whether the screen behind them is 1080p, 1440p or 4K.
  */
-export const FALLBACK = new VideoPreset(960, 540, 800_000, 15);
+export const SMALL = new VideoPreset(640, 360, 500_000, 15);
+export const MIDDLE = new VideoPreset(1280, 720, 2_500_000, 30);
+
+/**
+ * What goes beneath the top layer, smallest first — the order the SDK sorts
+ * presets into, and therefore the order the encodings come back in.
+ */
+export const BENEATH = [SMALL, MIDDLE];
 
 /**
  * What to ask for, given a size and a rate.
@@ -292,34 +309,6 @@ function handheld(): boolean {
 }
 
 /**
- * The chosen size, never larger than the display it will be captured from.
- *
- * The SDK asks getDisplayMedia for `width: { ideal }`, and ideal is a target
- * rather than a ceiling: a 1080p display told to produce 1440p gives 1440p, by
- * scaling its own screen up before anything is encoded. Eighty-five per cent
- * more pixels carrying not one pixel more of anything, paid for by the person
- * sharing, on the upstream that is scarcest.
- *
- * The sizes in the menu are ceilings — "up to 1440p" — so clamping here is what
- * they already meant. It cannot be done through the constraint, because the
- * shape that would say it is the shape the SDK overwrites.
- *
- * Device pixels, not CSS pixels: `screen.width` on a retina laptop reads 1728
- * for a display that has 3456 of them, and clamping to the smaller number would
- * halve every share on exactly the machines with the sharpest screens.
- */
-function fitsDisplay(size: Size): Size {
-	const across = Math.round((screen?.width ?? 0) * (devicePixelRatio || 1));
-	const down = Math.round((screen?.height ?? 0) * (devicePixelRatio || 1));
-
-	// A browser that will not say. Better to ask for what was chosen than to
-	// clamp to nothing.
-	if (!across || !down) return size;
-
-	return { width: Math.min(size.width, across), height: Math.min(size.height, down) };
-}
-
-/**
  * Build the room.
  *
  * Adaptive streaming and dynacast are both on, and together they are the reason
@@ -389,6 +378,30 @@ export function create(secret: string): Room {
 			 */
 			videoCodec: "h264",
 			simulcast: true,
+
+			/*
+			 * No second encode in another codec.
+			 *
+			 * The SDK's default is `backupCodec: true`, which on an unsealed call
+			 * means this: the moment one subscriber turns up whose browser cannot
+			 * decode H.264, the media server asks for VP8 and the publisher
+			 * starts a *whole second encode of the same picture* — at the same
+			 * maxBitrate and maxFramerate it was already sending, with simulcast
+			 * forced off, in software. One person joining roughly doubles what
+			 * the person sharing has to upload, and nothing anywhere says so.
+			 *
+			 * That is the one cost this deployment cannot pay. The connections
+			 * that matter here are the constrained ones; they are the scarce
+			 * thing in every call, and the whole point of the layer ladder above
+			 * is that the distribution burden sits on the server rather than on
+			 * them.
+			 *
+			 * What it costs to turn off: a browser with no H.264 at all sees no
+			 * video from this publisher. Every current browser has it, on every
+			 * platform this is used from, and the ones that do not would be
+			 * paying for it out of somebody else's upload rather than their own.
+			 */
+			backupCodec: false,
 		},
 		// Speaking is worked out by the media server and pushed to everybody, so
 		// no client has to run an analyser of its own.
@@ -568,8 +581,20 @@ export async function share(
 			 * What is given up is the size as a ceiling. The SDK writes
 			 * `width: { ideal }` for everything but Safari 17, ideal is a target,
 			 * and there is no way to say ceiling through a field that is three
-			 * numbers. fitsDisplay is the answer to that: ask for no more than
-			 * the display actually has, and an ideal cannot become an upscale.
+			 * numbers. So somebody on a 1080p display who picks 1440p has their
+			 * screen scaled up before it is encoded — more pixels carrying
+			 * nothing, at the same bitrate ceiling, so it costs processor and not
+			 * upload.
+			 *
+			 * That was clamped for a while, to `screen.width` — and the clamp was
+			 * worse than the thing it fixed. `screen` describes the display the
+			 * browser window is on, not the surface the picker returns, so
+			 * somebody with a laptop and a 4K monitor who chose 4K and shared the
+			 * monitor was given 1080p of it. Losing a picture the person asked
+			 * for is a worse trade than spending some of their processor on one
+			 * they did not, and it was invisible from both ends. `settle` below
+			 * takes the other half of the problem: the ceiling follows the
+			 * picture that actually arrived.
 			 *
 			 * The rate is the clamped one, not what was asked for — a rate
 			 * remembered from a size that allowed it would otherwise reach a
@@ -577,7 +602,8 @@ export async function share(
 			 * whatever it likes rather than by saying no.
 			 */
 			resolution: {
-				...fitsDisplay(profile),
+				width: profile.width,
+				height: profile.height,
 				frameRate: profile.frameRate,
 			},
 			// The picker should not offer this tab, which would be a mirror tunnel.
@@ -601,16 +627,16 @@ export async function share(
 			videoCodec: profile.videoCodec,
 			degradationPreference: profile.degradationPreference,
 
-			// The whole allowance in the top layer, and one small copy beneath it.
+			// The whole allowance in the top layer, and a ladder beneath it.
 			//
 			// Nothing above is reduced by this: the layer everybody able to take
-			// it receives is exactly the one `screenShareEncoding` asks for. What
-			// the second layer changes is the answer given to somebody who cannot
-			// — which was nothing at all, and is now a smaller picture. See
-			// FALLBACK for the measurement that prompted it and for why the SDK's
-			// own default layer is not small enough to be one.
+			// it receives is exactly the one `screenShareEncoding` asks for, and
+			// dynacast pauses the rungs nobody has asked for. What they change is
+			// the answer given to somebody who cannot take the top one — which
+			// was nothing at all. See SMALL and MIDDLE for the measurement that
+			// prompted them and for why the SDK's own default layer is neither.
 			simulcast: true,
-			screenShareSimulcastLayers: [FALLBACK],
+			screenShareSimulcastLayers: BENEATH,
 		},
 	);
 
@@ -634,9 +660,67 @@ export async function share(
 	 * four-second summaries; a second one layered on top of it could only ever
 	 * subtract. What the path will carry is the browser's question. What the
 	 * share is worth is this file's, and it is answered upward.
+	 *
+	 * `settle` below is not that, and the difference is worth being precise
+	 * about: it never reads the network. It asks the capture what size it turned
+	 * out to be and makes the ceiling match, which is the same arithmetic
+	 * bitrateFor already does — done once, against the picture that arrived
+	 * rather than the one that was requested.
 	 */
 
+	await settle(published, profile);
+
 	return published;
+}
+
+/**
+ * Make the ceiling match the picture that actually arrived.
+ *
+ * What a share is worth is worked out from the size that was chosen, and the
+ * size that was chosen is a request. A window is smaller than a screen; a
+ * display is whatever it is; and `width: { ideal }` is a target the browser is
+ * free to miss in either direction. So the number reaching the encoder was
+ * computed for a picture nobody was necessarily sending — generous where the
+ * capture came back small, which is upload spent on nothing, and that upload is
+ * the scarcest thing in these calls.
+ *
+ * Only downward, and only the top layer. Raising it would be this file arguing
+ * with the setting somebody chose, and the rungs below already follow the
+ * capture through `scaleResolutionDownBy`.
+ *
+ * Failures are swallowed. A ceiling that is too generous is what this deployment
+ * had for its whole life; a share that will not start because a parameter write
+ * was refused is worse than one that costs a little too much.
+ */
+async function settle(
+	published: LocalTrackPublication | undefined,
+	profile: ReturnType<typeof settingsFor>,
+): Promise<void> {
+	const sender = published?.videoTrack?.sender;
+	const track = published?.videoTrack?.mediaStreamTrack;
+
+	if (!sender || !track) return;
+
+	const { width, height } = track.getSettings();
+	if (!width || !height) return;
+
+	// The same picture, or a larger one than was asked for. Nothing to give back.
+	if (width * height >= profile.width * profile.height) return;
+
+	const worth = bitrateFor(width, height, profile.frameRate);
+	if (worth >= profile.maxBitrate) return;
+
+	try {
+		const parameters = sender.getParameters();
+		const top = parameters.encodings?.[parameters.encodings.length - 1];
+
+		if (!top) return;
+
+		top.maxBitrate = worth;
+		await sender.setParameters(parameters);
+	} catch {
+		// See above: too generous is the state this shipped in for months.
+	}
 }
 
 /**
@@ -795,6 +879,11 @@ export async function retune(
 	 */
 	const top = parameters.encodings.length - 1;
 
+	// The capture as it is now, after the constraints above, because that is
+	// what every smaller layer is scaled against.
+	const settled = track.mediaStreamTrack.getSettings();
+	const shortest = Math.min(settled.width ?? profile.width, settled.height ?? profile.height);
+
 	parameters.encodings.forEach((encoding, index) => {
 		if (index === top) {
 			encoding.maxBitrate = profile.maxBitrate;
@@ -802,8 +891,18 @@ export async function retune(
 			return;
 		}
 
-		encoding.maxBitrate = FALLBACK.encoding.maxBitrate;
-		encoding.maxFramerate = FALLBACK.encoding.maxFramerate;
+		// Its own rung, not one number for all of them.
+		const beneath = BENEATH[index] ?? SMALL;
+
+		encoding.maxBitrate = beneath.encoding.maxBitrate;
+		encoding.maxFramerate = beneath.encoding.maxFramerate;
+
+		// And the size, which nothing here used to touch. The SDK works
+		// scaleResolutionDownBy out once, at publish, against the capture as it
+		// was then; a share resized afterwards left every smaller layer scaled
+		// by a ratio taken against a picture that no longer exists, so the
+		// ladder quietly stopped being the sizes it is named for.
+		encoding.scaleResolutionDownBy = Math.max(1, shortest / beneath.height);
 	});
 
 	// What to give up when the connection cannot carry all of it. The whole

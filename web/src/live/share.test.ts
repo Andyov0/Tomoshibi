@@ -19,7 +19,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { Room } from "livekit-client";
 
 import {
-	FALLBACK,
+	BENEATH,
+	MIDDLE,
+	SMALL,
 	SHARE_FRAME_RATES,
 	SHARE_QUALITIES,
 	type ShareFrameRate,
@@ -239,34 +241,54 @@ describe("the small copy that goes with a share", () => {
 		};
 
 		expect(publish.simulcast).toBe(true);
-		expect(publish.screenShareSimulcastLayers).toHaveLength(1);
+		expect(publish.screenShareSimulcastLayers).toEqual(BENEATH);
 
 		// The half that matters most: nothing was taken off the top to pay for
-		// it. What somebody chose is still what somebody able to receive it gets.
+		// them. What somebody chose is still what somebody able to receive it
+		// gets.
 		expect(publish.screenShareEncoding.maxBitrate).toBe(settingsForTest(120, "1080p").maxBitrate);
 	});
 
-	it("is sized for a path that cannot carry the share at all", () => {
+	it("keeps the bottom rung under what any real stage will ask for", () => {
+		// The server picks by height: `requestedSize = height * 0.9`, then the
+		// smallest layer at least that tall. A rung at 540 lines is therefore
+		// chosen for an element between about 400 and 640 device pixels — a
+		// maximised 1366x768 laptop, a phone held sideways — and those people
+		// were handed the starved-path picture while having the bandwidth and
+		// the pixels for the real one.
+		//
+		// 400 device pixels is below any stage this draws, so the bottom rung is
+		// reached by congestion and not by a tile.
+		expect(SMALL.height / 0.9).toBeLessThanOrEqual(400);
+	});
+
+	it("keeps the bottom rung inside a path that carries nothing else", () => {
 		// The leg this was measured on carried two megabits a second and lost a
-		// tenth of its packets. A fallback that does not fit through that is not
-		// a fallback; the SDK's own default for a share is a quarter of the top
+		// tenth of its packets. A rung that does not fit through that is not a
+		// fallback; the SDK's own default for a share is a quarter of the top
 		// layer, which for an ordinary ask is several megabits.
-		expect(FALLBACK.encoding.maxBitrate).toBeLessThan(1_000_000);
+		expect(SMALL.encoding.maxBitrate).toBeLessThan(1_000_000);
 
 		for (const quality of SHARE_QUALITIES) {
 			for (const rate of ratesFor(quality)) {
-				expect(FALLBACK.encoding.maxBitrate * 5).toBeLessThan(
+				expect(SMALL.encoding.maxBitrate * 5).toBeLessThan(
 					settingsForTest(rate, quality).maxBitrate,
 				);
 			}
 		}
 	});
 
-	it("stays large enough to read", () => {
-		// The thing being rescued is legibility. At 360 lines ordinary type is
-		// gone, and a picture nobody can read is not worth the bits.
-		expect(FALLBACK.height).toBeGreaterThanOrEqual(540);
-		expect(FALLBACK.encoding.maxFramerate).toBeLessThanOrEqual(15);
+	it("climbs, so a small window is not sent the starved picture", () => {
+		// The middle rung is what an element too small for the top layer should
+		// get. It has to be bigger in every dimension that decides a selection,
+		// or it is not a rung.
+		expect(MIDDLE.height).toBeGreaterThan(SMALL.height);
+		expect(MIDDLE.encoding.maxBitrate).toBeGreaterThan(SMALL.encoding.maxBitrate);
+		expect(MIDDLE.encoding.maxFramerate ?? 0).toBeGreaterThan(SMALL.encoding.maxFramerate ?? 0);
+
+		// And smallest first: the SDK sorts presets ascending and hands the
+		// encodings back in that order, which is the order retune walks.
+		expect(BENEATH).toEqual([SMALL, MIDDLE]);
 	});
 });
 
@@ -339,38 +361,100 @@ describe("what the browser is actually asked to capture", () => {
 		expect((await captured(240, "4k")).resolution?.frameRate).toBe(60);
 	});
 
-	it("never asks for more pixels than the display has", async () => {
-		// The SDK writes `width: { ideal }` for everything but Safari 17, and an
-		// ideal larger than the screen is an upscale: the display is stretched
-		// before encoding, and the person sharing pays for the extra pixels on
-		// the upstream that has the least room. The menu's sizes are ceilings, so
-		// this is what they already meant.
+	it("asks for the size that was chosen, whatever screen the window is on", async () => {
+		// This was clamped to `screen` for a while, so that `ideal` could not
+		// become an upscale. `screen` describes the display the browser window is
+		// on and not the surface the picker returns, so somebody with a laptop
+		// and a 4K monitor who chose 4K and shared the monitor was handed 1080p
+		// of it. Losing a picture somebody asked for is the worse trade; the
+		// ceiling is corrected afterwards instead, against what actually arrived.
 		vi.stubGlobal("screen", { width: 1280, height: 720 });
 		vi.stubGlobal("devicePixelRatio", 1);
 
 		try {
 			const asked = await captured(60, "4k");
 
-			expect(asked.resolution?.width).toBe(1280);
-			expect(asked.resolution?.height).toBe(720);
-
-			// And the rate is untouched by the clamp: fewer pixels is not fewer
-			// frames.
-			expect(asked.resolution?.frameRate).toBe(60);
+			expect(asked.resolution?.width).toBe(3840);
+			expect(asked.resolution?.height).toBe(2160);
 		} finally {
 			vi.unstubAllGlobals();
 		}
 	});
+});
 
-	it("asks for what was chosen when the display will not say", async () => {
-		// jsdom reports a zero-sized screen, and so does anything else that has
-		// no display. Clamping to nothing would be a share of no pixels.
-		vi.stubGlobal("screen", { width: 0, height: 0 });
+/*
+The ceiling, once the picture has arrived.
 
-		try {
-			expect((await captured(60, "1080p")).resolution?.width).toBe(1920);
-		} finally {
-			vi.unstubAllGlobals();
-		}
+What a share is worth is computed from the size that was chosen, and the size
+that was chosen is a request: a window is smaller than a screen, and
+`width: { ideal }` is a target the browser may miss. A capture that came back
+small was being sent with a ceiling worked out for one that did not, which is
+upload reserved for nothing — and upload is the scarce thing on the connections
+this has to work on.
+
+Downward only. Raising it would be this file arguing with the setting somebody
+chose.
+*/
+describe("the ceiling after the capture", () => {
+	function shared(settings: { width?: number; height?: number }) {
+		const encodings = [{ maxBitrate: 1 }, { maxBitrate: 999_999_999 }];
+
+		const publication = {
+			videoTrack: {
+				sender: {
+					getParameters: () => ({ encodings }),
+					setParameters: async () => undefined,
+				},
+				mediaStreamTrack: { getSettings: () => settings },
+			},
+		};
+
+		const room = {
+			localParticipant: {
+				setScreenShareEnabled: async () => publication,
+			},
+		} as unknown as Room;
+
+		return { room, encodings };
+	}
+
+	it("comes down to what a smaller capture is worth", async () => {
+		// 4K was chosen; a 1080p window came back.
+		const { room, encodings } = shared({ width: 1920, height: 1080 });
+
+		await share(room, true, 30, "4k");
+
+		const top = encodings[1];
+		if (!top) throw new Error("no top encoding");
+
+		expect(top.maxBitrate).toBe(settingsForTest(30, "1080p").maxBitrate);
+		expect(top.maxBitrate).toBeLessThan(settingsForTest(30, "4k").maxBitrate);
+	});
+
+	it("leaves the rungs beneath it alone", async () => {
+		const { room, encodings } = shared({ width: 1920, height: 1080 });
+
+		await share(room, true, 30, "4k");
+
+		// The small ones follow the capture through scaleResolutionDownBy, which
+		// the SDK worked out from the same picture. Rewriting them here would be
+		// two answers to one question.
+		expect(encodings[0]?.maxBitrate).toBe(1);
+	});
+
+	it("does not move when the capture is the size that was asked for", async () => {
+		const { room, encodings } = shared({ width: 1920, height: 1080 });
+
+		await share(room, true, 30, "1080p");
+
+		expect(encodings[1]?.maxBitrate).toBe(999_999_999);
+	});
+
+	it("does not move when the capture will not say", async () => {
+		const { room, encodings } = shared({});
+
+		await share(room, true, 30, "4k");
+
+		expect(encodings[1]?.maxBitrate).toBe(999_999_999);
 	});
 });

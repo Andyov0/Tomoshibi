@@ -83,8 +83,27 @@ export function ControlBar({
 	// case this is for, and that is exactly what :focus-visible means.
 	const [near, setNear] = useState(false);
 
-	const idle = useIdle(where === "idle" && !near);
-	const away = hidden || idle;
+	/*
+	 * When the bar is allowed to take itself away, and what brings it back.
+	 *
+	 * Two things ask for it: the setting, and a stage that has taken the whole
+	 * screen. They used to be handled differently, and the second one was a
+	 * fault: fullscreen set `away` outright, so the controls went and nothing
+	 * returned them. Somebody watching a shared screen fullscreen had no way to
+	 * mute, to leave, or to stop their own share, and no way to find out that
+	 * the escape was a key nobody had told them about. It also made the setting
+	 * look broken, because the one place people watch a share for half an hour
+	 * is exactly where the setting appeared to do nothing.
+	 *
+	 * So fullscreen now hides the same way the setting does — out of the way
+	 * until the pointer moves, which is what every video player does and what
+	 * somebody reaching for the controls already expects.
+	 */
+	const hiding = where === "idle" || hidden === true;
+	const idle = useIdle(hiding && !near);
+	// `idle` is false whenever the hook is not watching, so this is the whole of
+	// it: a bar in "always" that is not fullscreen never goes anywhere.
+	const away = idle;
 	// Asked unconditionally and combined after, not `where === "side" && …`.
 	// That reads well and is a hook behind a short circuit: the moment somebody
 	// changes the setting the hook order changes with it, and React tears the

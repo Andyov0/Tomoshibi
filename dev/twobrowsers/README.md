@@ -28,6 +28,9 @@ like the product was broken:
 - The share control is a **menu** whose own last item starts the share; the
   toolbar button of the same name only opens the menu. Use `mouse().menu(…)`
   for anything inside an open menu.
+- A textarea is not an input. The value setter is per-prototype, and using the
+  wrong one throws `Illegal invocation` — which ends the run, rather than
+  failing the step, so it reads as the script hanging.
 
 Two more that belong to the page rather than the rig:
 

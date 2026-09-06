@@ -13,7 +13,7 @@ import { Signal } from "@/components/room/Signal";
 import { useConnectionQuality } from "@/live/connection";
 import { ShareCard } from "@/components/room/ShareCard";
 import { SoundPanel } from "@/components/room/SoundPanel";
-import { SaidInCorner, SaidOnTile } from "@/components/room/Said";
+import { SaidInCorner } from "@/components/room/Said";
 import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
 import { useChat } from "@/hooks/useChat";
@@ -27,7 +27,6 @@ import { useSpeakingOrder } from "@/hooks/useSpeakingOrder";
 import { useT } from "@/hooks/useT";
 import { watch } from "@/live/notices";
 import { impersonating } from "@/live/name";
-import type { Said } from "@/live/chat";
 import {
 	ALONE_TOGETHER,
 	TILES_PER_PAGE,
@@ -44,7 +43,7 @@ import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useRoomForSide } from "@/hooks/useRoomFor";
 import { placement, remember as rememberPlacement } from "@/live/controls";
 import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export interface RoomProps {
 	room: LiveRoom;
@@ -265,6 +264,11 @@ function Stage({
 	// be checked against each other.
 	const alone = all.length <= ALONE_TOGETHER ? rest[0] : undefined;
 
+	// Everything said recently, flattened out of the by-speaker map the tiles
+	// used to need. Memoised because the corner holds each card past the moment
+	// it leaves the list, and a fresh array every render would restart that.
+	const inCorner = useMemo(() => [...chat.showing.values()].flat(), [chat.showing]);
+
 	const plan = pinned
 		? planFocus(size, pinned.id, screen.active ? [] : shown, { fullscreen: screen.active })
 		: alone
@@ -298,18 +302,6 @@ function Stage({
 	const sharing = all.some((surface) => surface.kind === "screen" && surface.local);
 	const watchers = useWatchers(room, sharing);
 
-	// Whoever is on screen carries their own words. Anybody who is not — on
-	// another page, or hidden behind a share — falls back to the corner, which
-	// is the only place a message needs a face and a name of its own.
-	//
-	// Read from the plan rather than counted while rendering: every picture is
-	// rendered now, including the ones nobody can see, so being rendered no
-	// longer means being visible.
-	const seen = new Set(
-		all.filter((surface) => plan.has(surface.id)).map((surface) => owner(surface).identity),
-	);
-	const saidOn = (surface: Surface): Said[] =>
-		plan.has(surface.id) ? (chat.showing.get(owner(surface).identity) ?? []) : [];
 
 	/**
 	 * One picture, in whichever of its two forms suits where it is.
@@ -354,7 +346,6 @@ function Stage({
 								.map((one) => one.what)}
 						/>
 
-						<SaidOnTile said={saidOn(surface)} compact={!onStage && pinned !== undefined} />
 						{onStage && (
 							<StageControls
 								other={counterpart}
@@ -505,12 +496,11 @@ function Stage({
 
 			{listening && <SoundPanel room={room} onClose={onClosePanel} />}
 
-			{/* Only for people with no tile to borrow. */}
-			<SaidInCorner
-				said={[...chat.showing.entries()]
-					.filter(([identity]) => !seen.has(identity))
-					.flatMap(([, said]) => said)}
-			/>
+			{/* Everything said, for everybody. Not only for somebody with no tile
+			    to borrow: a bubble on one tile in a grid is missed by a reader who
+			    is looking at the shared screen, which is when a message matters
+			    most. See Said.tsx. */}
+			<SaidInCorner said={inCorner} />
 
 			{state !== ConnectionState.Connected && (
 				<div className="-translate-x-1/2 pointer-events-none absolute top-3 left-1/2 rounded-full bg-surface-hi px-3 py-1 text-fg-muted text-xs shadow">

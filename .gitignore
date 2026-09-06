@@ -24,6 +24,7 @@
 # nowhere near a repository: committing one would hand every signature it has
 # ever produced to whoever reads the history.
 /dev/*.db
+/dev/*.db.*
 /dev/*.local.yaml
 /dev/tripcode.key
 

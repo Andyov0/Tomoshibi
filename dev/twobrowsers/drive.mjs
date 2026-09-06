@@ -155,7 +155,16 @@ export async function set(p, selector, value) {
 		const all = document.querySelectorAll(${JSON.stringify(selector)});
 		const f = all[all.length - 1];
 		if (!f) return "no";
-		const proto = f instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+		// The prototype the value setter lives on, not a guess. Calling the
+		// HTMLInputElement setter on a textarea throws "Illegal invocation" and
+		// takes the whole run down, which is how the chat box — the one
+		// multi-line field in the room — stopped every script that typed into it.
+		const proto =
+			f instanceof HTMLSelectElement
+				? HTMLSelectElement.prototype
+				: f instanceof HTMLTextAreaElement
+					? HTMLTextAreaElement.prototype
+					: HTMLInputElement.prototype;
 		Object.getOwnPropertyDescriptor(proto, "value").set.call(f, ${JSON.stringify(String(value))});
 		f.dispatchEvent(new Event("input", { bubbles: true }));
 		f.dispatchEvent(new Event("change", { bubbles: true }));

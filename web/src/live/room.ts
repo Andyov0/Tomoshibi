@@ -9,7 +9,6 @@ import {
 } from "livekit-client";
 import type { Join } from "./api";
 import { installNoValidate } from "./novalidate";
-import { type Uplink, follow, settled } from "./uplink";
 import { seal, sealing } from "./secrecy";
 
 /**
@@ -75,16 +74,26 @@ const SIZES: Record<Exclude<ShareQuality, "auto">, Size> = {
 /**
  * What automatic sends.
  *
- * 1080p at thirty, and the only mode that gives ground: the bitrate floats, the
- * encoder may drop resolution, and somebody on a bad connection ends up with a
- * smaller picture rather than a stalled one.
+ * A ceiling of 1440p at sixty, which is what most people get, because most
+ * people never open this menu.
  *
- * Every other choice is a person saying what they want, and is sent at the
- * ceiling for it. That is the whole distinction: automatic is for somebody who
- * does not want to think about it, and the named sizes are for somebody who
- * does and has already decided.
+ * It was 1080p at thirty, and both halves cost the person who never chose. The
+ * size is a ceiling rather than a target, so a 1080p display was already
+ * captured at its own size — but a 1440p or 4K display, which is most desks
+ * now, had its screen reduced to 1080p before encoding and its text softened
+ * for nothing. And thirty frames is visibly less smooth on anything that
+ * scrolls or plays, for want of a setting nobody knew to change.
+ *
+ * It no longer gives ground either: like every other setting it holds the
+ * picture and lets the frames bend, and it publishes one encode. The old
+ * distinction — automatic adapts, named sizes do not — is gone, because
+ * adapting meant quietly handing somebody a smaller picture than the one they
+ * are trying to read.
+ *
+ * What is left of it is only this: automatic is a ceiling that suits any
+ * display, and the named sizes are for somebody who has decided.
  */
-const AUTOMATIC = { width: 1920, height: 1080, frameRate: 30 as ShareFrameRate };
+const AUTOMATIC = { width: 2560, height: 1440, frameRate: 60 as ShareFrameRate };
 
 /**
  * How many bits a picture of this size and rate is worth.
@@ -103,9 +112,9 @@ const AUTOMATIC = { width: 1920, height: 1080, frameRate: 30 as ShareFrameRate }
  * at 60 both land near the cap, which is the right place for them to land: past
  * it, the limit is not this number.
  */
-const BITS_PER_PIXEL_PER_FRAME = 0.1;
-const BITRATE_CAP = 60_000_000;
-const BITRATE_FLOOR = 2_500_000;
+const BITS_PER_PIXEL_PER_FRAME = 0.22;
+const BITRATE_CAP = 80_000_000;
+const BITRATE_FLOOR = 8_000_000;
 
 /**
  * The frame rate the cost is measured against.
@@ -171,11 +180,12 @@ function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
 			maxBitrate: bitrateFor(AUTOMATIC.width, AUTOMATIC.height, AUTOMATIC.frameRate),
 			videoCodec: "h264" as VideoCodec,
 			contentHint: "detail" as const,
-			// The one mode that gives ground, and it gives resolution first:
-			// somebody who did not choose a size is better served by a smaller
-			// picture that keeps up than a large one that stalls.
-			degradationPreference: "balanced" as RTCDegradationPreference,
-			adapts: true,
+			// Nothing gives up the picture, here or anywhere else. A share is
+			// read rather than watched: a frame that arrives late is late, and
+			// a line of type scaled to two thirds of its size is unreadable and
+			// nobody at the other end can undo it.
+			degradationPreference: "maintain-resolution" as RTCDegradationPreference,
+			adapts: false,
 		};
 	}
 
@@ -203,25 +213,16 @@ function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
 		videoCodec: "h264" as VideoCodec,
 		contentHint: (still ? "text" : "motion") as "text" | "motion" | "detail",
 		/*
-		 * What gives, where something must, and it depends on what was asked for.
+		 * What gives, where something must: frames, never the picture.
 		 *
-		 * Holding the resolution and dropping frames was the rule for every
-		 * chosen size, on the reasoning that somebody who picked a size picked it
-		 * and quietly sending less is the complaint rather than the mitigation.
-		 * That is right about a still picture and wrong about a moving one, and
-		 * it turned every shortfall — a busy encoder, a moment of congestion —
-		 * into a stutter, which is the thing somebody notices first and the thing
-		 * they cannot do anything about.
-		 *
-		 * At thirty frames and below, what is on the screen is text and diagrams:
-		 * every pixel matters and a dropped frame costs nothing, so nothing
-		 * changes. Above thirty, the frames are the reason the rate was raised at
-		 * all, and giving away a little size to keep them is what was actually
-		 * being asked for.
+		 * This used to turn on the rate — the picture held below thirty frames
+		 * and given away above it, on the reasoning that somebody who asked for a
+		 * high rate asked for the frames. That is right about a camera and wrong
+		 * about a screen. What is on a shared screen is text, code and diagrams,
+		 * and the two failures are not comparable: a late frame is late, and type
+		 * that has been scaled away is gone.
 		 */
-		degradationPreference: (still
-			? "maintain-resolution"
-			: "balanced") as RTCDegradationPreference,
+		degradationPreference: "maintain-resolution" as RTCDegradationPreference,
 		adapts: false,
 	};
 }
@@ -450,7 +451,6 @@ export async function share(
 	wanted: boolean,
 	frameRate: ShareFrameRate,
 	quality: ShareQuality = "auto",
-	hold = false,
 ): Promise<LocalTrackPublication | undefined> {
 	const profile = settingsFor(frameRate, quality);
 
@@ -504,87 +504,44 @@ export async function share(
 			videoCodec: profile.videoCodec,
 			degradationPreference: profile.degradationPreference,
 
-			// One encode, at the size that was asked for.
+			// One encode, and the whole allowance in it.
 			//
-			// A share is published with simulcast by default: two encodes of the
-			// same screen, and a subscriber whose tile is small — or whose
-			// connection dips — is served the smaller one. That is right for a
-			// camera, where nobody chose the resolution and a worse picture is
-			// better than a stall.
-			//
-			// It is wrong here, twice over. Somebody who picked 4K picked it,
-			// and being quietly given 1080p instead is the complaint rather than
-			// the mitigation. And the second encode is not free: at four times
-			// the pixels it is what makes a software encoder fall behind, which
-			// arrives as a share that stutters and drifts — so the machinery for
-			// coping with a slow connection was itself the reason the picture
-			// was slow.
-			//
-			// The bitrate still adapts. What stops is switching to a smaller
-			// picture behind the person who chose one.
-			// One encode for anything chosen, and layers only for automatic.
-			//
-			// A share is published with simulcast by default: two encodes of the
-			// same screen, so a subscriber whose tile is small or whose network
-			// dips is served the smaller one. That is what automatic is for, and
-			// it is exactly wrong for a size somebody picked — being quietly
-			// handed 1080p after choosing 4K is the complaint rather than the
-			// mitigation. The second encode is also not free: at four times the
-			// pixels it is what makes an encoder fall behind, so the machinery
-			// for coping with a slow connection was itself making the picture
-			// slow.
-			simulcast: profile.adapts,
+			// A share is published with simulcast by default: two or three encodes
+			// of the same screen at descending sizes, with the budget divided
+			// between them, and a subscriber whose tile is small or whose network
+			// dips is handed one of the smaller ones. That is right for a camera in
+			// a grid of faces. It is wrong for a share twice over: the share is the
+			// one thing on the screen everybody is looking at, so a smaller version
+			// of it is nobody's idea of a mitigation; and the extra encodes are what
+			// make an encoder fall behind, so the machinery for coping with a slow
+			// connection was itself making the picture slow.
+			simulcast: false,
 		},
 	);
 
-	// Only one at a time: a share started while another is being followed would
-	// leave the first watcher writing to a sender that has gone.
-	following?.stop();
-	following = undefined;
-
-	// The bitrate follows the line, and the size and the rate do not move.
-	//
-	// This held at the ceiling for a while, on the argument that somebody who
-	// chose 1440p chose it and soft text is a different and useless thing. The
-	// first half of that is right and is why the size and the rate are pinned.
-	// The second half turned out to be an argument for the wrong thing.
-	//
-	// Three things can give when the bits run out: how many pixels, how many
-	// frames, and how hard each frame is compressed. degradationPreference
-	// chooses between the first two and has no setting for keeping both — so
-	// the only way to hold the size and the rate is to hand the encoder a
-	// target it can actually meet, which is to say the third.
-	//
-	// Holding the ceiling does not avoid that choice, it makes it badly: the
-	// encoder is told to send more than the line can carry, the excess is lost
-	// rather than compressed, and what arrives is a judder that costs the
-	// sharpness anyway — because a frame that did not arrive is not a sharp
-	// frame. Twenty-two megabits at 1440p120 on a home upload is that, for as
-	// long as the share lasts.
-	//
-	// So it follows. The picture stays the size and the rate that were asked
-	// for; when the line dips the text goes a little softer and comes back,
-	// which is the one of the three costs that is temporary and reversible.
-	if (published && wanted && !hold) {
-		following = follow(published, profile.maxBitrate, settled());
-	}
+	/*
+	 * Nothing below this narrows what was just asked for.
+	 *
+	 * There was a follower. It read the sender's statistics every four seconds
+	 * and halved its own ceiling whenever it judged the share to be struggling,
+	 * down to a floor of 1.2 Mb/s — a fifth of what an ordinary share asks —
+	 * and wrote that number to local storage, where it became the opening
+	 * ceiling for every later share on every later network, climbing back at an
+	 * eighth per twelve seconds. Two things were wrong with it, and both were
+	 * silent. It read a low frame count as evidence of trouble, and a screen
+	 * that is not changing sends almost no frames by design, so a still screen
+	 * with a handful of retransmissions was indistinguishable from a congested
+	 * one. And nothing ever expired what it remembered, so one bad afternoon
+	 * set the ceiling for good.
+	 *
+	 * It is gone rather than mended. The browser runs a congestion controller
+	 * of its own that measures the path continuously and is not working from
+	 * four-second summaries; a second one layered on top of it could only ever
+	 * subtract. What the path will carry is the browser's question. What the
+	 * share is worth is this file's, and it is answered upward.
+	 */
 
 	return published;
-}
-
-/**
- * The watcher on the share currently being sent, if there is one.
- *
- * Module state rather than something the caller holds, because the caller is a
- * button: it turns sharing on and off and has nowhere to keep this, and a
- * watcher left running against a stopped share would go on calling getStats on
- * a track nobody has.
- */
-let following: Uplink | undefined;
-
-/** What the share has settled on, for anything that wants to say so. */
-export function sharingAt(): number | undefined {
-	return following?.at();
 }
 
 /**
@@ -646,7 +603,10 @@ export function rememberedFrameRate(): ShareFrameRate {
 		// Storage can be unavailable, and a share should still be possible.
 	}
 
-	return 30;
+	// Sixty rather than thirty: this is what somebody gets who picks a size and
+	// never touches the rate, and thirty is visibly less smooth on anything
+	// that scrolls or plays.
+	return 60;
 }
 
 export function rememberFrameRate(frameRate: ShareFrameRate): void {

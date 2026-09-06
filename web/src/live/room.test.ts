@@ -107,11 +107,10 @@ describe("share", () => {
 		expect(capture.contentHint).toBe("motion");
 		expect(["vp8", "h264"]).toContain(publish.videoCodec);
 
-		// Above thirty frames the frames are the point, so a shortfall gives away
-		// a little size rather than gutting the rate. Holding the resolution here
-		// turned every busy moment into a stutter — the one thing somebody
-		// watching a share notices first and can do least about.
-		expect(publish.degradationPreference).toBe("balanced");
+		// The picture is held whatever the rate. A share is read rather than
+		// watched: a late frame is late, and type scaled down to fit is
+		// unreadable and stays that way.
+		expect(publish.degradationPreference).toBe("maintain-resolution");
 	});
 
 	it("gives the busier picture the larger ceiling", async () => {

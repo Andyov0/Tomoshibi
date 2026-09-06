@@ -118,8 +118,20 @@ describe("what is sent", () => {
 });
 
 describe("automatic", () => {
-	it("is the only setting that gives ground", () => {
-		expect(settingsForTest(30, "auto").adapts).toBe(true);
+	/*
+	 * Nothing publishes a second, smaller copy of the screen any more, and
+	 * automatic is no longer the exception.
+	 *
+	 * Simulcast divides the allowance between two or three encodes of the same
+	 * picture and lets the server hand somebody the small one. For a camera in
+	 * a grid of faces that is the right trade. For a share it is the wrong one
+	 * twice: the share is the only thing anybody is looking at, so a smaller
+	 * version of it is nobody's mitigation, and the extra encodes are what make
+	 * an encoder fall behind — the machinery for coping with a slow connection
+	 * making the picture slow.
+	 */
+	it("publishes one encode at every setting, automatic included", () => {
+		expect(settingsForTest(30, "auto").adapts).toBe(false);
 
 		for (const quality of named) {
 			for (const rate of ratesFor(quality)) {
@@ -129,22 +141,23 @@ describe("automatic", () => {
 	});
 
 	/*
-	 * What gives, where something must, depends on what was asked for — and
-	 * getting it the same for both is how a share came to stutter.
+	 * What gives, where something must: frames, never the picture, at every
+	 * setting.
 	 *
-	 * Holding the resolution and dropping frames was the rule for every chosen
-	 * size. That is right about a still picture, where every pixel matters and a
-	 * dropped frame costs nothing, and wrong about a moving one, where the frames
-	 * are the entire reason the rate was raised: it turned a busy encoder or a
-	 * moment of congestion into a stutter, which is both the first thing anybody
-	 * notices and the thing they can do least about.
+	 * This used to turn on the rate — the picture held below thirty frames and
+	 * given away above it, on the reasoning that somebody asking for a high
+	 * rate was asking for the frames. That is right about a camera and wrong
+	 * about a screen. What is on a shared screen is text, code and diagrams,
+	 * and the two failures are not comparable: a late frame is late, and type
+	 * that has been scaled away is gone, with nothing the person reading it can
+	 * do about it.
 	 */
-	it("protects the pixels of a still picture and the frames of a moving one", () => {
+	it("never gives away the picture, at any setting", () => {
+		expect(settingsForTest(30, "auto").degradationPreference).toBe("maintain-resolution");
+
 		for (const quality of named) {
 			for (const rate of ratesFor(quality)) {
-				const wanted = rate <= 30 ? "maintain-resolution" : "balanced";
-
-				expect(settingsForTest(rate, quality).degradationPreference).toBe(wanted);
+				expect(settingsForTest(rate, quality).degradationPreference).toBe("maintain-resolution");
 			}
 		}
 	});

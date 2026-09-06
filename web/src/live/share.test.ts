@@ -14,7 +14,7 @@
  * that trade.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Room } from "livekit-client";
 
@@ -267,5 +267,110 @@ describe("the small copy that goes with a share", () => {
 		// gone, and a picture nobody can read is not worth the bits.
 		expect(FALLBACK.height).toBeGreaterThanOrEqual(540);
 		expect(FALLBACK.encoding.maxFramerate).toBeLessThanOrEqual(15);
+	});
+});
+
+/*
+The capture request, and the two opposite ways it was wrong.
+
+Both produced the same silence: every share ran at thirty frames a second
+whatever the menu said, and nothing reported it. The first version wrote media
+constraints into `resolution`, which takes three plain numbers, so the SDK's
+`resolution.width > 0` gate dropped everything. The second moved them to `video`
+and left `resolution` out — and createLocalScreenTracks fills an absent
+resolution with ScreenSharePresets.h1080fps30, which is then written over the
+`video` constraints. Omitting the field is how a browser is asked for thirty
+frames on purpose.
+
+So there are two things to hold, and neither alone is enough: the field must be
+there, and what is in it must be numbers.
+*/
+describe("what the browser is actually asked to capture", () => {
+	function captured(rate: ShareFrameRate, quality: ShareQuality) {
+		let capture: unknown;
+
+		const room = {
+			localParticipant: {
+				setScreenShareEnabled: async (_on: boolean, asked: unknown) => {
+					capture = asked;
+
+					return undefined;
+				},
+			},
+		} as unknown as Room;
+
+		return share(room, true, rate, quality).then(
+			() =>
+				capture as {
+					resolution?: { width?: unknown; height?: unknown; frameRate?: unknown };
+					video?: unknown;
+				},
+		);
+	}
+
+	it("names a resolution at all, because leaving it out means thirty", async () => {
+		const asked = await captured(120, "1080p");
+
+		// createLocalScreenTracks: `if (options.resolution === undefined &&
+		// !isSafari17Based()) options.resolution = h1080fps30.resolution`.
+		expect(asked.resolution).toBeDefined();
+	});
+
+	it("puts numbers there, because the SDK compares them against zero", async () => {
+		const asked = await captured(120, "1080p");
+
+		// `resolution.width > 0` is false for an object, and the whole block —
+		// size and rate together — is skipped without a word.
+		expect(typeof asked.resolution?.width).toBe("number");
+		expect(typeof asked.resolution?.height).toBe("number");
+		expect(typeof asked.resolution?.frameRate).toBe("number");
+	});
+
+	it("carries the chosen rate through to the request", async () => {
+		expect((await captured(120, "1080p")).resolution?.frameRate).toBe(120);
+		expect((await captured(240, "1080p")).resolution?.frameRate).toBe(240);
+		expect((await captured(60, "auto")).resolution?.frameRate).toBe(60);
+	});
+
+	it("asks for the clamped rate, not the one that was remembered", async () => {
+		// 240 chosen while 1080p was, then 4K picked. The capture must be asked
+		// for sixty, which is what 4K carries, rather than for a rate the browser
+		// answers by giving whatever it likes.
+		expect((await captured(240, "4k")).resolution?.frameRate).toBe(60);
+	});
+
+	it("never asks for more pixels than the display has", async () => {
+		// The SDK writes `width: { ideal }` for everything but Safari 17, and an
+		// ideal larger than the screen is an upscale: the display is stretched
+		// before encoding, and the person sharing pays for the extra pixels on
+		// the upstream that has the least room. The menu's sizes are ceilings, so
+		// this is what they already meant.
+		vi.stubGlobal("screen", { width: 1280, height: 720 });
+		vi.stubGlobal("devicePixelRatio", 1);
+
+		try {
+			const asked = await captured(60, "4k");
+
+			expect(asked.resolution?.width).toBe(1280);
+			expect(asked.resolution?.height).toBe(720);
+
+			// And the rate is untouched by the clamp: fewer pixels is not fewer
+			// frames.
+			expect(asked.resolution?.frameRate).toBe(60);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("asks for what was chosen when the display will not say", async () => {
+		// jsdom reports a zero-sized screen, and so does anything else that has
+		// no display. Clamping to nothing would be a share of no pixels.
+		vi.stubGlobal("screen", { width: 0, height: 0 });
+
+		try {
+			expect((await captured(60, "1080p")).resolution?.width).toBe(1920);
+		} finally {
+			vi.unstubAllGlobals();
+		}
 	});
 });

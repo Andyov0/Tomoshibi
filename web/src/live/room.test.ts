@@ -56,6 +56,13 @@ describe("share", () => {
 
 		// Both halves, because either one alone is a number with no effect: a
 		// capture nobody encodes, or an encoder with nothing to encode.
+		//
+		// A plain number, in `resolution`, because that is the only shape the
+		// SDK acts on. These assertions passed for months while every share came
+		// out at thirty frames: they read back the object this file had written,
+		// and the SDK threw it away — `resolution` takes three numbers and gates
+		// on `resolution.width > 0`. A test that checks what we meant rather than
+		// what the library will act on is the test that lets that happen.
 		expect(capture.resolution.frameRate).toBe(rate);
 		expect(publish.screenShareEncoding.maxFramerate).toBe(rate);
 	});
@@ -76,12 +83,15 @@ describe("share", () => {
 		for (const rate of SHARE_FRAME_RATES) {
 			const { capture } = await started(rate);
 
-			expect(capture.resolution.width).toEqual({ max: 1920 });
-			expect(capture.resolution.height).toEqual({ max: 1080 });
-
-			// The rate stays a target: a screen produces frames when it changes,
-			// and asking for a rate is asking to be given them when they exist.
+			// Numbers, not constraint objects. An object here is silently
+			// dropped along with the frame rate beside it.
+			expect(capture.resolution.width).toBe(1920);
+			expect(capture.resolution.height).toBe(1080);
 			expect(typeof capture.resolution.frameRate).toBe("number");
+
+			// The ceiling is applied before the request rather than inside it:
+			// the SDK writes `width: { ideal }`, and there is no way to say
+			// ceiling through a field that is three numbers. See fitsDisplay.
 		}
 	});
 

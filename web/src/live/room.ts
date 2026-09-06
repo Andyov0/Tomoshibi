@@ -292,6 +292,34 @@ function handheld(): boolean {
 }
 
 /**
+ * The chosen size, never larger than the display it will be captured from.
+ *
+ * The SDK asks getDisplayMedia for `width: { ideal }`, and ideal is a target
+ * rather than a ceiling: a 1080p display told to produce 1440p gives 1440p, by
+ * scaling its own screen up before anything is encoded. Eighty-five per cent
+ * more pixels carrying not one pixel more of anything, paid for by the person
+ * sharing, on the upstream that is scarcest.
+ *
+ * The sizes in the menu are ceilings — "up to 1440p" — so clamping here is what
+ * they already meant. It cannot be done through the constraint, because the
+ * shape that would say it is the shape the SDK overwrites.
+ *
+ * Device pixels, not CSS pixels: `screen.width` on a retina laptop reads 1728
+ * for a display that has 3456 of them, and clamping to the smaller number would
+ * halve every share on exactly the machines with the sharpest screens.
+ */
+function fitsDisplay(size: Size): Size {
+	const across = Math.round((screen?.width ?? 0) * (devicePixelRatio || 1));
+	const down = Math.round((screen?.height ?? 0) * (devicePixelRatio || 1));
+
+	// A browser that will not say. Better to ask for what was chosen than to
+	// clamp to nothing.
+	if (!across || !down) return size;
+
+	return { width: Math.min(size.width, across), height: Math.min(size.height, down) };
+}
+
+/**
  * Build the room.
  *
  * Adaptive streaming and dynacast are both on, and together they are the reason
@@ -508,30 +536,50 @@ export async function share(
 		{
 			audio: true,
 			/*
-			 * The size is a ceiling and the rate is a target.
+			 * The capture, in the one shape the SDK will pass on.
 			 *
-			 * Both used to be targets, which the browser reads as "aim for this"
-			 * — so somebody on a 1080p display who chose 1440p had their screen
-			 * scaled up before it was encoded: eighty-five per cent more pixels,
-			 * carrying not one pixel more of anything, encoded and sent and
-			 * scaled back down at the far end. As a ceiling, a smaller display is
-			 * captured at its own size and a larger one is reduced to what was
-			 * asked for, which is what choosing a size meant all along.
+			 * This has been wrong twice, in opposite directions, and both times
+			 * the symptom was the same: every share came out at thirty frames a
+			 * second whatever the menu said, and nothing anywhere reported it.
 			 *
-			 * The rate stays a target because it genuinely is one: a screen
-			 * produces frames when it changes, and asking for a hundred and
-			 * twenty is asking to be given them when they exist.
+			 * The first version wrote media constraints into `resolution` —
+			 * `{ width: { max: 1920 } }` — so that the size would be a ceiling,
+			 * with a cast to make it compile. `resolution` is a VideoResolution,
+			 * three plain numbers, and the SDK gates the whole block on
+			 * `resolution.width > 0`. An object is not greater than zero, so
+			 * every constraint was dropped and the browser was asked for
+			 * `video: true`.
 			 *
-			 * The clamped rate, not what was asked for — a rate remembered from a
-			 * size that allowed it would otherwise be requested from a capture
-			 * that cannot do it, and the browser answers by giving whatever it
-			 * likes rather than by saying no.
+			 * The second version moved them to `video`, which is passed through
+			 * untouched — and that is worse, because of this, in
+			 * createLocalScreenTracks:
+			 *
+			 *     if (options.resolution === undefined && !isSafari17Based())
+			 *       options.resolution = ScreenSharePresets.h1080fps30.resolution
+			 *
+			 * Leaving `resolution` out does not mean "no resolution". It means
+			 * 1920x1080 at thirty, which is then written over the `video`
+			 * constraints by the Object.assign below it. Omitting the field is
+			 * how a browser is asked for thirty frames on purpose.
+			 *
+			 * So: the SDK's own shape, always present, with the numbers this file
+			 * chose. The rate arrives intact, which is the whole point.
+			 *
+			 * What is given up is the size as a ceiling. The SDK writes
+			 * `width: { ideal }` for everything but Safari 17, ideal is a target,
+			 * and there is no way to say ceiling through a field that is three
+			 * numbers. fitsDisplay is the answer to that: ask for no more than
+			 * the display actually has, and an ideal cannot become an upscale.
+			 *
+			 * The rate is the clamped one, not what was asked for — a rate
+			 * remembered from a size that allowed it would otherwise reach a
+			 * capture that cannot do it, and the browser answers by giving
+			 * whatever it likes rather than by saying no.
 			 */
 			resolution: {
-				width: { max: profile.width },
-				height: { max: profile.height },
+				...fitsDisplay(profile),
 				frameRate: profile.frameRate,
-			} as unknown as { width: number; height: number; frameRate: number },
+			},
 			// The picker should not offer this tab, which would be a mirror tunnel.
 			selfBrowserSurface: "exclude",
 			surfaceSwitching: "include",
@@ -708,10 +756,15 @@ export async function retune(
 	track.mediaStreamTrack.contentHint = profile.contentHint;
 
 	try {
+		// The same shape the capture was asked for, and for the same reason: a
+		// plain number is a target, so adjusting to 1440p on a 1080p display
+		// would have the browser scale the screen up rather than leave it alone.
+		// These were plain numbers while the capture used `resolution`, so the
+		// two halves of one setting disagreed about what a size means.
 		await track.mediaStreamTrack.applyConstraints({
-			width: profile.width,
-			height: profile.height,
-			frameRate: profile.frameRate,
+			width: { max: profile.width },
+			height: { max: profile.height },
+			frameRate: { ideal: profile.frameRate },
 		});
 	} catch {
 		// A source that will not narrow. The encoding below is still worth
@@ -726,10 +779,32 @@ export async function retune(
 
 	if (!parameters.encodings?.length) return false;
 
-	for (const encoding of parameters.encodings) {
-		encoding.maxBitrate = profile.maxBitrate;
-		encoding.maxFramerate = profile.frameRate;
-	}
+	/*
+	 * The top layer takes the new setting; the small copy keeps being small.
+	 *
+	 * This loop used to give every encoding the profile's bitrate and rate,
+	 * which was right while a share was one encode and became silently
+	 * destructive the moment it stopped being one: the fallback would be handed
+	 * the top layer's ceiling and stop being a fallback, so somebody nudging the
+	 * frame rate mid-share would double their upstream and take away the only
+	 * thing a starved subscriber could still receive. Nothing would have said
+	 * so — the picture at the sending end is identical either way.
+	 *
+	 * The last encoding is the top one: presets are sorted ascending and
+	 * encodingsFromPresets emits them in that order.
+	 */
+	const top = parameters.encodings.length - 1;
+
+	parameters.encodings.forEach((encoding, index) => {
+		if (index === top) {
+			encoding.maxBitrate = profile.maxBitrate;
+			encoding.maxFramerate = profile.frameRate;
+			return;
+		}
+
+		encoding.maxBitrate = FALLBACK.encoding.maxBitrate;
+		encoding.maxFramerate = FALLBACK.encoding.maxFramerate;
+	});
 
 	// What to give up when the connection cannot carry all of it. The whole
 	// point of choosing a size is that it is not the thing quietly given away,

@@ -16,7 +16,10 @@
 
 import { describe, expect, it } from "vitest";
 
+import type { Room } from "livekit-client";
+
 import {
+	FALLBACK,
 	SHARE_FRAME_RATES,
 	SHARE_QUALITIES,
 	type ShareFrameRate,
@@ -24,6 +27,7 @@ import {
 	offers,
 	ratesFor,
 	settingsForTest,
+	share,
 } from "./room";
 
 const named = SHARE_QUALITIES.filter((one) => one !== "auto") as Exclude<ShareQuality, "auto">[];
@@ -187,5 +191,81 @@ describe("automatic", () => {
 		expect(settingsForTest(60, "4k").maxBitrate).toBeGreaterThan(
 			settingsForTest(240, "1080p").maxBitrate,
 		);
+	});
+});
+
+/*
+The small copy, and why it is worth a test of its own.
+
+It was removed once, on an argument that reads as sound: that simulcast divides
+the allowance between the layers, so a fallback is paid for out of the picture
+everybody is looking at. The SDK does no such thing — the top layer keeps the
+encoding it was handed — but the mistake cost a live call, and it cost it
+silently. A share published as one layer looks completely correct from the
+sending end. It is the person on the far side of a thin path who gets nothing,
+and they have no way to tell that apart from the sharing being broken.
+
+So both halves are held here: that the top layer still asks for everything, and
+that something smaller goes with it.
+*/
+describe("the small copy that goes with a share", () => {
+	/** A room that records what it was asked to publish and does nothing else. */
+	function watching() {
+		const asked: { capture?: unknown; publish?: unknown } = {};
+
+		const room = {
+			localParticipant: {
+				setScreenShareEnabled: async (_on: boolean, capture: unknown, publish: unknown) => {
+					asked.capture = capture;
+					asked.publish = publish;
+
+					return undefined;
+				},
+			},
+		} as unknown as Room;
+
+		return { room, asked };
+	}
+
+	it("goes beneath the share rather than instead of it", async () => {
+		const { room, asked } = watching();
+
+		await share(room, true, 120, "1080p");
+
+		const publish = asked.publish as {
+			simulcast: boolean;
+			screenShareSimulcastLayers: { encoding: { maxBitrate: number } }[];
+			screenShareEncoding: { maxBitrate: number };
+		};
+
+		expect(publish.simulcast).toBe(true);
+		expect(publish.screenShareSimulcastLayers).toHaveLength(1);
+
+		// The half that matters most: nothing was taken off the top to pay for
+		// it. What somebody chose is still what somebody able to receive it gets.
+		expect(publish.screenShareEncoding.maxBitrate).toBe(settingsForTest(120, "1080p").maxBitrate);
+	});
+
+	it("is sized for a path that cannot carry the share at all", () => {
+		// The leg this was measured on carried two megabits a second and lost a
+		// tenth of its packets. A fallback that does not fit through that is not
+		// a fallback; the SDK's own default for a share is a quarter of the top
+		// layer, which for an ordinary ask is several megabits.
+		expect(FALLBACK.encoding.maxBitrate).toBeLessThan(1_000_000);
+
+		for (const quality of SHARE_QUALITIES) {
+			for (const rate of ratesFor(quality)) {
+				expect(FALLBACK.encoding.maxBitrate * 5).toBeLessThan(
+					settingsForTest(rate, quality).maxBitrate,
+				);
+			}
+		}
+	});
+
+	it("stays large enough to read", () => {
+		// The thing being rescued is legibility. At 360 lines ordinary type is
+		// gone, and a picture nobody can read is not worth the bits.
+		expect(FALLBACK.height).toBeGreaterThanOrEqual(540);
+		expect(FALLBACK.encoding.maxFramerate).toBeLessThanOrEqual(15);
 	});
 });

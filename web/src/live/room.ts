@@ -5,6 +5,7 @@ import {
 	RoomEvent,
 	Track,
 	type VideoCodec,
+	VideoPreset,
 	VideoPresets,
 } from "livekit-client";
 import type { Join } from "./api";
@@ -123,6 +124,54 @@ const BITRATE_FLOOR = 8_000_000;
  * and so it is the rate the pixels-per-frame figure was chosen to be right at.
  */
 const BASE_RATE = 30;
+
+/**
+ * The small copy of the share, for somebody whose path cannot carry the big one.
+ *
+ * A share used to be published as a single encode, and the argument for that
+ * was wrong in a way worth writing down, because it reads as sound and is not.
+ * It said that simulcast divides the allowance between the layers, so a
+ * fallback would be paid for out of the picture everybody else is looking at.
+ * It does not: `encodingsFromPresets` in the SDK hands the top layer the
+ * encoding it was given, untouched, and gives each smaller layer the bitrate
+ * its own preset names. The fallback costs what it costs and nothing comes off
+ * the top.
+ *
+ * What the single encode actually produced is the fault this exists for. A
+ * media server holding one layer has two moves for a subscriber who cannot take
+ * it — forward it anyway, or pause the track — and both of them are a black
+ * rectangle. Measured on a live call: a room held a long way from half the
+ * people in it, the leg out of it carrying two megabits a second with a tenth
+ * of the packets lost, and a share asking thirty-eight. The share did not
+ * soften. It disappeared, while the audio went on perfectly, which is why it
+ * was reported as the sharing being broken rather than as a slow network.
+ *
+ * ## Why these numbers
+ *
+ * Sized for the paths that were actually measured rather than for a fraction of
+ * the top layer. The SDK's own default for a share is half the size at the same
+ * frame rate and a quarter of the bitrate, which for a share asking twenty-seven
+ * megabits leaves a "fallback" of nearly seven — beyond every path this is here
+ * for, and so no fallback at all.
+ *
+ * Under a megabit, so it fits through a two-megabit path with room left for the
+ * retransmissions such a path demands. 960x540 rather than 640x360 because the
+ * thing being rescued is legibility: at 360 lines ordinary type is gone and
+ * there is no point sending it. Fifteen frames because a starved path should
+ * spend what it has on the picture — somebody who has fallen back to this is
+ * reading a screen, not watching motion.
+ *
+ * The size is absolute, not relative: `scaleResolutionDownBy` is worked out
+ * from the capture's smaller dimension, so this comes out 960x540 whether the
+ * screen behind it is 1080p, 1440p or 4K.
+ *
+ * One extra layer rather than two. A middle layer would serve somebody whose
+ * path carries several megabits but not the whole ask, and it costs a third
+ * encode on the machine that is already doing the hardest one. Left out until
+ * there is a measurement asking for it; the paths that prompted this were
+ * nowhere near a middle layer anyway.
+ */
+export const FALLBACK = new VideoPreset(960, 540, 800_000, 15);
 
 /**
  * What to ask for, given a size and a rate.
@@ -504,18 +553,16 @@ export async function share(
 			videoCodec: profile.videoCodec,
 			degradationPreference: profile.degradationPreference,
 
-			// One encode, and the whole allowance in it.
+			// The whole allowance in the top layer, and one small copy beneath it.
 			//
-			// A share is published with simulcast by default: two or three encodes
-			// of the same screen at descending sizes, with the budget divided
-			// between them, and a subscriber whose tile is small or whose network
-			// dips is handed one of the smaller ones. That is right for a camera in
-			// a grid of faces. It is wrong for a share twice over: the share is the
-			// one thing on the screen everybody is looking at, so a smaller version
-			// of it is nobody's idea of a mitigation; and the extra encodes are what
-			// make an encoder fall behind, so the machinery for coping with a slow
-			// connection was itself making the picture slow.
-			simulcast: false,
+			// Nothing above is reduced by this: the layer everybody able to take
+			// it receives is exactly the one `screenShareEncoding` asks for. What
+			// the second layer changes is the answer given to somebody who cannot
+			// — which was nothing at all, and is now a smaller picture. See
+			// FALLBACK for the measurement that prompted it and for why the SDK's
+			// own default layer is not small enough to be one.
+			simulcast: true,
+			screenShareSimulcastLayers: [FALLBACK],
 		},
 	);
 

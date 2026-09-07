@@ -203,3 +203,95 @@ describe("the reason a share is held back", () => {
 		expect(result.current.share?.limited).toBeUndefined();
 	});
 });
+
+/*
+The reading when a share is a ladder.
+
+A share is published as three encodings now, so a sender's report holds three
+`outbound-rtp` rows. The code that reads the share's size assigned its result on
+every match, so whichever row the report yielded last became the answer — and
+`RTCStatsReport` promises no order. Somebody sharing at 1440p was shown "360p",
+which is the worst kind of wrong for a status line: it is precise, it is
+confident, and it sends the reader looking for a fault in the wrong place.
+
+The rows here are deliberately in the order that used to produce the wrong
+answer.
+*/
+describe("what the share row says when there is a ladder", () => {
+	function ladder(entries: Array<Record<string, unknown>>) {
+		const rows = entries.map((e, i) => ({
+			type: "outbound-rtp",
+			id: `o${i}`,
+			bytesSent: 0,
+			packetsSent: 0,
+			...e,
+		}));
+
+		const publication = {
+			source: Track.Source.ScreenShare,
+			track: {
+				getRTCStatsReport: async () =>
+					({ forEach: (fn: (e: unknown) => void) => rows.forEach(fn) }) as unknown as RTCStatsReport,
+			},
+		};
+
+		return {
+			localParticipant: { trackPublications: new Map([["s", publication]]) },
+			remoteParticipants: new Map(),
+			on: () => {},
+			off: () => {},
+		} as unknown as Room;
+	}
+
+	beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: false }));
+	afterEach(() => vi.useRealTimers());
+
+	async function settle() {
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(0);
+		});
+	}
+
+	it("says the size that was chosen, not whichever rung came last", async () => {
+		const room = ladder([
+			{ ssrc: 3, rid: "f", frameWidth: 2560, frameHeight: 1440, framesPerSecond: 60 },
+			{ ssrc: 2, rid: "h", frameWidth: 1280, frameHeight: 720, framesPerSecond: 30 },
+			{ ssrc: 1, rid: "q", frameWidth: 640, frameHeight: 360, framesPerSecond: 15 },
+		]);
+
+		const { result } = renderHook(() => useConnectionQuality(room));
+		await settle();
+
+		expect(result.current.share?.height).toBe(1440);
+		expect(result.current.share?.width).toBe(2560);
+		expect(result.current.share?.fps).toBe(60);
+	});
+
+	it("takes the reason from the rung it is reporting", async () => {
+		// The bottom rung is never the one being squeezed — it is the one
+		// squeezing was meant to reach. Reading its reason would say "nothing is
+		// wrong" on a share the encoder is visibly struggling with.
+		const room = ladder([
+			{ ssrc: 3, rid: "f", frameWidth: 2560, frameHeight: 1440, qualityLimitationReason: "cpu" },
+			{ ssrc: 1, rid: "q", frameWidth: 640, frameHeight: 360, qualityLimitationReason: "none" },
+		]);
+
+		const { result } = renderHook(() => useConnectionQuality(room));
+		await settle();
+
+		expect(result.current.share?.limited).toBe("cpu");
+	});
+
+	it("still draws a row before any rung has produced a frame", async () => {
+		// The size and the rate are both absent until the encoder has run, and a
+		// share that is plainly on screen with no line at all reads as the
+		// reading being broken.
+		const room = ladder([{ ssrc: 1, rid: "q" }, { ssrc: 3, rid: "f" }]);
+
+		const { result } = renderHook(() => useConnectionQuality(room));
+		await settle();
+
+		expect(result.current.share).toBeDefined();
+		expect(result.current.share?.sending).toBe(true);
+	});
+});

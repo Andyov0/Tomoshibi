@@ -513,8 +513,43 @@ function readShare(
 	sending: boolean,
 	out: Gathered,
 ): void {
+	/*
+	 * The biggest one, because there is more than one now.
+	 *
+	 * A share is published as a ladder, so a sender's report holds an
+	 * `outbound-rtp` per rung — 360, 720 and the chosen size. This loop used to
+	 * assign `out.share` on every match, so whichever rung the report happened
+	 * to yield last became the reading, and `RTCStatsReport` promises no order:
+	 * somebody sharing at 1440p was shown "360p" because the bottom rung came
+	 * last that time. It was right for as long as a share was a single encode
+	 * and became wrong the moment it stopped being one.
+	 *
+	 * Largest by area rather than first or last, and it is the honest answer in
+	 * both directions: it is the picture the person chose, and it is the one a
+	 * viewer able to take it receives. A rung dynacast has paused never gets a
+	 * frame, so it never has dimensions, so it cannot win.
+	 */
+	let best: (Record<string, unknown> & { type?: string }) | undefined;
+	let widest = -1;
+
 	report.forEach((entry: Record<string, unknown> & { type?: string }) => {
 		if (entry.type !== kind) return;
+
+		const area = (numeric(entry.frameWidth) ?? 0) * (numeric(entry.frameHeight) ?? 0);
+
+		// Ties keep the first, so an entry with no size yet cannot displace one
+		// that has arrived.
+		if (area > widest) {
+			widest = area;
+			best = entry;
+		} else if (!best) {
+			best = entry;
+		}
+	});
+
+	{
+		const entry = best;
+		if (!entry) return;
 
 		// Taken one field at a time, and the row exists as soon as the track
 		// does.
@@ -540,7 +575,7 @@ function readShare(
 			limited: sending ? limitation(entry.qualityLimitationReason) : undefined,
 			id: String(entry.ssrc ?? entry.trackIdentifier ?? entry.id ?? ""),
 		};
-	});
+	}
 }
 
 /**

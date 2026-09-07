@@ -115,7 +115,20 @@ const AUTOMATIC = { width: 2560, height: 1440, frameRate: 60 as ShareFrameRate }
  */
 const BITS_PER_PIXEL_PER_FRAME = 0.22;
 const BITRATE_CAP = 80_000_000;
-const BITRATE_FLOOR = 8_000_000;
+/*
+ * There was a floor of eight megabits here, and it did nothing on the way in
+ * and harm on the way out.
+ *
+ * Every size and rate the menu offers computes above it — the smallest,
+ * 1080p at fifteen, is 9.68 Mb/s — so it never once raised a request. The only
+ * place it bound was `settle`, whose entire job is handing back upload when the
+ * capture turned out smaller than the request, and there it truncated the
+ * refund: a shared 800x600 window is worth 2.24 Mb/s by the line below and was
+ * given eight, and the ratio grows without bound as the window shrinks.
+ *
+ * Nothing that anybody chose can be lowered by removing it, because it was
+ * never reached by anything anybody chose.
+ */
 
 /**
  * The frame rate the cost is measured against.
@@ -170,12 +183,28 @@ const BASE_RATE = 30;
  *
  * ## What they cost the person sharing
  *
- * Nothing, until somebody needs one. `dynacast` is on, and a simulcast layer no
- * subscriber has asked for is paused at the publisher rather than encoded and
- * thrown away. That is the whole reason the ladder can be this generous without
- * spending an upstream that, on the connections this has to work on, is the
- * scarcest thing in the call: a room where everybody is watching at full size
- * sends exactly one encode, the same as before any of this existed.
+ * Three megabits a second whenever anybody is watching at full size, and this
+ * paragraph said the opposite for a while, so the mechanism is worth stating
+ * exactly.
+ *
+ * dynacast does pause rungs nobody has asked for — but it enables a *prefix*,
+ * not a set. The server reduces every subscriber's demand to one number and
+ * sends `Enabled: q <= quality` for LOW, MEDIUM and HIGH together
+ * (dynacastmanagervideo.go:249-255, the maximum taken in
+ * dynacastqualityvideo.go:194-204), and the publisher applies it verbatim. There
+ * is no way for the server to say "the top one only". So one viewer on a full
+ * stage turns on all three, and the case where a single encode goes out is
+ * everybody watching *small* — the reverse of what was written here.
+ *
+ * The cost is therefore a constant rather than a proportion: SMALL and MIDDLE
+ * name their own bitrates and `encodingsFromPresets` copies them verbatim, so
+ * the rungs are 0.5 + 2.5 = 3.0 Mb/s whatever the top layer is set to. Measured
+ * on a 1080p60 share with ten viewers: 19.35 Mb/s on the top rung and 2.96 on
+ * the other two. As a share of the whole that is 13% at 1080p60, 24% at its
+ * worst (1080p15) and 4% at its best (4K60).
+ *
+ * It is paid once, not once per viewer. That is the part that matters here and
+ * it is measured: one viewer 21.8 Mb/s, five 22.3, ten 22.3.
  *
  * The sizes are absolute rather than relative — `scaleResolutionDownBy` is
  * worked out from the capture's smaller dimension — so these come out 640x360
@@ -212,7 +241,7 @@ function bitrateFor(width: number, height: number, frameRate: number): number {
 	const perFrame = width * height * BITS_PER_PIXEL_PER_FRAME;
 	const wanted = perFrame * BASE_RATE * Math.sqrt(frameRate / BASE_RATE);
 
-	return Math.round(Math.min(BITRATE_CAP, Math.max(BITRATE_FLOOR, wanted)));
+	return Math.round(Math.min(BITRATE_CAP, wanted));
 }
 
 /**
@@ -688,6 +717,11 @@ export async function share(
  * with the setting somebody chose, and the rungs below already follow the
  * capture through `scaleResolutionDownBy`.
  *
+ * Nothing anybody sees changes. `maxBitrate` is a ceiling: lowering it to what
+ * the picture is worth cannot reduce the resolution or the frame rate that
+ * reaches a viewer, and `maintain-resolution` is untouched. What it returns is
+ * upload that was reserved for a picture nobody was sending.
+ *
  * Failures are swallowed. A ceiling that is too generous is what this deployment
  * had for its whole life; a share that will not start because a parameter write
  * was refused is worse than one that costs a little too much.
@@ -701,13 +735,29 @@ async function settle(
 
 	if (!sender || !track) return;
 
-	const { width, height } = track.getSettings();
+	const settled = track.getSettings();
+	const width = settled.width ?? 0;
+	const height = settled.height ?? 0;
+
 	if (!width || !height) return;
 
-	// The same picture, or a larger one than was asked for. Nothing to give back.
-	if (width * height >= profile.width * profile.height) return;
+	/*
+	 * The rate as well as the size, and this is the half that was missing.
+	 *
+	 * `frameRate` in the request is an ideal, not a floor: somebody who picks
+	 * 240 and whose display gives sixty is handed a ceiling worked out for 240,
+	 * which is twice what the picture they are sending is worth, and at 240
+	 * asked against thirty delivered it is 2.8 times. The size check alone never
+	 * saw it, because a capture at the size that was asked for takes the early
+	 * return before the rate is ever looked at.
+	 *
+	 * Never above what was asked for. A source that reports a rate higher than
+	 * the request — some do — must not be allowed to raise the ceiling; that
+	 * would be this file arguing with the setting somebody chose.
+	 */
+	const rate = Math.min(settled.frameRate || profile.frameRate, profile.frameRate);
 
-	const worth = bitrateFor(width, height, profile.frameRate);
+	const worth = bitrateFor(width, height, rate);
 	if (worth >= profile.maxBitrate) return;
 
 	try {
@@ -884,9 +934,24 @@ export async function retune(
 	const settled = track.mediaStreamTrack.getSettings();
 	const shortest = Math.min(settled.width ?? profile.width, settled.height ?? profile.height);
 
+	/*
+	 * The top rung's ceiling, against the picture that is actually there.
+	 *
+	 * This used to write `profile.maxBitrate` — the figure computed for what was
+	 * asked for — and so it threw away settle's correction for good. Somebody
+	 * sharing an 800x600 window who then nudged the frame rate went from a
+	 * ceiling worth 2.2 Mb/s back to one worth eight, permanently, because
+	 * settle runs once at publish and never again.
+	 *
+	 * Same rule as settle: downward only, never above what was chosen, and
+	 * nothing anybody sees changes — a ceiling is a ceiling.
+	 */
+	const rate = Math.min(settled.frameRate || profile.frameRate, profile.frameRate);
+	const worth = Math.min(profile.maxBitrate, bitrateFor(settled.width ?? profile.width, settled.height ?? profile.height, rate));
+
 	parameters.encodings.forEach((encoding, index) => {
 		if (index === top) {
-			encoding.maxBitrate = profile.maxBitrate;
+			encoding.maxBitrate = worth;
 			encoding.maxFramerate = profile.frameRate;
 			return;
 		}

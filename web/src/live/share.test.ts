@@ -28,6 +28,7 @@ import {
 	type ShareQuality,
 	offers,
 	ratesFor,
+	retune,
 	settingsForTest,
 	share,
 } from "./room";
@@ -396,7 +397,7 @@ Downward only. Raising it would be this file arguing with the setting somebody
 chose.
 */
 describe("the ceiling after the capture", () => {
-	function shared(settings: { width?: number; height?: number }) {
+	function shared(settings: { width?: number; height?: number; frameRate?: number }) {
 		const encodings = [{ maxBitrate: 1 }, { maxBitrate: 999_999_999 }];
 
 		const publication = {
@@ -456,5 +457,99 @@ describe("the ceiling after the capture", () => {
 		await share(room, true, 30, "4k");
 
 		expect(encodings[1]?.maxBitrate).toBe(999_999_999);
+	});
+});
+
+/*
+Upload reserved for a picture nobody is sending.
+
+Three separate ways the ceiling was computed for the request rather than for
+what arrived, and every one of them is upload the sharer pays for and no viewer
+receives. None of this can change what anybody sees: maxBitrate is a ceiling,
+so lowering it to what the picture is worth cannot take away a line of
+resolution or a frame.
+
+They are grouped because they share a failure mode — the request and the
+capture disagree, and the code believed the request.
+*/
+describe("the ceiling follows the picture, not the request", () => {
+	function watching(settings: { width?: number; height?: number; frameRate?: number }) {
+		const encodings = [{ maxBitrate: 1 }, { maxBitrate: 999_999_999 }];
+		const applied: unknown[] = [];
+
+		const track = {
+			sender: {
+				getParameters: () => ({ encodings }),
+				setParameters: async () => undefined,
+			},
+			mediaStreamTrack: {
+				getSettings: () => settings,
+				applyConstraints: async (c: unknown) => {
+					applied.push(c);
+				},
+				contentHint: "",
+			},
+		};
+
+		const room = {
+			localParticipant: {
+				setScreenShareEnabled: async () => ({ videoTrack: track }),
+				getTrackPublication: () => ({ videoTrack: track }),
+			},
+		} as unknown as Room;
+
+		return { room, encodings, applied };
+	}
+
+	it("comes down when the display gave fewer frames than were asked for", async () => {
+		// 240 was chosen; a sixty-hertz display answered. The size matches
+		// exactly, which is the common case and the one the size check alone
+		// walked straight past.
+		const { room, encodings } = watching({ width: 1920, height: 1080, frameRate: 60 });
+
+		await share(room, true, 240, "1080p");
+
+		expect(encodings[1]?.maxBitrate).toBe(settingsForTest(60, "1080p").maxBitrate);
+		expect(encodings[1]?.maxBitrate).toBeLessThan(settingsForTest(240, "1080p").maxBitrate);
+	});
+
+	it("never rises above what was chosen", async () => {
+		// Some sources report a rate higher than the constraint. That is not an
+		// invitation to spend more than the person asked for.
+		const { room, encodings } = watching({ width: 1920, height: 1080, frameRate: 240 });
+
+		await share(room, true, 30, "1080p");
+
+		expect(encodings[1]?.maxBitrate).toBe(999_999_999);
+	});
+
+	it("hands back the whole difference for a small window, with no floor under it", async () => {
+		// There was an eight-megabit floor. It raised nothing anybody could
+		// choose — the smallest offered profile is 9.68 Mb/s — and truncated the
+		// refund here, which was the only place it ever bound.
+		const { room, encodings } = watching({ width: 800, height: 600, frameRate: 15 });
+
+		await share(room, true, 15, "1080p");
+
+		const top = encodings[1];
+		if (!top) throw new Error("no top encoding");
+
+		expect(top.maxBitrate).toBeLessThan(3_000_000);
+		expect(top.maxBitrate).toBeLessThan(8_000_000);
+	});
+
+	it("is not thrown away by a change of setting mid-share", async () => {
+		// retune used to write the profile's figure back over the correction,
+		// and settle runs once at publish and never again — so one nudge of the
+		// frame rate restored the over-allocation for good.
+		const { room, encodings } = watching({ width: 800, height: 600, frameRate: 15 });
+
+		await share(room, true, 15, "1080p");
+		const afterShare = encodings[1]?.maxBitrate ?? 0;
+
+		await retune(room, 30, "1080p");
+
+		expect(encodings[1]?.maxBitrate).toBeLessThan(8_000_000);
+		expect(encodings[1]?.maxBitrate).toBeLessThanOrEqual(Math.max(afterShare, 3_000_000));
 	});
 });

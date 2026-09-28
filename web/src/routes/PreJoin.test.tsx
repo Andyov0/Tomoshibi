@@ -152,4 +152,25 @@ describe("PreJoin", () => {
 		await waitFor(() => expect(succeed).toHaveBeenCalled());
 		expect(localStorage.getItem("meet-live.passphrase")).toBeNull();
 	});
+
+	// Blocked site data throws from local storage rather than answering empty,
+	// and this screen read it while drawing and wrote it before joining.
+	it("draws and joins in a browser that will not keep anything", async () => {
+		const succeed = vi.fn(() => Promise.resolve());
+		const refuse = () => {
+			throw new DOMException("blocked", "SecurityError");
+		};
+		const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(refuse);
+		const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(refuse);
+
+		try {
+			open(succeed as never);
+			await joinAs("Alex");
+
+			await waitFor(() => expect(succeed).toHaveBeenCalled());
+		} finally {
+			get.mockRestore();
+			set.mockRestore();
+		}
+	});
 });

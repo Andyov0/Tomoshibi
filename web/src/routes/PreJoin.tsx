@@ -162,8 +162,8 @@ function Source() {
 
 function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	const t = useT();
-	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
-	const [secret, setSecret] = useState(() => localStorage.getItem(PASSPHRASE_KEY) ?? "");
+	const [name, setName] = useState(() => recall(NAME_KEY) ?? "");
+	const [secret, setSecret] = useState(() => recall(PASSPHRASE_KEY) ?? "");
 	const [devices, setDevices] = useState(remembered);
 	const [track, setTrack] = useState<LocalVideoTrack>();
 	const [joining, setJoining] = useState(false);
@@ -227,13 +227,12 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 	const submit = async () => {
 		if (!display || joining) return;
 
-		localStorage.setItem(NAME_KEY, display);
-		localStorage.setItem(DEVICES_KEY, JSON.stringify(devices));
+		keep(NAME_KEY, display);
+		keep(DEVICES_KEY, JSON.stringify(devices));
 
 		// Whatever was last joined with, which means clearing the field and
 		// joining is how somebody takes it back off this machine.
-		if (passphrase) localStorage.setItem(PASSPHRASE_KEY, passphrase);
-		else localStorage.removeItem(PASSPHRASE_KEY);
+		keep(PASSPHRASE_KEY, passphrase || undefined);
 
 		// And offered to the password manager, which keeps it better than this
 		// can and carries it to the same person's other devices.
@@ -367,6 +366,33 @@ function Unavailable({ reason }: { reason: string }) {
 }
 
 /** What was chosen last time, or the defaults on a first visit. */
+/*
+ * Storage that may not be there.
+ *
+ * A browser with site data blocked, and some private windows, throw from the
+ * first touch of local storage rather than returning nothing. This screen read
+ * it while drawing, so in such a browser it did not draw at all; and it wrote it
+ * at the top of the join, so the press threw before anything else happened and
+ * the button simply did nothing. Remembering is a convenience, and a browser
+ * that will not remember still has to be able to join.
+ */
+function recall(key: string): string | null {
+	try {
+		return localStorage.getItem(key);
+	} catch {
+		return null;
+	}
+}
+
+function keep(key: string, value: string | undefined): void {
+	try {
+		if (value === undefined) localStorage.removeItem(key);
+		else localStorage.setItem(key, value);
+	} catch {
+		// Nothing kept, which is what that browser asked for.
+	}
+}
+
 function remembered(): { camera: boolean; microphone: boolean } {
 	const fallback = { camera: false, microphone: true };
 

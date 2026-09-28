@@ -231,6 +231,11 @@ func (a *API) gate(
 	next func(Session, http.ResponseWriter, *http.Request),
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !fromHere(r) {
+			refuse(w, http.StatusForbidden, "cross_site")
+			return
+		}
+
 		session, ok := a.sessions.Of(r)
 		if !ok {
 			refuse(w, http.StatusUnauthorized, "signed_out")
@@ -623,6 +628,36 @@ func refuse(w http.ResponseWriter, status int, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": reason})
+}
+
+// fromHere reports whether a request that changes something came from these
+// pages rather than from somebody else's.
+//
+// The session cookie is SameSite=Strict, which was meant to be the whole of the
+// defence and is most of it. What it misses is that "site" is wider than
+// "origin": a page on any sibling subdomain is the same site, its cookie goes
+// along, and a form it posts as text/plain reaches the mute endpoint, which
+// reads its body without asking what kind it was. Sec-Fetch-Site is set by the
+// browser and cannot be written by the page, and it says same-origin only for
+// a request from this exact origin.
+//
+// A request that does not carry it at all is let through, because only browsers
+// send it and only browsers carry a cookie somebody else can borrow. An older
+// one that predates the header still has the cookie's own attribute between it
+// and a stranger's page.
+//
+// Reading is not asked, because a page on another origin cannot read what comes
+// back, and refusing it would only cost a browser extension or a script with a
+// copied cookie nothing it could not do some other way.
+func fromHere(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead:
+		return true
+	}
+
+	site := r.Header.Get("Sec-Fetch-Site")
+
+	return site == "" || site == "same-origin"
 }
 
 // addressOf is who is calling, for the purpose of counting their attempts. It

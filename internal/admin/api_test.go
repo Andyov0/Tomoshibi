@@ -358,6 +358,43 @@ func TestActionsAreRecordedAgainstWhoTookThem(t *testing.T) {
 	}
 }
 
+// A page on a sibling subdomain is the same site, so a SameSite=Strict cookie
+// goes along with a form it posts. The browser says where a request came from in
+// a header the page cannot write, and anything that is not this origin is turned
+// away before the session is looked at.
+func TestAnotherSiteCannotActThroughASession(t *testing.T) {
+	api, mux := mount(t, []config.Admin{{Trip: room.Trip(key, "moderator"), Can: []string{config.Moderate}}})
+	_, token, _ := api.sessions.Open("moderator")
+
+	act := func(site string) int {
+		request := httptest.NewRequest(http.MethodPost, "/api/admin/rooms/x/participants/y/mute",
+			strings.NewReader(`{"track":"TR_x"}`))
+		request.Header.Set("Content-Type", "text/plain")
+		request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+		if site != "" {
+			request.Header.Set("Sec-Fetch-Site", site)
+		}
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+
+	for _, site := range []string{"same-site", "cross-site"} {
+		if code := act(site); code != http.StatusForbidden {
+			t.Errorf("a request from %s answered %d, want 403", site, code)
+		}
+	}
+
+	// These pages themselves, and anything that is not a browser, still reach
+	// the handler: the media server behind it is absent, so anything but a
+	// refusal from the gate will do.
+	for _, site := range []string{"same-origin", ""} {
+		if code := act(site); code == http.StatusForbidden || code == http.StatusUnauthorized {
+			t.Errorf("a request with Sec-Fetch-Site %q was refused: %d", site, code)
+		}
+	}
+}
+
 func sign(body string) *http.Request {
 	request := httptest.NewRequest(http.MethodPost, "/api/admin/session", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")

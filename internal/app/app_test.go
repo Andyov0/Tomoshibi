@@ -64,6 +64,7 @@ func mount(t *testing.T, admins []config.Admin) (*App, http.Handler) {
 		},
 		store:   st,
 		limit:   limit.New(1000, 1000, false),
+		signing: signingLimit(false),
 		tripKey: tripKey,
 	}
 
@@ -97,6 +98,36 @@ func ask(mux http.Handler, request *http.Request) *httptest.ResponseRecorder {
 	mux.ServeHTTP(recorder, request)
 
 	return recorder
+}
+
+/*
+ * A join with a passphrase is a guess at a passphrase.
+ *
+ * The identity it answers with carries the signature that passphrase produces,
+ * and an administrator's signature is on show in every room they are in, so each
+ * join tells the caller whether what they typed was somebody's. The join's own
+ * allowance is sized for a meeting arriving at once, which is sixty times what
+ * the sign-in allows for the same question.
+ */
+
+func TestGuessingThroughTheJoinIsBounded(t *testing.T) {
+	_, mux := mount(t, nil)
+
+	for i := 0; i < signingBurst; i++ {
+		if code := ask(mux, join("standup", fmt.Sprintf("guess %d", i))).Code; code != http.StatusOK {
+			t.Fatalf("passphrase %d answered %d, before the limit of %d", i+1, code, signingBurst)
+		}
+	}
+
+	if code := ask(mux, join("standup", "one guess too many")).Code; code != http.StatusTooManyRequests {
+		t.Errorf("a passphrase past the limit answered %d, want 429", code)
+	}
+
+	// Somebody without a passphrase is asking nothing, and is not held up by
+	// somebody else at the same address who is.
+	if code := ask(mux, join("standup", "")).Code; code != http.StatusOK {
+		t.Errorf("a join without a passphrase answered %d after the limit, want 200", code)
+	}
 }
 
 // What every deployment does until somebody changes it.

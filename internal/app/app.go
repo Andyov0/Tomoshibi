@@ -29,6 +29,7 @@ type App struct {
 	conf    *config.Config
 	store   *store.Store
 	limit   *limit.Limiter
+	signing *limit.Limiter
 	media   *rtc.Server
 	web     http.Handler
 	tripKey []byte
@@ -44,6 +45,7 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 		conf:    conf,
 		store:   st,
 		limit:   limit.New(conf.Meet.JoinRate, conf.Meet.JoinBurst, conf.Meet.TrustProxy),
+		signing: signingLimit(conf.Meet.TrustProxy),
 		media:   media,
 		web:     web,
 		tripKey: tripKey,
@@ -56,6 +58,30 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 	}
 
 	return a
+}
+
+// How fast one caller may try passphrases through the join.
+//
+// A join carrying a passphrase answers a question: the identity it returns
+// carries the signature that passphrase produces, and signatures are shown
+// beside names in every room, an administrator's included. So every join was
+// also a test of one guessed passphrase, at the join's own allowance of ten a
+// second and a burst of a hundred and twenty — sixty times what the sign-in
+// allows for the same guess, which made the sign-in's careful limit decorative.
+//
+// Charged per caller and not in total, unlike the sign-in. A ceiling across the
+// whole endpoint would let one stranger stop every signed name in every meeting,
+// which turns an attack on one passphrase into an outage for everybody; the
+// sign-in can afford that trade because only administrators use it. The burst is
+// what an office behind one address needs at the top of the hour, and the rate
+// after it matches the sign-in's.
+const (
+	signingPerMinute = 10
+	signingBurst     = 30
+)
+
+func signingLimit(trustProxy bool) *limit.Limiter {
+	return limit.New(signingPerMinute/60.0, signingBurst, trustProxy)
 }
 
 // Close stops what the application started.
@@ -269,6 +295,14 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// identity rather than a parse error the caller can do nothing about.
 	var body joinRequest
 	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body)
+
+	// Before the passphrase is used for anything, including deciding whether
+	// this caller may open the name: that decision is the same question asked
+	// a second way.
+	if body.Passphrase != "" && !a.signing.Allow(r) {
+		fail(w, http.StatusTooManyRequests, reasonRateLimited)
+		return
+	}
 
 	// Whether this caller may use a name nobody has used before.
 	//

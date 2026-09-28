@@ -242,6 +242,7 @@ func serve(args []string) error {
 
 	select {
 	case err := <-failed:
+		media.Stop(true)
 		return err
 	case <-stopping:
 		slog.Info("shutting down")
@@ -250,12 +251,46 @@ func serve(args []string) error {
 	// Sessions first, then the listener: draining the media server while the
 	// door is still open lets a participant finish their sentence, where the
 	// other order would drop them and then wait politely for nothing.
-	media.Stop(false)
+	drain(media, stopping)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	return server.Shutdown(ctx)
+}
+
+// How long a shutdown waits for meetings to end on their own.
+//
+// The media server's own drain has no deadline: it looks every five seconds for
+// anybody still connected and returns when there is nobody, which on a busy
+// deployment is when the last meeting of the day ends. Asked to stop by a
+// service manager, the process sat there until the manager gave up and killed
+// it, which ends every call just the same and skips the rest of the shutdown on
+// the way. Under systemd's ninety seconds, so that what ends the calls is this
+// rather than that.
+const drainFor = 30 * time.Second
+
+// drain lets meetings finish, for a while.
+//
+// Ended early by a second signal, which is somebody at a terminal saying they
+// meant it. The first signal used to be the only one heard: the channel was
+// never read again, so pressing Ctrl-C twice did nothing the second time.
+func drain(media *rtc.Server, stopping <-chan os.Signal) {
+	drained := make(chan struct{})
+	go func() {
+		media.Stop(false)
+		close(drained)
+	}()
+
+	select {
+	case <-drained:
+	case <-time.After(drainFor):
+		slog.Warn("meetings were still going after the shutdown's allowance, ending them", "waited", drainFor)
+		media.Stop(true)
+	case <-stopping:
+		slog.Warn("asked to stop again, ending every meeting now")
+		media.Stop(true)
+	}
 }
 
 // client picks where the client is served from.

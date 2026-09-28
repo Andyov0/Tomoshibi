@@ -84,6 +84,7 @@ const zhHant: Dictionary = {
 	"This room was closed": "這個房間已關閉",
 	"You joined from somewhere else": "你在別處加入了這個房間",
 	"The connection was lost": "連線已中斷",
+	"The server stopped": "伺服器已停止",
 	Sound: "聲音",
 	"Sound settings": "聲音設定",
 	"Copy signature": "複製簽名",

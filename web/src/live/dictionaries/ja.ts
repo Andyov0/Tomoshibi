@@ -84,6 +84,7 @@ const ja: Dictionary = {
 	"This room was closed": "このルームは閉じられました",
 	"You joined from somewhere else": "別の場所からこのルームに参加しました",
 	"The connection was lost": "接続が切れました",
+	"The server stopped": "サーバーが停止しました",
 	Sound: "音声",
 	"Sound settings": "音声設定",
 	"Copy signature": "署名をコピー",

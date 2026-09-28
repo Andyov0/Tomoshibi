@@ -108,6 +108,7 @@ const en = {
 	"This room was closed": "This room was closed",
 	"You joined from somewhere else": "You joined from somewhere else",
 	"The connection was lost": "The connection was lost",
+	"The server stopped": "The server stopped",
 	// Sound, which is one person's own decision about everybody else.
 	Sound: "Sound",
 	"Sound settings": "Sound settings",

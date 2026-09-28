@@ -84,6 +84,7 @@ const zhHans: Dictionary = {
 	"This room was closed": "这个房间已关闭",
 	"You joined from somewhere else": "你在别处加入了这个房间",
 	"The connection was lost": "连接已断开",
+	"The server stopped": "服务器已停止",
 	Sound: "声音",
 	"Sound settings": "声音设置",
 	"Copy signature": "复制签名",

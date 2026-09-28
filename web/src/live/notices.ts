@@ -118,6 +118,12 @@ export function sentAway(reason: DisconnectReason | undefined): void {
 		case DisconnectReason.DUPLICATE_IDENTITY:
 			said = t("You joined from somewhere else");
 			break;
+		// Most often a restart for an upgrade, and worth telling apart from a
+		// dropped connection: this one is nobody's network, and joining again
+		// in a moment is the whole of the remedy.
+		case DisconnectReason.SERVER_SHUTDOWN:
+			said = t("The server stopped");
+			break;
 		default:
 			said = t("The connection was lost");
 	}

@@ -147,7 +147,8 @@ func (a *API) Mount(mux *http.ServeMux) {
 func (a *API) open(w http.ResponseWriter, r *http.Request) {
 	caller := addressOf(r, a.conf.Meet.TrustProxy)
 
-	if !a.sessions.limit.Allow(caller) {
+	attempt, allowed := a.sessions.limit.Take(caller)
+	if !allowed {
 		a.log.Record(Entry{Action: "sign in", Trip: "-", Failed: true, Reason: "too many attempts"})
 		refuse(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
@@ -160,7 +161,7 @@ func (a *API) open(w http.ResponseWriter, r *http.Request) {
 
 	session, token, ok := a.sessions.Open(body.Passphrase)
 	if !ok {
-		a.sessions.limit.Failed(caller)
+		attempt.Failed()
 		// Recorded without anything derived from what was typed. A rejected
 		// passphrase is still a passphrase, and one of these logs is going to
 		// be read by somebody it does not belong to.
@@ -169,6 +170,7 @@ func (a *API) open(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	attempt.Succeeded()
 	Grant(w, token, secureRequest(r, a.conf.Meet.TrustProxy))
 	a.log.Record(Entry{Action: "sign in", Trip: session.Trip, Name: session.Name})
 

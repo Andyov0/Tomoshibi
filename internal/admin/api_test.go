@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -275,6 +276,31 @@ func TestGuessingIsRefusedBeforeItIsChecked(t *testing.T) {
 
 	if recorder.Code != http.StatusTooManyRequests {
 		t.Errorf("guessing answered %d after the limit, want 429", recorder.Code)
+	}
+}
+
+// Behind a proxy the address counted is the one the proxy appended. Anything
+// before it is the caller's own writing, and reading the first entry once gave
+// every forged prefix a budget of its own, so one machine could guess at the
+// full ceiling of the endpoint rather than at its own ten a minute.
+func TestAForgedForwardedAddressIsNotANewCaller(t *testing.T) {
+	api, mux := mount(t, []config.Admin{{Trip: room.Trip(key, "correct")}})
+	api.conf.Meet.TrustProxy = true
+
+	guess := func(forged string) int {
+		r := sign(`{"passphrase":"guess"}`)
+		r.Header.Set("X-Forwarded-For", forged+", 192.0.2.7")
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, r)
+		return recorder.Code
+	}
+
+	for i := 0; i < perAddress; i++ {
+		guess("198.51.100." + strconv.Itoa(i))
+	}
+
+	if code := guess("198.51.100.200"); code != http.StatusTooManyRequests {
+		t.Errorf("a new forged prefix answered %d after the caller's limit, want 429", code)
 	}
 }
 

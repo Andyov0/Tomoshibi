@@ -475,6 +475,39 @@ func TestARecordThatCannotBeReadIsLeftAlone(t *testing.T) {
 	}
 }
 
+/*
+ * A sweep finds its names without holding the writer and removes them with it,
+ * so a join can land in between. That join is somebody walking into the room,
+ * and under the admins policy forgetting the name then would close the door on
+ * the meeting they are starting.
+ */
+func TestANameJoinedDuringASweepIsKept(t *testing.T) {
+	st := open(t)
+	aged(t, st, "just-in-time", 90*24*time.Hour)
+
+	since := time.Now().Add(-30 * 24 * time.Hour)
+
+	found, err := st.stale(since, 10)
+	if err != nil || len(found) != 1 {
+		t.Fatalf("stale: found %d, %v; want the one aged name", len(found), err)
+	}
+
+	if _, err := st.OpenRoom("just-in-time", false); err != nil {
+		t.Fatalf("OpenRoom: %v", err)
+	}
+
+	gone, err := st.drop(found, since)
+	if err != nil {
+		t.Fatalf("drop: %v", err)
+	}
+	if gone != 0 {
+		t.Error("a name somebody had just joined was forgotten")
+	}
+	if _, err := st.OpenRoom("just-in-time", false); err != nil {
+		t.Errorf("the room was closed on the person who had just opened it: %v", err)
+	}
+}
+
 func TestForgettingNothingIsNotAnError(t *testing.T) {
 	st := open(t)
 

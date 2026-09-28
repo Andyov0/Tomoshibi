@@ -12,10 +12,19 @@ import { SignedOut } from "./api";
  * Paused while the tab is hidden. A management page left open in a background
  * tab for a week is otherwise a request every two seconds for a week, answered
  * by a server that is meant to be carrying a meeting.
+ *
+ * And not at all while `enabled` is false. The one poll that lives above the
+ * sign-in screen ran behind it too, so a page nobody had signed in to asked for
+ * figures every five seconds for as long as it stayed open and was refused
+ * every time.
  */
 export function usePoll<T>(
 	ask: () => Promise<T>,
-	{ every = 2000, onSignedOut }: { every?: number; onSignedOut?: () => void } = {},
+	{
+		every = 2000,
+		onSignedOut,
+		enabled = true,
+	}: { every?: number; onSignedOut?: () => void; enabled?: boolean } = {},
 ) {
 	const [value, setValue] = useState<T>();
 	const [error, setError] = useState<string>();
@@ -46,13 +55,26 @@ export function usePoll<T>(
 	}, []);
 
 	useEffect(() => {
+		if (!enabled) return;
+
 		let live = true;
+		let asking = false;
 		let timer: number | undefined;
 
 		const tick = async () => {
-			if (!live) return;
+			// One question at a time. Coming back to the tab asks at once, and
+			// used to do it beside whatever the timer had already sent and
+			// without cancelling the timer, so two answers raced to be shown
+			// and the older could land last.
+			if (!live || asking) return;
+			asking = true;
+			window.clearTimeout(timer);
 
-			if (!document.hidden) await refresh();
+			try {
+				if (!document.hidden) await refresh();
+			} finally {
+				asking = false;
+			}
 
 			// Scheduled after the answer rather than on an interval: a server
 			// that has become slow would otherwise be asked again while it is
@@ -65,7 +87,7 @@ export function usePoll<T>(
 		// Asked again the moment somebody comes back, so the first thing they
 		// see is current rather than however old the tab is.
 		const onVisible = () => {
-			if (!document.hidden) void refresh();
+			if (!document.hidden) void tick();
 		};
 		document.addEventListener("visibilitychange", onVisible);
 
@@ -74,7 +96,7 @@ export function usePoll<T>(
 			window.clearTimeout(timer);
 			document.removeEventListener("visibilitychange", onVisible);
 		};
-	}, [every, refresh]);
+	}, [every, refresh, enabled]);
 
 	return { value, error, loading, refresh };
 }

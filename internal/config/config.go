@@ -62,7 +62,8 @@ type Meet struct {
 	// TrustProxy believes `X-Forwarded-For` and `X-Forwarded-Host`. Only true
 	// behind a proxy that sets them; exposed directly they are whatever the
 	// caller typed, and believing them would let anyone claim a fresh rate-limit
-	// budget per request.
+	// budget per request. Even trusted, only the last X-Forwarded-For entry is
+	// read, because a proxy appends to whatever the caller already sent.
 	TrustProxy bool `yaml:"trust_proxy"`
 
 	// Admins may open the management pages. Empty, which is the default, means

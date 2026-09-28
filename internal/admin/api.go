@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"tomoshibi/internal/config"
+	"tomoshibi/internal/limit"
 	"tomoshibi/internal/room"
 	"tomoshibi/internal/rtc"
 	"tomoshibi/internal/store"
@@ -624,23 +623,11 @@ func refuse(w http.ResponseWriter, status int, reason string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": reason})
 }
 
-// addressOf is who is calling, for the purpose of counting their attempts.
+// addressOf is who is calling, for the purpose of counting their attempts. It
+// is the join limiter's answer on purpose: the sign-in once read the forwarded
+// header its own way, and both ways believed the entry a caller could forge.
 func addressOf(r *http.Request, trustProxy bool) string {
-	if trustProxy {
-		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			if first, _, found := strings.Cut(forwarded, ","); found {
-				return strings.TrimSpace(first)
-			}
-			return strings.TrimSpace(forwarded)
-		}
-	}
-
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return host
+	return limit.Client(r, trustProxy)
 }
 
 // secureRequest decides whether the session cookie may be marked Secure.

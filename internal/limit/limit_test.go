@@ -74,16 +74,18 @@ func TestATrustedProxyIdentifiesTheClient(t *testing.T) {
 	}
 }
 
-// Proxies append, so the original client is the first entry and the rest are
-// hops it passed through.
-func TestTheOriginalClientIsReadFromAChain(t *testing.T) {
+// Proxies append to whatever the caller already put in the header, so every
+// entry but the last is the caller's own writing. Believing the first one let a
+// script buy a fresh budget per request by varying it; the last one is what the
+// proxy in front of this server saw.
+func TestAForgedPrefixCannotBuyANewBudget(t *testing.T) {
 	limiter := New(1, 1, true)
 
-	if !limiter.Allow(request("10.0.0.1:1000", "192.0.2.1, 203.0.113.9")) {
+	if !limiter.Allow(request("10.0.0.1:1000", "198.51.100.1, 192.0.2.1")) {
 		t.Fatal("the first request was refused")
 	}
-	if limiter.Allow(request("10.0.0.1:1000", "192.0.2.1, 198.51.100.7")) {
-		t.Error("the same client through a different proxy got a new budget")
+	if limiter.Allow(request("10.0.0.1:1000", "198.51.100.2, 192.0.2.1")) {
+		t.Error("a different forged first entry bought a budget the client had already spent")
 	}
 }
 

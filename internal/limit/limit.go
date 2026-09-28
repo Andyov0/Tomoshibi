@@ -77,18 +77,37 @@ func (l *Limiter) Allow(r *http.Request) bool {
 }
 
 // client works out who to charge.
+func (l *Limiter) client(r *http.Request) string {
+	return Client(r, l.trustProxy)
+}
+
+// Client is the address a request is charged to, shared by everything here that
+// counts callers so that no two gates can disagree about who somebody is.
 //
 // Behind a proxy that sets X-Forwarded-For, each caller gets a budget of its
 // own. Without one the header is whatever the caller typed, so trusting it would
 // let anybody mint unlimited budgets by varying a string; the peer address is
 // used instead, which they cannot choose.
-func (l *Limiter) client(r *http.Request) string {
-	if l.trustProxy {
+//
+// Behind one, it is the last entry that is believed, not the first. Proxies
+// append the address they saw to whatever the header already said, and what it
+// already said is the caller's to write: nginx's $proxy_add_x_forwarded_for,
+// Caddy, and most load balancers all pass a forged prefix through untouched. The
+// first entry is therefore exactly as choosable as an untrusted header, and
+// reading it undid the whole point of trusting the proxy -- a script sending a
+// fresh X-Forwarded-For per request got a fresh budget per request, both here
+// and at the administrator sign-in. The last entry is the one the proxy in front
+// of this server wrote, which is the one thing in the header nobody else could
+// have. A chain of two proxies is then charged as one caller, which is the safe
+// way to be wrong.
+func Client(r *http.Request, trustProxy bool) string {
+	if trustProxy {
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			// Proxies append, so the original client is the first entry and the
-			// rest are hops it passed through on the way here.
-			first, _, _ := strings.Cut(forwarded, ",")
-			if address := strings.TrimSpace(first); address != "" {
+			last := forwarded
+			if comma := strings.LastIndexByte(forwarded, ','); comma >= 0 {
+				last = forwarded[comma+1:]
+			}
+			if address := strings.TrimSpace(last); address != "" {
 				return address
 			}
 		}

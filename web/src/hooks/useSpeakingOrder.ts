@@ -1,5 +1,5 @@
 import type { Participant } from "livekit-client";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 
 /**
  * Order people so that whoever has spoken recently is near the front.
@@ -19,7 +19,14 @@ export function useSpeakingOrder(participants: Participant[], enabled: boolean):
 	// record of what has happened rather than something rendered directly.
 	const heard = useRef(new Map<string, number>());
 
-	useEffect(() => {
+	return useMemo(() => {
+		// Written down here, in the same pass that sorts, rather than in an
+		// effect after it. An effect runs after the render that used the map, so
+		// the sort always read the room as it was one change earlier: somebody
+		// who started talking from the second page was moved forward only on the
+		// next change to the roster, which was usually them stopping — exactly
+		// the moment it stopped mattering. Updating a ref during render is safe
+		// here because doing it twice for one render records the same thing.
 		const now = Date.now();
 
 		for (const participant of participants) {
@@ -32,9 +39,7 @@ export function useSpeakingOrder(participants: Participant[], enabled: boolean):
 		for (const identity of heard.current.keys()) {
 			if (!present.has(identity)) heard.current.delete(identity);
 		}
-	}, [participants]);
 
-	return useMemo(() => {
 		if (!enabled) return participants;
 
 		return [...participants].sort((a, b) => {

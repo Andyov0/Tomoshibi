@@ -103,6 +103,11 @@ const en = {
 	"Can't use your microphone": "Can't use your microphone",
 	"Allow access from the icon in the address bar.":
 		"Allow access from the icon in the address bar.",
+	"Something else may be using it.": "Something else may be using it.",
+	"You were removed from the room": "You were removed from the room",
+	"This room was closed": "This room was closed",
+	"You joined from somewhere else": "You joined from somewhere else",
+	"The connection was lost": "The connection was lost",
 	// Sound, which is one person's own decision about everybody else.
 	Sound: "Sound",
 	"Sound settings": "Sound settings",

@@ -202,9 +202,9 @@ function Form({ room, onRoomChange, onJoin }: PreJoinProps) {
 		};
 	}, [devices.camera]);
 
-	// Stopped only when the screen goes away for good. The track itself is handed
-	// to the room on join, so tearing it down on every render would drop the
-	// preview and prompt again a moment later.
+	// Stopped only when the screen goes away for good, not on every render, which
+	// would drop the preview and prompt again a moment later. The room asks for a
+	// camera of its own, and waits for this to have let go of the preview first.
 	useEffect(() => () => current.current?.stop(), []);
 
 	/*

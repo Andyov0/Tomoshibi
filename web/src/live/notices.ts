@@ -1,5 +1,5 @@
 import type { Participant, Room } from "livekit-client";
-import { RoomEvent, Track } from "livekit-client";
+import { DisconnectReason, RoomEvent, Track } from "livekit-client";
 import { toast } from "sonner";
 import { t } from "./i18n";
 
@@ -68,16 +68,61 @@ export function watch(room: Room): () => void {
  *
  * Given no duration, so it stays: unlike everything else here it is a thing
  * somebody has to go and fix, and it tells them where.
+ *
+ * Two causes, told apart because they have different remedies. A refusal is
+ * undone from the address bar. Anything else — the camera held by another
+ * application, which is what a video call already open in another tab looks like,
+ * or no device there at all — is not, and pointing somebody at a permission they
+ * have already granted sends them looking in the one place the fault is not.
+ * That second case used to say nothing whatsoever: the button stayed off and
+ * the reason went to the console.
  */
-export function deviceRefused(kind: "camera" | "microphone"): void {
+export function deviceFailed(kind: "camera" | "microphone", err: unknown): void {
+	const refused = err instanceof DOMException && err.name === "NotAllowedError";
+
 	// Two whole phrases rather than one with the device substituted in. A
 	// sentence built around a noun has to agree with it in most languages, and
 	// the one place that would break is the one nobody tests: the error.
 	toast.error(kind === "camera" ? t("Can't use your camera") : t("Can't use your microphone"), {
-		description: t("Allow access from the icon in the address bar."),
+		description: refused
+			? t("Allow access from the icon in the address bar.")
+			: t("Something else may be using it."),
 		duration: Number.POSITIVE_INFINITY,
 		closeButton: true,
 	});
+}
+
+/**
+ * The call ending from the other side.
+ *
+ * Something still true, so it stays: somebody who looks back at the screen after
+ * a minute away finds the first screen again, and needs to be told why they are
+ * no longer in the meeting they left running. Before this existed nothing was
+ * said and nothing moved either — a removed participant sat in front of frozen
+ * pictures and "Connecting…" with their camera light still on.
+ *
+ * Nothing for leaving on purpose, which is the one ending that explains itself.
+ */
+export function sentAway(reason: DisconnectReason | undefined): void {
+	let said: string;
+	switch (reason) {
+		case DisconnectReason.CLIENT_INITIATED:
+			return;
+		case DisconnectReason.PARTICIPANT_REMOVED:
+			said = t("You were removed from the room");
+			break;
+		case DisconnectReason.ROOM_DELETED:
+		case DisconnectReason.ROOM_CLOSED:
+			said = t("This room was closed");
+			break;
+		case DisconnectReason.DUPLICATE_IDENTITY:
+			said = t("You joined from somewhere else");
+			break;
+		default:
+			said = t("The connection was lost");
+	}
+
+	toast.error(said, { duration: Number.POSITIVE_INFINITY, closeButton: true });
 }
 
 /**

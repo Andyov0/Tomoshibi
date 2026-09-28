@@ -17,6 +17,7 @@ enough for the people who need it and no brighter.
 main.go      Command dispatch, the embedded client, graceful shutdown.
 internal/
   app/       HTTP surface: the client, the join endpoint, the signalling proxy.
+  admin/     The management pages' API: sessions, the audit log, health.
   config/    One document split into this server's half and the media server's.
   rtc/       The embedded media server and a proxy to its loopback listener.
   room/      Room names, identities, and the tokens that authorise them.

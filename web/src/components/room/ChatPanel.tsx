@@ -91,8 +91,10 @@ export function ChatPanel({
 							<div key={one.id} className={cn("flex flex-col gap-0.5", run && "-mt-2")}>
 								{!run && (
 									<span className="flex items-baseline gap-1.5 font-medium text-[11.5px]">
-										{one.name}
-										{one.mine && <span className="font-normal text-fg-muted">(you)</span>}
+										{/* Through the same phrase the tile uses. It was written out
+										    in English here, the one place in the call that
+										    never changed language. */}
+										{one.mine ? t("{name} (you)", { name: one.name }) : one.name}
 										<span className="readout text-[9.5px] text-fg-muted">{clock(one.at)}</span>
 									</span>
 								)}

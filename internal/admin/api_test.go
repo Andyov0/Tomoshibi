@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -278,6 +279,31 @@ func TestGuessingIsRefusedBeforeItIsChecked(t *testing.T) {
 	}
 }
 
+// Behind a proxy the address counted is the one the proxy appended. Anything
+// before it is the caller's own writing, and reading the first entry once gave
+// every forged prefix a budget of its own, so one machine could guess at the
+// full ceiling of the endpoint rather than at its own ten a minute.
+func TestAForgedForwardedAddressIsNotANewCaller(t *testing.T) {
+	api, mux := mount(t, []config.Admin{{Trip: room.Trip(key, "correct")}})
+	api.conf.Meet.TrustProxy = true
+
+	guess := func(forged string) int {
+		r := sign(`{"passphrase":"guess"}`)
+		r.Header.Set("X-Forwarded-For", forged+", 192.0.2.7")
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, r)
+		return recorder.Code
+	}
+
+	for i := 0; i < perAddress; i++ {
+		guess("198.51.100." + strconv.Itoa(i))
+	}
+
+	if code := guess("198.51.100.200"); code != http.StatusTooManyRequests {
+		t.Errorf("a new forged prefix answered %d after the caller's limit, want 429", code)
+	}
+}
+
 /*
  * With nobody configured the surface does not exist. Not refused — absent, so
  * that the paths answer like any other address nobody claimed and there is
@@ -329,6 +355,43 @@ func TestActionsAreRecordedAgainstWhoTookThem(t *testing.T) {
 
 	if !found {
 		t.Error("an action reached the media server and was not recorded")
+	}
+}
+
+// A page on a sibling subdomain is the same site, so a SameSite=Strict cookie
+// goes along with a form it posts. The browser says where a request came from in
+// a header the page cannot write, and anything that is not this origin is turned
+// away before the session is looked at.
+func TestAnotherSiteCannotActThroughASession(t *testing.T) {
+	api, mux := mount(t, []config.Admin{{Trip: room.Trip(key, "moderator"), Can: []string{config.Moderate}}})
+	_, token, _ := api.sessions.Open("moderator")
+
+	act := func(site string) int {
+		request := httptest.NewRequest(http.MethodPost, "/api/admin/rooms/x/participants/y/mute",
+			strings.NewReader(`{"track":"TR_x"}`))
+		request.Header.Set("Content-Type", "text/plain")
+		request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+		if site != "" {
+			request.Header.Set("Sec-Fetch-Site", site)
+		}
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+
+	for _, site := range []string{"same-site", "cross-site"} {
+		if code := act(site); code != http.StatusForbidden {
+			t.Errorf("a request from %s answered %d, want 403", site, code)
+		}
+	}
+
+	// These pages themselves, and anything that is not a browser, still reach
+	// the handler: the media server behind it is absent, so anything but a
+	// refusal from the gate will do.
+	for _, site := range []string{"same-origin", ""} {
+		if code := act(site); code == http.StatusForbidden || code == http.StatusUnauthorized {
+			t.Errorf("a request with Sec-Fetch-Site %q was refused: %d", site, code)
+		}
 	}
 }
 

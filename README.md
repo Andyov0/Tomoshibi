@@ -17,6 +17,7 @@ enough for the people who need it and no brighter.
 main.go      Command dispatch, the embedded client, graceful shutdown.
 internal/
   app/       HTTP surface: the client, the join endpoint, the signalling proxy.
+  admin/     The management pages' API: sessions, the audit log, health.
   config/    One document split into this server's half and the media server's.
   rtc/       The embedded media server and a proxy to its loopback listener.
   room/      Room names, identities, and the tokens that authorise them.
@@ -436,7 +437,9 @@ first use and must not be replaced: doing so changes every existing signature.
 Behind a proxy, set `meet.trust_proxy` so that `X-Forwarded-For` and
 `X-Forwarded-Host` are believed. Exposed directly they are whatever the caller
 typed, and believing them would let anybody claim a fresh rate-limit budget per
-request.
+request. Only the last `X-Forwarded-For` entry is read, since proxies append to
+whatever the caller sent: behind two proxies, everybody arriving through the
+outer one is counted as that one caller.
 
 `meet.rooms.opened_by` is who may use a name nobody has used before — `anyone`,
 which is the default and what an anonymous meeting link means, or `admins`,

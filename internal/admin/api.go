@@ -5,13 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"tomoshibi/internal/config"
+	"tomoshibi/internal/limit"
 	"tomoshibi/internal/room"
 	"tomoshibi/internal/rtc"
 	"tomoshibi/internal/store"
@@ -148,7 +147,8 @@ func (a *API) Mount(mux *http.ServeMux) {
 func (a *API) open(w http.ResponseWriter, r *http.Request) {
 	caller := addressOf(r, a.conf.Meet.TrustProxy)
 
-	if !a.sessions.limit.Allow(caller) {
+	attempt, allowed := a.sessions.limit.Take(caller)
+	if !allowed {
 		a.log.Record(Entry{Action: "sign in", Trip: "-", Failed: true, Reason: "too many attempts"})
 		refuse(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
@@ -161,7 +161,7 @@ func (a *API) open(w http.ResponseWriter, r *http.Request) {
 
 	session, token, ok := a.sessions.Open(body.Passphrase)
 	if !ok {
-		a.sessions.limit.Failed(caller)
+		attempt.Failed()
 		// Recorded without anything derived from what was typed. A rejected
 		// passphrase is still a passphrase, and one of these logs is going to
 		// be read by somebody it does not belong to.
@@ -170,6 +170,7 @@ func (a *API) open(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	attempt.Succeeded()
 	Grant(w, token, secureRequest(r, a.conf.Meet.TrustProxy))
 	a.log.Record(Entry{Action: "sign in", Trip: session.Trip, Name: session.Name})
 
@@ -230,6 +231,11 @@ func (a *API) gate(
 	next func(Session, http.ResponseWriter, *http.Request),
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !fromHere(r) {
+			refuse(w, http.StatusForbidden, "cross_site")
+			return
+		}
+
 		session, ok := a.sessions.Of(r)
 		if !ok {
 			refuse(w, http.StatusUnauthorized, "signed_out")
@@ -624,23 +630,41 @@ func refuse(w http.ResponseWriter, status int, reason string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": reason})
 }
 
-// addressOf is who is calling, for the purpose of counting their attempts.
+// fromHere reports whether a request that changes something came from these
+// pages rather than from somebody else's.
+//
+// The session cookie is SameSite=Strict, which was meant to be the whole of the
+// defence and is most of it. What it misses is that "site" is wider than
+// "origin": a page on any sibling subdomain is the same site, its cookie goes
+// along, and a form it posts as text/plain reaches the mute endpoint, which
+// reads its body without asking what kind it was. Sec-Fetch-Site is set by the
+// browser and cannot be written by the page, and it says same-origin only for
+// a request from this exact origin.
+//
+// A request that does not carry it at all is let through, because only browsers
+// send it and only browsers carry a cookie somebody else can borrow. An older
+// one that predates the header still has the cookie's own attribute between it
+// and a stranger's page.
+//
+// Reading is not asked, because a page on another origin cannot read what comes
+// back, and refusing it would only cost a browser extension or a script with a
+// copied cookie nothing it could not do some other way.
+func fromHere(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead:
+		return true
+	}
+
+	site := r.Header.Get("Sec-Fetch-Site")
+
+	return site == "" || site == "same-origin"
+}
+
+// addressOf is who is calling, for the purpose of counting their attempts. It
+// is the join limiter's answer on purpose: the sign-in once read the forwarded
+// header its own way, and both ways believed the entry a caller could forge.
 func addressOf(r *http.Request, trustProxy bool) string {
-	if trustProxy {
-		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			if first, _, found := strings.Cut(forwarded, ","); found {
-				return strings.TrimSpace(first)
-			}
-			return strings.TrimSpace(forwarded)
-		}
-	}
-
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return host
+	return limit.Client(r, trustProxy)
 }
 
 // secureRequest decides whether the session cookie may be marked Secure.

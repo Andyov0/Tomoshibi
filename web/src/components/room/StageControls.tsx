@@ -30,7 +30,20 @@ export function StageControls({
 		// Revealed by hovering the picture these controls belong to. They used to
 		// answer to a stage that owned them, and the stage is gone: a picture on
 		// the stage is now the same tile it was in the grid, put somewhere else.
-		<div className="absolute top-3 right-3 flex gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+		//
+		// Kept to themselves, because they are drawn inside the tile and the
+		// tile is itself a button. A press on either one used to carry on to the
+		// tile beneath: "Their screen" pinned the other picture and the tile's own
+		// click pinned this one straight back, so it did nothing, and filling the
+		// screen unpinned the picture it had just filled the screen with. Enter
+		// and Space went the same way and never reached the button at all, since
+		// the tile swallows both to act on itself.
+		<div
+			className="absolute top-3 right-3 flex gap-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100"
+			onClick={(event) => event.stopPropagation()}
+			onDoubleClick={(event) => event.stopPropagation()}
+			onKeyDown={(event) => event.stopPropagation()}
+		>
 			{/* Somebody sharing their screen is two pictures, and reaching the
 			    other one otherwise means hunting for a thumbnail in the strip.
 			    Only shown when there is somewhere to switch to. */}

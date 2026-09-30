@@ -9,7 +9,7 @@ import { DeviceMenu } from "./DeviceMenu";
 import { ShareButton } from "./ShareButton";
 import { useLocalState } from "@/hooks/useLocalState";
 import { canShareScreen } from "@/live/context";
-import { deviceRefused } from "@/live/notices";
+import { deviceFailed } from "@/live/notices";
 
 /**
  * The call controls.
@@ -48,7 +48,7 @@ export function ControlBar({
 	// a device and a second click while that prompt is open leaves the button
 	// and the device disagreeing about what is on.
 	const guard =
-		(action: () => Promise<unknown>, kind: "camera" | "microphone" = "camera") =>
+		(action: () => Promise<unknown>, kind?: "camera" | "microphone") =>
 		async () => {
 			if (busy) return;
 			setBusy(true);
@@ -56,14 +56,15 @@ export function ControlBar({
 			try {
 				await action();
 			} catch (err) {
-				// A cancelled picker is an answer and needs no comment. A refused
-				// permission is something somebody has to go and undo, so it says
-				// so, and stays until they have.
-				if (err instanceof DOMException && err.name === "NotAllowedError") {
-					deviceRefused(kind);
-				} else {
-					console.debug("device toggle declined", err);
-				}
+				// A camera or microphone that would not start is something
+				// somebody has to go and deal with, so it says so, and stays
+				// until they have. A share has no kind: its only failure worth
+				// the name is a cancelled picker, which is an answer, and which
+				// the browser reports with the very error a refused camera
+				// raises — so a share that was called off used to be announced
+				// as a camera nobody could use.
+				if (kind) deviceFailed(kind, err);
+				else console.debug("share declined", err);
 			} finally {
 				setBusy(false);
 			}
@@ -107,7 +108,7 @@ export function ControlBar({
 				on={local.camera}
 				onLabel={t("Turn camera off")}
 				offLabel={t("Turn camera on")}
-				onClick={guard(() => room.localParticipant.setCameraEnabled(!local.camera))}
+				onClick={guard(() => room.localParticipant.setCameraEnabled(!local.camera), "camera")}
 			>
 				{local.camera ? <Video /> : <VideoOff />}
 			</Toggle>

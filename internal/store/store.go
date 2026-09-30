@@ -202,6 +202,67 @@ func (s *Store) Forget(since time.Time, limit int) (int, error) {
 		return 0, nil
 	}
 
+	// Found in a read transaction and removed in a write one. bbolt lets any
+	// number of readers run beside its one writer, so the search, which has to
+	// look at every name because the bucket is ordered by name and not by age,
+	// no longer holds the door while it does. It once ran inside the write
+	// transaction: the batch bounded how many names were deleted but not how
+	// many were read, so every sweep walked and decoded the whole bucket with
+	// every join waiting behind it — the very thing the batch was there to
+	// prevent, on exactly the store that had grown large enough to need it.
+	stale, err := s.stale(since, limit)
+
+	gone := 0
+	if err == nil && len(stale) > 0 {
+		gone, err = s.drop(stale, since)
+	}
+
+	if err != nil {
+		return 0, fmt.Errorf("forget rooms last joined before %s: %w", since.Format(time.RFC3339), err)
+	}
+
+	return gone, nil
+}
+
+// stale finds up to limit names last joined before since, without taking the
+// writer.
+func (s *Store) stale(since time.Time, limit int) ([][]byte, error) {
+	found := make([][]byte, 0, limit)
+
+	err := s.db.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(rooms)
+		if bucket == nil {
+			return nil
+		}
+
+		err := bucket.ForEach(func(name, raw []byte) error {
+			if len(found) >= limit {
+				return errEnough
+			}
+
+			if staleSince(raw, since) {
+				found = append(found, append([]byte(nil), name...))
+			}
+
+			return nil
+		})
+		if errors.Is(err, errEnough) {
+			return nil
+		}
+
+		return err
+	})
+
+	return found, err
+}
+
+// drop removes the named records that are still stale.
+//
+// Asked again, because somebody may have joined one between the search and
+// this, and a room somebody just walked into is the last one to forget. Under
+// the admins policy that is not a tidiness question: a forgotten name is a
+// closed door, and it would have closed on a meeting as it began.
+func (s *Store) drop(names [][]byte, since time.Time) (int, error) {
 	gone := 0
 
 	err := s.db.Update(func(tx *bolt.Tx) error {
@@ -210,33 +271,10 @@ func (s *Store) Forget(since time.Time, limit int) (int, error) {
 			return nil
 		}
 
-		// Gathered before anything is removed. Deleting through a cursor while
-		// walking it is a question bbolt answers for its own iterator with
-		// "undefined behaviour", and a bounded pass makes the list small enough
-		// that there is nothing to be gained by asking.
-		stale := make([][]byte, 0, limit)
-
-		err := bucket.ForEach(func(name, raw []byte) error {
-			if len(stale) >= limit {
-				return errEnough
+		for _, name := range names {
+			if !staleSince(bucket.Get(name), since) {
+				continue
 			}
-
-			var tally Room
-			if err := json.Unmarshal(raw, &tally); err != nil {
-				return nil
-			}
-
-			if tally.Seen.Before(since) {
-				stale = append(stale, append([]byte(nil), name...))
-			}
-
-			return nil
-		})
-		if err != nil && !errors.Is(err, errEnough) {
-			return err
-		}
-
-		for _, name := range stale {
 			if err := bucket.Delete(name); err != nil {
 				return err
 			}
@@ -246,11 +284,22 @@ func (s *Store) Forget(since time.Time, limit int) (int, error) {
 		return nil
 	})
 
-	if err != nil {
-		return 0, fmt.Errorf("forget rooms last joined before %s: %w", since.Format(time.RFC3339), err)
+	return gone, err
+}
+
+// staleSince reports whether a record was last joined before since. A record that
+// is missing or cannot be read is not stale: its age is unknown.
+func staleSince(raw []byte, since time.Time) bool {
+	if raw == nil {
+		return false
 	}
 
-	return gone, nil
+	var tally Room
+	if err := json.Unmarshal(raw, &tally); err != nil {
+		return false
+	}
+
+	return tally.Seen.Before(since)
 }
 
 // errEnough stops a walk that has found as much as it was asked for. Never

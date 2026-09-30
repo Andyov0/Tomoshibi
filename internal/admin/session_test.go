@@ -182,17 +182,36 @@ func TestNobodyIsConfiguredByDefault(t *testing.T) {
  * is not, and what stands between the two is the number below.
  */
 
+// fail is one wrong passphrase from caller, reporting whether it was let
+// through to be judged at all.
+func fail(limit *attempts, caller string) bool {
+	attempt, ok := limit.Take(caller)
+	if ok {
+		attempt.Failed()
+	}
+
+	return ok
+}
+
+func refused(limit *attempts, caller string) bool {
+	attempt, ok := limit.Take(caller)
+	if ok {
+		attempt.Succeeded()
+	}
+
+	return !ok
+}
+
 func TestGuessingIsBoundedPerCaller(t *testing.T) {
 	limit := newAttempts()
 
 	for i := 0; i < perAddress; i++ {
-		if !limit.Allow("10.0.0.1") {
+		if !fail(limit, "10.0.0.1") {
 			t.Fatalf("refused after %d attempts, before the limit of %d", i, perAddress)
 		}
-		limit.Failed("10.0.0.1")
 	}
 
-	if limit.Allow("10.0.0.1") {
+	if !refused(limit, "10.0.0.1") {
 		t.Error("guessing continued past the per-caller limit")
 	}
 }
@@ -205,11 +224,54 @@ func TestGuessingIsBoundedEvenFromManyAddresses(t *testing.T) {
 	// endpoint as a whole is what has no give in it.
 	for i := 0; i < overall; i++ {
 		caller := string(rune('a'+i%26)) + string(rune('a'+i/26))
-		limit.Failed(caller)
+		fail(limit, caller)
 	}
 
-	if limit.Allow("a caller that has never tried before") {
+	if !refused(limit, "a caller that has never tried before") {
 		t.Error("a fresh address was let through after the endpoint's own ceiling")
+	}
+}
+
+/*
+ * The limit was once asked and then charged, with the passphrase judged in
+ * between, so every request that arrived before the first refusal was recorded
+ * saw a full bucket. Sign-ins sent all at once walked through the ceiling
+ * together. Attempts that have been let through and not yet decided are the
+ * shape of that, and they have to count.
+ */
+
+func TestAttemptsInFlightCountAgainstTheCeiling(t *testing.T) {
+	limit := newAttempts()
+
+	var held []*attempt
+	for i := 0; i < overall; i++ {
+		attempt, ok := limit.Take(strconv.Itoa(i))
+		if !ok {
+			t.Fatalf("attempt %d refused, before the ceiling of %d", i+1, overall)
+		}
+		held = append(held, attempt)
+	}
+
+	if !refused(limit, "one more, sent at the same moment") {
+		t.Error("an attempt beyond the ceiling was let through while the others were still being judged")
+	}
+
+	for _, attempt := range held {
+		attempt.Failed()
+	}
+}
+
+func TestAttemptsInFlightCountAgainstTheCaller(t *testing.T) {
+	limit := newAttempts()
+
+	for i := 0; i < perAddress; i++ {
+		if _, ok := limit.Take("10.0.0.4"); !ok {
+			t.Fatalf("attempt %d refused, before the limit of %d", i+1, perAddress)
+		}
+	}
+
+	if !refused(limit, "10.0.0.4") {
+		t.Error("one caller's concurrent attempts went past their own limit")
 	}
 }
 
@@ -220,7 +282,7 @@ func TestSucceedingCostsNothing(t *testing.T) {
 	// guessing, and charging them for it makes an administrator's day harder
 	// than an attacker's.
 	for i := 0; i < perAddress*3; i++ {
-		if !limit.Allow("10.0.0.2") {
+		if refused(limit, "10.0.0.2") {
 			t.Fatal("an address that never failed was refused")
 		}
 	}
@@ -230,10 +292,10 @@ func TestABudgetRefills(t *testing.T) {
 	limit := newAttempts()
 
 	for i := 0; i < perAddress; i++ {
-		limit.Failed("10.0.0.3")
+		fail(limit, "10.0.0.3")
 	}
 
-	if limit.Allow("10.0.0.3") {
+	if !refused(limit, "10.0.0.3") {
 		t.Fatal("guessing continued past the limit")
 	}
 
@@ -244,7 +306,7 @@ func TestABudgetRefills(t *testing.T) {
 	limit.byCaller["10.0.0.3"].limiter.AllowN(time.Now().Add(time.Minute), 0)
 	limit.mu.Unlock()
 
-	if !limit.Allow("10.0.0.3") {
+	if refused(limit, "10.0.0.3") {
 		t.Error("a caller was still refused a minute after their last attempt")
 	}
 }
@@ -260,7 +322,7 @@ func TestCallersAreForgotten(t *testing.T) {
 	const strangers = 200
 
 	for i := 0; i < strangers; i++ {
-		limit.Failed(strconv.Itoa(i))
+		fail(limit, strconv.Itoa(i))
 	}
 
 	// Aged by moving the clock the sweep reads rather than by rewriting each
@@ -275,7 +337,7 @@ func TestCallersAreForgotten(t *testing.T) {
 	limit.swept = time.Now().Add(-2 * time.Minute)
 	limit.mu.Unlock()
 
-	limit.Failed("somebody still trying")
+	fail(limit, "somebody still trying")
 
 	limit.mu.Lock()
 	held := len(limit.byCaller)

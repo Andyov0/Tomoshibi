@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { type Participant, type Track, api } from "./api";
 import { actionFailed } from "@/live/notices";
 import { OpeningCard } from "./OpeningCard";
+import { Twice } from "./Twice";
 import { usePoll } from "./poll";
 import { Card, Empty, Failed } from "./Shell";
 import { bitrate, day, since } from "./units";
@@ -185,9 +186,15 @@ function People({
 
 			{canModerate && (
 				<div className="flex justify-end border-border border-b px-4 py-2">
-					<Button variant="danger" size="sm" disabled={acting} onClick={onClose}>
+					<Twice
+						variant="danger"
+						size="sm"
+						disabled={acting}
+						onConfirm={onClose}
+						confirm="Press again to end it for everyone"
+					>
 						Close this room
-					</Button>
+					</Twice>
 				</div>
 			)}
 
@@ -249,9 +256,15 @@ function Person({
 				</span>
 
 				{canModerate && (
-					<Button variant="ghost" size="sm" disabled={acting} onClick={onRemove}>
+					<Twice
+						variant="ghost"
+						size="sm"
+						disabled={acting}
+						onConfirm={onRemove}
+						confirm="Press again to remove"
+					>
 						Remove
-					</Button>
+					</Twice>
 				)}
 			</div>
 

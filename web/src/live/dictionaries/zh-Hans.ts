@@ -74,6 +74,7 @@ const zhHans: Dictionary = {
 	"Can't use your camera": "无法使用你的摄像头",
 	"Can't use your microphone": "无法使用你的麦克风",
 	"Allow access from the icon in the address bar.": "在地址栏的图标里允许访问。",
+	"Something else may be using it.": "可能有别的程序正在使用它。",
 	Sound: "声音",
 	"Sound settings": "声音设置",
 	"Copy signature": "复制签名",

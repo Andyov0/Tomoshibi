@@ -74,6 +74,7 @@ const ja: Dictionary = {
 	"Can't use your camera": "カメラを使えません",
 	"Can't use your microphone": "マイクを使えません",
 	"Allow access from the icon in the address bar.": "アドレスバーのアイコンから許可してください。",
+	"Something else may be using it.": "ほかのアプリが使用中の可能性があります。",
 	Sound: "音声",
 	"Sound settings": "音声設定",
 	"Copy signature": "署名をコピー",

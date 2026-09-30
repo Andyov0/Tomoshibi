@@ -8,7 +8,7 @@ import { connect, create } from "@/live/room";
 import { sharpShares } from "@/live/sharpness";
 import { forgetMeeting, keepMeeting, meetingToken } from "@/live/meeting";
 import { useT } from "@/hooks/useT";
-import { joinFailed } from "@/live/notices";
+import { deviceFailed, joinFailed } from "@/live/notices";
 import { Lobby, SignIn } from "@/routes/Lobby";
 import { type Choices, PreJoin, remembered, rememberedName } from "@/routes/PreJoin";
 import { Moving } from "@/components/room/Moving";
@@ -334,8 +334,20 @@ export function App() {
 				// room the moment they join and their devices come up a beat
 				// later, instead of the room waiting on a camera that may never
 				// be granted.
-				await made.localParticipant.setMicrophoneEnabled(microphone);
-				await made.localParticipant.setCameraEnabled(camera);
+				//
+				// Each on its own, and never through the catch below. They used
+				// to sit in the same try as the connection, so a device that
+				// failed failed the join: a refused microphone, or a camera held
+				// by another tab's call, disconnected somebody who was already in
+				// and told them the room would not open. A device is one person's
+				// problem with their own machine; it is said as one, and the call
+				// goes on with that button off.
+				await made.localParticipant
+					.setMicrophoneEnabled(microphone)
+					.catch((err: unknown) => deviceFailed("microphone", err));
+				await made.localParticipant
+					.setCameraEnabled(camera)
+					.catch((err: unknown) => deviceFailed("camera", err));
 
 				// A shared screen is not a face: it is subscribed at full size
 				// however small its tile is, because the alternative is text

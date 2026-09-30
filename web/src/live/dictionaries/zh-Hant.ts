@@ -74,6 +74,7 @@ const zhHant: Dictionary = {
 	"Can't use your camera": "無法使用你的攝影機",
 	"Can't use your microphone": "無法使用你的麥克風",
 	"Allow access from the icon in the address bar.": "在網址列的圖示裡允許存取。",
+	"Something else may be using it.": "可能有別的程式正在使用它。",
 	Sound: "聲音",
 	"Sound settings": "聲音設定",
 	"Copy signature": "複製簽名",

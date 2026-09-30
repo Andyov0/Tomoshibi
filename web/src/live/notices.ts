@@ -81,17 +81,29 @@ export function watch(room: Room): () => void {
 }
 
 /**
- * A device the browser would not hand over.
+ * A device that would not start.
  *
  * Given no duration, so it stays: unlike everything else here it is a thing
  * somebody has to go and fix, and it tells them where.
+ *
+ * Two causes, told apart because they have different remedies. A refusal is
+ * undone from the address bar. Anything else -- the camera held by another
+ * application, which is what a video call already open in another tab looks
+ * like, or no device there at all -- is not, and pointing somebody at a
+ * permission they have already granted sends them looking in the one place the
+ * fault is not. That second case used to say nothing whatsoever: the button
+ * stayed off and the reason went to the console.
  */
-export function deviceRefused(kind: "camera" | "microphone"): void {
+export function deviceFailed(kind: "camera" | "microphone", err: unknown): void {
+	const refused = err instanceof DOMException && err.name === "NotAllowedError";
+
 	// Two whole phrases rather than one with the device substituted in. A
 	// sentence built around a noun has to agree with it in most languages, and
 	// the one place that would break is the one nobody tests: the error.
 	toast.error(kind === "camera" ? t("Can't use your camera") : t("Can't use your microphone"), {
-		description: t("Allow access from the icon in the address bar."),
+		description: refused
+			? t("Allow access from the icon in the address bar.")
+			: t("Something else may be using it."),
 		duration: AT_MOST,
 		closeButton: true,
 	});

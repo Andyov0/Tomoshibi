@@ -489,6 +489,7 @@ const ja: Dictionary = {
 	"Participants": "参加者",
 	"People": "人数",
 	"Remove from the call": "通話から外す",
+	"Press again to remove": "もう一度押すと通話から外します",
 	"Rooms": "部屋",
 	"Rooms never close.": "部屋は閉じません。",
 	"Rooms this server has seen": "このサーバーが見た部屋",

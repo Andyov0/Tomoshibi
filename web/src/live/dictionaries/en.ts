@@ -520,6 +520,7 @@ const en = {
 	"Participants": "Participants",
 	"People": "People",
 	"Remove from the call": "Remove from the call",
+	"Press again to remove": "Press again to remove",
 	"Rooms": "Rooms",
 	"Rooms never close.": "Rooms never close.",
 	"Rooms this server has seen": "Rooms this server has seen",

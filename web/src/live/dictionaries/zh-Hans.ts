@@ -489,6 +489,7 @@ const zhHans: Dictionary = {
 	"Participants": "参与者",
 	"People": "人数",
 	"Remove from the call": "移出通话",
+	"Press again to remove": "再点一次确认移出",
 	"Rooms": "房间",
 	"Rooms never close.": "房间不会关闭。",
 	"Rooms this server has seen": "这台服务器见过的房间",

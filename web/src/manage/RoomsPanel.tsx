@@ -21,6 +21,7 @@ import { type Participant, type Relay, type Track, api } from "./api";
 import { actionFailed } from "@/live/notices";
 import { JoiningCard, OpeningCard } from "./OpeningCard";
 import { usePoll } from "./poll";
+import { useTwice } from "./twice";
 import { Card, Empty, Failed, Waiting } from "./Shell";
 import { bitrate, clock, day, since } from "./units";
 
@@ -643,6 +644,10 @@ function Person({
 	onMute: (track: string) => void;
 }) {
 	const t = useT();
+	const removing = useTwice(onRemove);
+	// The words that say a second press will remove them, faded in and out
+	// rather than snapped, like everything else that comes and goes here.
+	const asking = useLingering(removing.armed, 160);
 
 	return (
 		<li className="border-border border-b px-4 py-3 last:border-0">
@@ -695,15 +700,22 @@ function Person({
 					<button
 						type="button"
 						disabled={acting}
-						onClick={onRemove}
-						aria-label={t("Remove from the call")}
-						title={t("Remove from the call")}
+						onClick={removing.press}
+						onBlur={removing.disarm}
+						aria-label={removing.armed ? t("Press again to remove") : t("Remove from the call")}
+						title={removing.armed ? t("Press again to remove") : t("Remove from the call")}
 						className={cn(
-							"rounded-md border border-border p-1.5 text-fg-muted transition-colors",
+							"flex items-center gap-1.5 rounded-md border border-border p-1.5 text-fg-muted transition-colors duration-150",
 							"hover:bg-surface-hi hover:text-danger disabled:opacity-40",
+							removing.armed && "border-danger/60 bg-danger/10 text-danger",
 						)}
 					>
 						<UserMinus className="size-3.5" />
+						{asking.mounted && (
+							<span className={cn("text-[11px]", asking.leaving ? "animate-fade-out" : "animate-fade-in")}>
+								{t("Press again to remove")}
+							</span>
+						)}
 					</button>
 				)}
 			</div>

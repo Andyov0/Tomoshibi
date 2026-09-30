@@ -489,6 +489,7 @@ const zhHant: Dictionary = {
 	"Participants": "參與者",
 	"People": "人數",
 	"Remove from the call": "移出通話",
+	"Press again to remove": "再點一次確認移出",
 	"Rooms": "房間",
 	"Rooms never close.": "房間不會關閉。",
 	"Rooms this server has seen": "這台伺服器見過的房間",

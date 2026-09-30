@@ -15,6 +15,9 @@ import (
 // nested route reaches the client rather than a 404.
 const index = "index.html"
 
+// unframed are the documents whose buttons act as whoever is signed in.
+var unframed = map[string]bool{"admin.html": true, "account.html": true}
+
 // Web serves the client out of files.
 //
 // Takes an fs.FS rather than a directory so the same handler covers both the
@@ -81,6 +84,18 @@ func Web(files fs.FS) http.Handler {
 		}
 
 		w.Header().Set("Cache-Control", caching(name))
+
+		// The management and account pages may not be drawn inside anybody
+		// else's page. Framed invisibly under a lure, a signed-in
+		// administrator's click on something innocent lands on "Close this
+		// room" instead, and the session cookie goes with it because the
+		// request is to this origin. Only those two: a meeting embedded in
+		// somebody's own site is a reasonable thing to build, and nothing a
+		// participant can press does harm to anybody else.
+		if unframed[name] {
+			w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+			w.Header().Set("X-Frame-Options", "DENY")
+		}
 
 		// The zero time leaves Last-Modified off, which is right for both
 		// sources: files built into the binary have no meaningful timestamp, and

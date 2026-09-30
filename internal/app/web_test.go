@@ -48,6 +48,37 @@ func TestEveryDocumentIsRevalidatedAndEveryAssetIsNot(t *testing.T) {
 	}
 }
 
+// Framed under a lure, a signed-in administrator's click can be made to land on
+// a button that closes somebody's meeting. The meeting itself stays framable,
+// since embedding one in a site of one's own is a use and not an attack.
+func TestOnlyTheSignedInPagesRefuseToBeFramed(t *testing.T) {
+	web := Web(fstest.MapFS{
+		"index.html":   {Data: []byte("<!doctype html>")},
+		"admin.html":   {Data: []byte("<!doctype html>")},
+		"account.html": {Data: []byte("<!doctype html>")},
+	})
+
+	ask := func(path string) http.Header {
+		recorder := httptest.NewRecorder()
+		web.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		return recorder.Header()
+	}
+
+	for _, path := range []string{"/admin.html", "/account.html"} {
+		if got := ask(path).Get("Content-Security-Policy"); got != "frame-ancestors 'none'" {
+			t.Errorf("%s may be framed: Content-Security-Policy is %q", path, got)
+		}
+		if got := ask(path).Get("X-Frame-Options"); got != "DENY" {
+			t.Errorf("%s may be framed by older browsers: X-Frame-Options is %q", path, got)
+		}
+	}
+	for _, path := range []string{"/", "/some/room"} {
+		if got := ask(path).Get("Content-Security-Policy"); got != "" {
+			t.Errorf("the meeting page at %s refuses to be framed: Content-Security-Policy is %q", path, got)
+		}
+	}
+}
+
 /*
 Serving the copy that was compressed at build time.
 

@@ -63,7 +63,7 @@ func mount(t *testing.T, admins []config.Admin) (*App, http.Handler) {
 			},
 		},
 		store:   st,
-		limit:   limit.New(1000, 1000, false),
+		limit:   limit.New(1000, 1000, 0),
 		tripKey: tripKey,
 	}
 

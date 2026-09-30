@@ -90,7 +90,7 @@ func (a *App) accountSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caller := limit.Caller(r, a.conf.Meet.TrustProxy)
+	caller := limit.Caller(r, a.conf.Meet.Hops())
 
 	if guessing := a.admin.Guessing(); guessing != nil && !guessing.Allow(caller) {
 		fail(w, http.StatusTooManyRequests, reasonRateLimited)

@@ -792,6 +792,7 @@ func announceSettings(conf *config.Config) {
 		"join rate", conf.Meet.JoinRate,
 		"join burst", conf.Meet.JoinBurst,
 		"trust proxy", conf.Meet.TrustProxy,
+		"proxies", conf.Meet.Hops(),
 		"database", conf.Meet.Database,
 		"api key", conf.Key)
 

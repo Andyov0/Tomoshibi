@@ -92,7 +92,7 @@ func (a *App) knock(w http.ResponseWriter, r *http.Request) {
 		ID:      id,
 		Room:    name,
 		Name:    strings.TrimSpace(body.Name),
-		Address: limit.Caller(r, a.conf.Meet.TrustProxy),
+		Address: limit.Caller(r, a.conf.Meet.Hops()),
 		State:   store.Knocking,
 		At:      time.Now().UTC(),
 	}); err != nil {

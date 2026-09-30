@@ -73,7 +73,7 @@ func New(conf *config.Config, st *store.Store, media *rtc.Server, web http.Handl
 	a := &App{
 		conf:    conf,
 		store:   st,
-		limit:   limit.New(conf.Meet.JoinRate, conf.Meet.JoinBurst, conf.Meet.TrustProxy),
+		limit:   limit.New(conf.Meet.JoinRate, conf.Meet.JoinBurst, conf.Meet.Hops()),
 		media:   media,
 		web:     web,
 		tripKey: tripKey,
@@ -582,7 +582,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// the ordinary case to protect against a guess nobody made.
 	isAdmin := false
 	if !body.Passphrase.Empty() {
-		if guessing := a.admin.Guessing(); guessing != nil && !guessing.Allow(limit.Caller(r, a.conf.Meet.TrustProxy)) {
+		if guessing := a.admin.Guessing(); guessing != nil && !guessing.Allow(limit.Caller(r, a.conf.Meet.Hops())) {
 			fail(w, http.StatusTooManyRequests, reasonRateLimited)
 			return
 		}
@@ -591,7 +591,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 
 		if !isAdmin {
 			if guessing := a.admin.Guessing(); guessing != nil {
-				guessing.Failed(limit.Caller(r, a.conf.Meet.TrustProxy))
+				guessing.Failed(limit.Caller(r, a.conf.Meet.Hops()))
 			}
 		}
 	}
@@ -960,7 +960,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// afterwards, and both are the first thing anybody asks when a call is going
 	// badly for one person and nobody else.
 	if err := a.store.Arrived(name, grant.Identity, store.Arrival{
-		Address: limit.Caller(r, a.conf.Meet.TrustProxy),
+		Address: limit.Caller(r, a.conf.Meet.Hops()),
 		Relay:   entry.Shown(),
 		Holding: elsewhere(entry, holding),
 		// What they called themselves. The media server has this for a call in

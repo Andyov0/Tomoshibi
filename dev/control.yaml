@@ -34,6 +34,8 @@ meet:
   # Behind a proxy terminating TLS. Cameras need a secure page, so a deployment
   # anybody else uses has one in front of it.
   trust_proxy: true
+  # A CDN in front of nginx: the caller is the second entry from the right.
+  proxies: 2
 
   # How a client is matched to a relay.
   #

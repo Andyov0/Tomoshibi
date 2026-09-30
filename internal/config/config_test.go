@@ -122,3 +122,27 @@ meet:
 		t.Fatalf("Load: %v", err)
 	}
 }
+
+// A count of proxies is only used to read X-Forwarded-For, which trust_proxy
+// false says is not read, so the two together cannot mean anything.
+func TestProxiesWithoutTrustProxyIsRefused(t *testing.T) {
+	meet := defaults
+	meet.Proxies = 2
+
+	if err := checkRole(&meet); err == nil {
+		t.Error("proxies without trust_proxy was accepted")
+	}
+}
+
+func TestHopsCountsOnlyWhatIsTrusted(t *testing.T) {
+	for _, c := range []struct {
+		trust   bool
+		proxies int
+		want    int
+	}{{false, 0, 0}, {true, 0, 1}, {true, 1, 1}, {true, 2, 2}} {
+		meet := Meet{TrustProxy: c.trust, Proxies: c.proxies}
+		if got := meet.Hops(); got != c.want {
+			t.Errorf("trust_proxy %v, proxies %d: %d hops, want %d", c.trust, c.proxies, got, c.want)
+		}
+	}
+}

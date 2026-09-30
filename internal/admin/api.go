@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,6 +12,7 @@ import (
 	"tomoshibi/internal/guess"
 
 	"tomoshibi/internal/config"
+	"tomoshibi/internal/limit"
 	"tomoshibi/internal/room"
 	"tomoshibi/internal/rtc"
 	"tomoshibi/internal/store"
@@ -500,7 +500,7 @@ func (a *API) MountEnrolment(mux *http.ServeMux) {
 
 // open signs somebody in.
 func (a *API) open(w http.ResponseWriter, r *http.Request) {
-	caller := addressOf(r, a.conf.Meet.TrustProxy)
+	caller := limit.Caller(r, a.conf.Meet.Hops())
 
 	if !a.sessions.limit.Allow(caller) {
 		a.log.Record(Entry{Action: "sign in", Trip: "-", Failed: true, Reason: "too many attempts"})
@@ -1248,25 +1248,6 @@ func refuse(w http.ResponseWriter, status int, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": reason})
-}
-
-// addressOf is who is calling, for the purpose of counting their attempts.
-func addressOf(r *http.Request, trustProxy bool) string {
-	if trustProxy {
-		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			if first, _, found := strings.Cut(forwarded, ","); found {
-				return strings.TrimSpace(first)
-			}
-			return strings.TrimSpace(forwarded)
-		}
-	}
-
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return host
 }
 
 // secureRequest decides whether the session cookie may be marked Secure.

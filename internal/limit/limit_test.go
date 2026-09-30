@@ -19,7 +19,7 @@ func request(peer, forwarded string) *http.Request {
 }
 
 func TestABurstIsAllowedAndThenRefused(t *testing.T) {
-	limiter := New(1, 3, false)
+	limiter := New(1, 3, 0)
 
 	for i := range 3 {
 		if !limiter.Allow(request("192.0.2.1:1000", "")) {
@@ -34,7 +34,7 @@ func TestABurstIsAllowedAndThenRefused(t *testing.T) {
 
 // Without a proxy the peer address is the only thing a caller cannot choose.
 func TestEachPeerHasItsOwnBudget(t *testing.T) {
-	limiter := New(1, 1, false)
+	limiter := New(1, 1, 0)
 
 	if !limiter.Allow(request("192.0.2.1:1000", "")) {
 		t.Fatal("the first request was refused")
@@ -50,7 +50,7 @@ func TestEachPeerHasItsOwnBudget(t *testing.T) {
 // Ports change between requests from one caller, so charging them apart would
 // hand out a fresh budget every time.
 func TestThePortIsNotPartOfTheIdentity(t *testing.T) {
-	limiter := New(1, 1, false)
+	limiter := New(1, 1, 0)
 
 	if !limiter.Allow(request("192.0.2.1:1000", "")) {
 		t.Fatal("the first request was refused")
@@ -61,7 +61,7 @@ func TestThePortIsNotPartOfTheIdentity(t *testing.T) {
 }
 
 func TestATrustedProxyIdentifiesTheClient(t *testing.T) {
-	limiter := New(1, 1, true)
+	limiter := New(1, 1, 1)
 
 	if !limiter.Allow(request("10.0.0.1:1000", "192.0.2.1")) {
 		t.Fatal("the first client was refused")
@@ -74,23 +74,53 @@ func TestATrustedProxyIdentifiesTheClient(t *testing.T) {
 	}
 }
 
-// Proxies append, so the original client is the first entry and the rest are
-// hops it passed through.
-func TestTheOriginalClientIsReadFromAChain(t *testing.T) {
-	limiter := New(1, 1, true)
+// Proxies append to whatever the caller already put in the header, so every
+// entry to the left of what they wrote is the caller's own writing. Reading the
+// first entry let a script buy a fresh budget per request by varying it.
+func TestAForgedPrefixCannotBuyANewBudget(t *testing.T) {
+	limiter := New(1, 1, 1)
 
-	if !limiter.Allow(request("10.0.0.1:1000", "192.0.2.1, 203.0.113.9")) {
+	if !limiter.Allow(request("10.0.0.1:1000", "198.51.100.1, 192.0.2.1")) {
 		t.Fatal("the first request was refused")
 	}
-	if limiter.Allow(request("10.0.0.1:1000", "192.0.2.1, 198.51.100.7")) {
-		t.Error("the same client through a different proxy got a new budget")
+	if limiter.Allow(request("10.0.0.1:1000", "198.51.100.2, 192.0.2.1")) {
+		t.Error("a different forged first entry bought a budget the client had already spent")
+	}
+}
+
+// The shape a request has behind a CDN and then nginx, as captured on the
+// deployment: whatever the caller sent, the caller as the CDN saw them, and the
+// CDN node as nginx saw it. The node is shared by everybody it serves, so it
+// must be neither the one charged nor the one that decides.
+func TestBehindTwoProxiesTheCallerIsTheSecondFromTheRight(t *testing.T) {
+	limiter := New(1, 1, 2)
+
+	if !limiter.Allow(request("127.0.0.1:1000", "198.51.100.1, 192.0.2.1, 203.0.113.9")) {
+		t.Fatal("the first request was refused")
+	}
+	if !limiter.Allow(request("127.0.0.1:1000", "192.0.2.2, 203.0.113.9")) {
+		t.Error("a second caller through the same CDN node shared the first one's budget")
+	}
+	if limiter.Allow(request("127.0.0.1:1000", "198.51.100.2, 192.0.2.1, 203.0.113.9")) {
+		t.Error("a different forged prefix bought a budget the caller had already spent")
+	}
+}
+
+// A request that came in past the outer proxy carries fewer entries than there
+// are proxies, and every one it does carry was written by a proxy this server
+// trusts, so the furthest out of them is the caller.
+func TestFewerEntriesThanProxiesReadsTheFurthestOut(t *testing.T) {
+	r := request("127.0.0.1:1000", "192.0.2.1")
+
+	if got := Caller(r, 2); got != "192.0.2.1" {
+		t.Errorf("caller %q, want 192.0.2.1", got)
 	}
 }
 
 // Untrusted, the header is whatever the caller typed, so varying it must not
 // conjure a fresh budget.
 func TestAnUntrustedHeaderCannotBuyANewBudget(t *testing.T) {
-	limiter := New(1, 1, false)
+	limiter := New(1, 1, 0)
 
 	if !limiter.Allow(request("192.0.2.1:1000", "10.0.0.1")) {
 		t.Fatal("the first request was refused")
@@ -103,7 +133,7 @@ func TestAnUntrustedHeaderCannotBuyANewBudget(t *testing.T) {
 // Budgets nobody has drawn on are dropped, so a script cycling through addresses
 // cannot grow the map without bound.
 func TestIdleBudgetsAreSweptAway(t *testing.T) {
-	limiter := New(1, 1, false)
+	limiter := New(1, 1, 0)
 
 	limiter.Allow(request("192.0.2.1:1000", ""))
 	if len(limiter.budgets) != 1 {

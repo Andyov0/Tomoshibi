@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 	"tomoshibi/internal/dns"
+	"tomoshibi/internal/limit"
 
 	"tomoshibi/internal/store"
 )
@@ -168,7 +169,7 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caller := addressOf(r, a.conf.Meet.TrustProxy)
+	caller := limit.Caller(r, a.conf.Meet.Hops())
 	if !a.sessions.limit.Allow(caller) {
 		refuse(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
@@ -504,7 +505,7 @@ func (a *API) taken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caller := addressOf(r, a.conf.Meet.TrustProxy)
+	caller := limit.Caller(r, a.conf.Meet.Hops())
 	if !a.sessions.limit.Allow(caller) {
 		refuse(w, http.StatusTooManyRequests, "too_many_attempts")
 		return

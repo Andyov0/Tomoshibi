@@ -92,7 +92,7 @@ func controlWithStore(t *testing.T, policy string, relayList ...store.Relay) (ht
 	app := &App{
 		conf:  conf,
 		store: st,
-		limit: limit.New(1000, 1000, false),
+		limit: limit.New(1000, 1000, 0),
 		// nil, which is what a control node has. Every use of it is guarded;
 		// if one is not, these tests panic rather than quietly passing.
 		media:   nil,
@@ -146,7 +146,7 @@ func TestARelayCarriesNothingButMedia(t *testing.T) {
 		conf: conf,
 		// A relay keeps none of these. They are nil in the real thing too.
 		store:   nil,
-		limit:   limit.New(1000, 1000, false),
+		limit:   limit.New(1000, 1000, 0),
 		media:   nil,
 		web:     nil,
 		tripKey: nil,

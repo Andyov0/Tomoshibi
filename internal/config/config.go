@@ -250,6 +250,17 @@ type Meet struct {
 	// budget per request.
 	TrustProxy bool `yaml:"trust_proxy"`
 
+	// Proxies is how many proxies stand in front of this server, each of them
+	// appending the address it saw to X-Forwarded-For. Read only with
+	// trust_proxy, and zero means one.
+	//
+	// The caller is found by counting that many entries in from the right,
+	// because everything to the left of what the proxies wrote is the caller's
+	// own writing. It has to be said rather than guessed: behind a CDN and then
+	// nginx the last entry is the CDN's node, and reading it charges everybody
+	// arriving through that node as one caller.
+	Proxies int `yaml:"proxies"`
+
 	// Admins may open the management pages. Empty, which is the default, means
 	// there are none and those pages do not exist.
 	Admins []Admin `yaml:"admins"`
@@ -452,6 +463,17 @@ type Config struct {
 
 // Defaults every field falls back to.
 //
+// Hops is how many X-Forwarded-For entries, counted from the right, were
+// written by proxies this deployment trusts: none without trust_proxy, and one
+// when trust_proxy is set and proxies is not.
+func (m Meet) Hops() int {
+	if !m.TrustProxy {
+		return 0
+	}
+
+	return max(1, m.Proxies)
+}
+
 // Chosen so that running the binary with no configuration at all produces a
 // working server. The burst covers a large meeting arriving at once; the rate is
 // what a script is left with afterwards.
@@ -643,6 +665,19 @@ func checkRole(meet *Meet) error {
 	// never matches and silently falls through to sticky: the setting is
 	// accepted, does nothing, and the only way to find out is to notice that
 	// every client lands where sticky would have put them.
+	if meet.Proxies < 0 {
+		return fmt.Errorf("meet.proxies is %d, and a count of proxies cannot be negative", meet.Proxies)
+	}
+
+	// Refused for the same reason: a count of proxies is only ever used to read
+	// X-Forwarded-For, which trust_proxy false says is not read at all.
+	if meet.Proxies > 0 && !meet.TrustProxy {
+		return fmt.Errorf(
+			"meet.proxies is %d, which says how many proxies append to X-Forwarded-For, and "+
+				"meet.trust_proxy is false, so that header is not read at all. Set trust_proxy "+
+				"as well, or remove proxies", meet.Proxies)
+	}
+
 	if meet.RelayPolicy == PickNearest && !meet.TrustProxy {
 		return fmt.Errorf(
 			"meet.relay_policy is %q, which reads where a client is from a header, and "+

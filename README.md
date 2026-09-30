@@ -148,6 +148,9 @@ meet:
   # Only behind a proxy that sets them. Exposed directly they are whatever the
   # caller typed, and believing them hands anybody a fresh rate-limit budget.
   trust_proxy: true
+  # How many proxies append to X-Forwarded-For: 1 for nginx alone, 2 for a CDN
+  # in front of nginx. Counted from the right to find the caller.
+  proxies: 1
 ```
 
 Upgrading is replacing the binary and restarting. The running one holds the
@@ -559,6 +562,12 @@ Behind a proxy, set `meet.trust_proxy` so that `X-Forwarded-For` and
 `X-Forwarded-Host` are believed. Exposed directly they are whatever the caller
 typed, and believing them would let anybody claim a fresh rate-limit budget per
 request.
+
+The caller is read from the right of `X-Forwarded-For`, never the left: each
+proxy appends what it saw to whatever the caller already wrote there, so the
+first entry is the caller's to choose. `meet.proxies` says how many proxies
+append, one when unset. Behind a CDN and then nginx it is two, and leaving it
+at one charges everybody the CDN node serves as a single caller.
 
 `meet.rooms.opened_by` is who may use a name nobody has used before. Three
 values:

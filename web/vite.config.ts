@@ -1,15 +1,36 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { defineConfig } from "vite";
+import { type Plugin, defineConfig } from "vite";
 
 const resolve = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 
 /** Where the server is listening while developing. */
 const server = "http://127.0.0.1:8080";
 
+/**
+ * Put back the marker file the server's embed directive needs.
+ *
+ * The repository tracks web/dist/.gitkeep so that a fresh clone has a directory
+ * for `//go:embed all:web/dist` to read before any client has been built; without
+ * it the server does not compile at all. Vite empties the output directory
+ * before every build and takes the marker with it, so each build left the file
+ * deleted in the working tree, which is the likeliest way it came to be listed in
+ * .gitignore as tracked while never actually having been committed.
+ */
+function keepMarker(): Plugin {
+	return {
+		name: "keep-embed-marker",
+		apply: "build",
+		closeBundle() {
+			writeFileSync(resolve("./dist/.gitkeep"), "");
+		},
+	};
+}
+
 export default defineConfig({
-	plugins: [react(), tailwindcss()],
+	plugins: [react(), tailwindcss(), keepMarker()],
 	resolve: {
 		alias: {
 			"@": resolve("./src"),

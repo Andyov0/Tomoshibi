@@ -22,7 +22,7 @@ rtc:
 keys:
   # Development credentials. The media server verifies with these and this
   # server signs with them, so they are one secret rather than two. Generate a
-  # real pair with `meet-live keygen` for anything reachable.
+  # real pair with `tomoshibi keygen` for anything reachable.
   APIdevelopment: development-secret-not-for-anything-reachable
 
 logging:

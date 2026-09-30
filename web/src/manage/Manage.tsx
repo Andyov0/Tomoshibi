@@ -27,7 +27,11 @@ export function Manage() {
 	// reading has to survive leaving that panel: it sits in the rail and in the
 	// crown, which are on screen whichever page is. Polling it in one place also
 	// means one request rather than two when the panel is open.
-	const { value: load } = usePoll(api.now, { every: 5000, onSignedOut: () => setWho(undefined) });
+	const { value: load } = usePoll(api.now, {
+		every: 5000,
+		onSignedOut: () => setWho(undefined),
+		enabled: who !== undefined,
+	});
 
 	// What the deployment says its line carries, asked for on signing in.
 	//

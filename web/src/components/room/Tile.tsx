@@ -169,7 +169,9 @@ export function Tile({
 					aria-label={t("Muted by you")}
 				/>
 			) : (
-				muted && <MicOff className="size-3 shrink-0 text-fg-muted" />
+				muted && (
+					<MicOff className="size-3 shrink-0 text-fg-muted" aria-label={t("microphone off")} />
+				)
 			)}
 			</div>
 		</div>

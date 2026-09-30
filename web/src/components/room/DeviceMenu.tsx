@@ -11,6 +11,7 @@ import { useBlur } from "@/hooks/useBlur";
 import { warm } from "@/live/blur";
 import type { Placement } from "@/live/controls";
 import { useT } from "@/hooks/useT";
+import { deviceFailed } from "@/live/notices";
 import { type Room, supportsAudioOutputSelection } from "livekit-client";
 import { ChevronUp, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -157,9 +158,23 @@ function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
 		return <DropdownMenuLabel>{t("No devices found")}</DropdownMenuLabel>;
 	}
 
-	const select = (deviceId: string) => {
+	// The tick moves at once, because a menu that waits on the device before
+	// acknowledging the press feels broken. So it has to move back when the
+	// device will not come: the switch was once left unawaited, and a device that
+	// failed to start left the menu ticking one thing while the call used
+	// another, with nothing said about either.
+	const select = async (deviceId: string) => {
+		const before = active;
 		setActive(deviceId);
-		void room.switchActiveDevice(kind, deviceId);
+
+		try {
+			// A false answer is the SDK saying some track did not take the new
+			// device, which is the same failure without an error to carry it.
+			if (!(await room.switchActiveDevice(kind, deviceId))) throw new Error("not switched");
+		} catch (err) {
+			setActive(before);
+			if (kind !== "audiooutput") deviceFailed(kind === "audioinput" ? "microphone" : "camera", err);
+		}
 	};
 
 	return (
@@ -168,7 +183,7 @@ function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
 				<DropdownMenuCheckboxItem
 					key={device.deviceId}
 					checked={device.deviceId === active}
-					onCheckedChange={() => select(device.deviceId)}
+					onCheckedChange={() => void select(device.deviceId)}
 				>
 					{/* Labels are empty until permission is granted, and a blank
 					    row is worse than a generic one. */}

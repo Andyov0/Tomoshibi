@@ -4,6 +4,7 @@ import { Flagged } from "@/components/room/Flag";
 import { useLingering } from "@/hooks/useLingering";
 import type { Grade, Reading } from "@/live/connection";
 import { useState } from "react";
+import { keep, recall } from "@/lib/storage";
 
 /**
  * How the call is going, in the corner.
@@ -317,7 +318,7 @@ const DETAIL_KEY = "meet-live.signal-detail";
 
 function remembered(): boolean {
 	try {
-		return localStorage.getItem(DETAIL_KEY) === "open";
+		return recall(DETAIL_KEY) === "open";
 	} catch {
 		// A browser refusing storage is a browser that shows the small one every
 		// time, which is the same as never having chosen.
@@ -327,7 +328,7 @@ function remembered(): boolean {
 
 function remember(open: boolean): void {
 	try {
-		localStorage.setItem(DETAIL_KEY, open ? "open" : "closed");
+		keep(DETAIL_KEY, open ? "open" : "closed");
 	} catch {
 		// Nothing depends on it being written down.
 	}

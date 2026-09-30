@@ -1,5 +1,6 @@
 import { BackgroundProcessor, supportsBackgroundProcessors } from "@livekit/track-processors";
 import type { LocalVideoTrack } from "livekit-client";
+import { keep, recall } from "@/lib/storage";
 
 /**
  * Blurring whatever is behind somebody.
@@ -114,7 +115,7 @@ export function possible(): boolean {
 
 export function wanted(): boolean {
 	try {
-		return localStorage.getItem(WANTED_KEY) === "on";
+		return recall(WANTED_KEY) === "on";
 	} catch {
 		return false;
 	}
@@ -122,8 +123,8 @@ export function wanted(): boolean {
 
 export function remember(on: boolean): void {
 	try {
-		if (on) localStorage.setItem(WANTED_KEY, "on");
-		else localStorage.removeItem(WANTED_KEY);
+		if (on) keep(WANTED_KEY, "on");
+		else keep(WANTED_KEY, undefined);
 	} catch {
 		// A browser refusing storage costs somebody one press next time.
 	}

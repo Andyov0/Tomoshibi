@@ -1,3 +1,4 @@
+import { keep, recall } from "@/lib/storage";
 /**
  * Where the controls sit, and whether they get out of the way.
  *
@@ -34,7 +35,7 @@ const KEY = "meet-live.controls";
  */
 export function placement(): Placement {
 	try {
-		const said = localStorage.getItem(KEY);
+		const said = recall(KEY);
 
 		return said === "idle" || said === "side" ? said : "always";
 	} catch {
@@ -44,8 +45,8 @@ export function placement(): Placement {
 
 export function remember(where: Placement): void {
 	try {
-		if (where === "always") localStorage.removeItem(KEY);
-		else localStorage.setItem(KEY, where);
+		if (where === "always") keep(KEY, undefined);
+		else keep(KEY, where);
 	} catch {
 		// A browser refusing storage costs the choice its memory and nothing
 		// else; the room still honours it for as long as it is open.

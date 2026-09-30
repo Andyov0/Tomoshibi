@@ -11,6 +11,7 @@ import {
 import type { Join } from "./api";
 import { installNoValidate } from "./novalidate";
 import { seal, sealing } from "./secrecy";
+import { keep, recall } from "@/lib/storage";
 
 /**
  * What a screen share is, as two questions.
@@ -788,7 +789,7 @@ const QUALITY_KEY = "meet.share.quality";
 /** The quality to use, as last chosen on this machine. */
 export function rememberedQuality(): ShareQuality {
 	try {
-		const stored = localStorage.getItem(QUALITY_KEY);
+		const stored = recall(QUALITY_KEY);
 		if (stored && (SHARE_QUALITIES as readonly string[]).includes(stored)) {
 			return stored as ShareQuality;
 		}
@@ -803,7 +804,7 @@ export function rememberedQuality(): ShareQuality {
 /** Remember a quality for next time. */
 export function rememberQuality(quality: ShareQuality): void {
 	try {
-		localStorage.setItem(QUALITY_KEY, quality);
+		keep(QUALITY_KEY, quality);
 	} catch {
 		// As above: worth doing, never worth failing over.
 	}
@@ -824,7 +825,7 @@ const RATE_KEY = "meet-live.share-frame-rate";
 
 export function rememberedFrameRate(): ShareFrameRate {
 	try {
-		const stored = Number(localStorage.getItem(RATE_KEY));
+		const stored = Number(recall(RATE_KEY));
 		if ((SHARE_FRAME_RATES as readonly number[]).includes(stored)) {
 			return stored as ShareFrameRate;
 		}
@@ -840,7 +841,7 @@ export function rememberedFrameRate(): ShareFrameRate {
 
 export function rememberFrameRate(frameRate: ShareFrameRate): void {
 	try {
-		localStorage.setItem(RATE_KEY, String(frameRate));
+		keep(RATE_KEY, String(frameRate));
 	} catch {
 		// Worth doing, never worth failing over.
 	}

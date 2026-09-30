@@ -22,6 +22,7 @@
 
 import { Refused } from "./api";
 import { locale } from "./i18n";
+import { keepForTab, recallForTab } from "@/lib/storage";
 
 /** Where a meeting token this tab arrived with is kept. */
 const MEETING_KEY = "meet-live.meeting";
@@ -51,7 +52,7 @@ export function meetingToken(): string {
 	if (said) return said;
 
 	try {
-		return sessionStorage.getItem(MEETING_KEY) ?? "";
+		return recallForTab(MEETING_KEY) ?? "";
 	} catch {
 		return "";
 	}
@@ -66,7 +67,7 @@ export function meetingToken(): string {
  */
 export function keepMeeting(token: string): void {
 	try {
-		sessionStorage.setItem(MEETING_KEY, token);
+		keepForTab(MEETING_KEY, token);
 	} catch {
 		// A tab that will not keep it can still use it until it is closed.
 	}
@@ -81,7 +82,7 @@ export function keepMeeting(token: string): void {
 /** Forget it, once the person has left or the meeting is over. */
 export function forgetMeeting(): void {
 	try {
-		sessionStorage.removeItem(MEETING_KEY);
+		keepForTab(MEETING_KEY, undefined);
 	} catch {
 		// Nothing to forget.
 	}

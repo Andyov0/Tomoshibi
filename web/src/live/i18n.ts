@@ -2,6 +2,7 @@ import en from "./dictionaries/en";
 import ja from "./dictionaries/ja";
 import hans from "./dictionaries/zh-Hans";
 import hant from "./dictionaries/zh-Hant";
+import { keep, recall } from "@/lib/storage";
 
 /**
  * What the interface says, in the language of whoever is reading it.
@@ -94,7 +95,7 @@ function detect(): Locale {
 
 function read(): Locale | undefined {
 	try {
-		const stored = localStorage.getItem(STORED);
+		const stored = recall(STORED);
 		return LOCALES.find((candidate) => candidate === stored);
 	} catch {
 		// Storage is refused in some privacy modes, which is a preference nobody
@@ -124,7 +125,7 @@ export function setLocale(next: Locale): void {
 
 	document.documentElement.lang = next;
 	try {
-		localStorage.setItem(STORED, next);
+		keep(STORED, next);
 	} catch {
 		// A language that lasts one session is better than none at all.
 	}

@@ -20,6 +20,7 @@ import { type LocalVideoTrack, createLocalVideoTrack } from "livekit-client";
 import { cn } from "@/lib/utils";
 import { ArrowLeft, Loader2, Mic, MicOff, ShieldAlert, Sparkles, UserRound, Video, VideoOff } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { keep, recall } from "@/lib/storage";
 
 /*
  * The keys below still say the name this was called before.
@@ -273,8 +274,8 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged 
 	const [refused, setRefused] = useState(false);
 
 	const t = useT();
-	const [name, setName] = useState(() => localStorage.getItem(NAME_KEY) ?? "");
-	const [secret, setSecret] = useState(() => localStorage.getItem(PASSPHRASE_KEY) ?? "");
+	const [name, setName] = useState(() => recall(NAME_KEY) ?? "");
+	const [secret, setSecret] = useState(() => recall(PASSPHRASE_KEY) ?? "");
 	const [devices, setDevices] = useState(remembered);
 	const [track, setTrack] = useState<LocalVideoTrack>();
 
@@ -334,7 +335,7 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged 
 	 * A ref rather than state because nothing on screen depends on it, and it
 	 * must survive the re-render that a join causes.
 	 */
-	const offered = useRef(`${localStorage.getItem(NAME_KEY) ?? ""}\u0000${localStorage.getItem(PASSPHRASE_KEY) ?? ""}`);
+	const offered = useRef(`${recall(NAME_KEY) ?? ""}\u0000${recall(PASSPHRASE_KEY) ?? ""}`);
 
 	// Held in a ref as well, so the cleanup below stops whatever is current
 	// rather than whatever was current when the effect last ran.
@@ -436,13 +437,13 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged 
 	const submit = async () => {
 		if (!display || joining) return;
 
-		localStorage.setItem(NAME_KEY, display);
-		localStorage.setItem(DEVICES_KEY, JSON.stringify(devices));
+		keep(NAME_KEY, display);
+		keep(DEVICES_KEY, JSON.stringify(devices));
 
 		// Whatever was last joined with, which means clearing the field and
 		// joining is how somebody takes it back off this machine.
-		if (passphrase) localStorage.setItem(PASSPHRASE_KEY, passphrase);
-		else localStorage.removeItem(PASSPHRASE_KEY);
+		if (passphrase) keep(PASSPHRASE_KEY, passphrase);
+		else keep(PASSPHRASE_KEY, undefined);
 
 		// And offered to the password manager, which keeps it better than this
 		// can and carries it to the same person's other devices. Once, for any
@@ -788,14 +789,14 @@ function Unavailable({ reason }: { reason: string }) {
  * and does not need to prove the name again.
  */
 export function rememberedName(): string {
-	return parseName(localStorage.getItem(NAME_KEY) ?? "").name;
+	return parseName(recall(NAME_KEY) ?? "").name;
 }
 
 export function remembered(): { camera: boolean; microphone: boolean } {
 	const fallback = { camera: false, microphone: true };
 
 	try {
-		const stored = localStorage.getItem(DEVICES_KEY);
+		const stored = recall(DEVICES_KEY);
 		if (!stored) return fallback;
 
 		const parsed = JSON.parse(stored) as Partial<typeof fallback>;

@@ -1,6 +1,7 @@
 import { INVITE_KEY } from "./account";
 import { t } from "./i18n";
 import { preferred } from "./relays";
+import { keepForTab, recallForTab } from "@/lib/storage";
 /*
  * The keys below still say the name this was called before.
  *
@@ -189,7 +190,7 @@ export async function join(
 	chosen = "",
 	invite = "",
 ): Promise<Join> {
-	const previous = sessionStorage.getItem(IDENTITY_KEY) ?? undefined;
+	const previous = recallForTab(IDENTITY_KEY) ?? undefined;
 
 	// Which relay answered fastest, on a deployment that spreads its media over
 	// several. Empty everywhere else, and empty here if measuring failed: the
@@ -232,7 +233,7 @@ export async function join(
 	}
 
 	const result = (await response.json()) as Join;
-	sessionStorage.setItem(IDENTITY_KEY, result.identity);
+	keepForTab(IDENTITY_KEY, result.identity);
 
 	// Which room this tab was in, so a reload can tell "I was just in a call" from
 	// "somebody pasted a link". They look identical in the address bar and want
@@ -242,7 +243,7 @@ export async function join(
 	// Session storage rather than local: it is about this tab. A second window
 	// on the same machine is a second person as far as any of this is concerned,
 	// and one of them reloading must not drag the other into a call.
-	sessionStorage.setItem(WAS_IN_KEY, room);
+	keepForTab(WAS_IN_KEY, room);
 
 	// The invite comes out of the address bar now that it has been used.
 	//
@@ -259,7 +260,7 @@ export async function join(
 	// call. Session storage is per tab, which is the same scope as being in this
 	// call, and is a great deal less exposed than the address bar.
 	if (invite) {
-		sessionStorage.setItem(INVITE_KEY, invite);
+		keepForTab(INVITE_KEY, invite);
 
 		const clean = new URL(window.location.href);
 		if (clean.searchParams.has("invite")) {
@@ -328,12 +329,12 @@ function explain(reason: string | undefined, room: string): string {
  * only one of those should be walked straight into.
  */
 export function wasIn(): string {
-	return sessionStorage.getItem(WAS_IN_KEY) ?? "";
+	return recallForTab(WAS_IN_KEY) ?? "";
 }
 
 /** Forgotten on a deliberate leave, so leaving and reloading is not rejoining. */
 export function leftRoom(): void {
-	sessionStorage.removeItem(WAS_IN_KEY);
+	keepForTab(WAS_IN_KEY, undefined);
 }
 
 /**
@@ -351,12 +352,12 @@ export function leftRoom(): void {
  * probably a different one.
  */
 export function chosenRelay(): string {
-	return sessionStorage.getItem(RELAY_KEY) ?? "";
+	return recallForTab(RELAY_KEY) ?? "";
 }
 
 export function rememberRelay(relay: string): void {
 	if (relay) {
-		sessionStorage.setItem(RELAY_KEY, relay);
+		keepForTab(RELAY_KEY, relay);
 
 		return;
 	}
@@ -364,5 +365,5 @@ export function rememberRelay(relay: string): void {
 	// Empty is a choice too — it means whichever measures fastest — and it has
 	// to be able to replace a name, or a machine picked once could never be
 	// unpicked.
-	sessionStorage.removeItem(RELAY_KEY);
+	keepForTab(RELAY_KEY, undefined);
 }

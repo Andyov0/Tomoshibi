@@ -1,3 +1,4 @@
+import { keepForTab, recallForTab } from "@/lib/storage";
 /**
  * Who is signed in, from the front page's point of view.
  *
@@ -74,7 +75,7 @@ export const INVITE_KEY = "meet-live.invite";
  */
 export function keepInvite(token: string): void {
 	try {
-		sessionStorage.setItem(INVITE_KEY, token);
+		keepForTab(INVITE_KEY, token);
 	} catch {
 		// A tab that will not keep it can still use it: the join that follows
 		// reads this and then asks the server, and only a reload needs the copy.
@@ -89,7 +90,7 @@ export function inviteToken(): string {
 	// reload after joining has no query left to read, and the cookie the server
 	// set for exactly this cannot be seen from here.
 	try {
-		return sessionStorage.getItem(INVITE_KEY) ?? "";
+		return recallForTab(INVITE_KEY) ?? "";
 	} catch {
 		return "";
 	}

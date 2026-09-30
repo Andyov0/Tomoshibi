@@ -1,5 +1,6 @@
 import { Track } from "livekit-client";
 import { signatureOf } from "./name";
+import { keep, recall } from "@/lib/storage";
 
 /**
  * How loud everybody else is, and who is not to be heard at all.
@@ -186,7 +187,7 @@ function load(): Book {
 	const found = new Map<string, Held>();
 
 	try {
-		const stored = localStorage.getItem(STORED);
+		const stored = recall(STORED);
 		if (!stored) return found;
 
 		const parsed = JSON.parse(stored) as Record<string, Partial<Setting>>;
@@ -218,9 +219,9 @@ function save(current: Book): void {
 
 	try {
 		if (Object.keys(keeping).length === 0) {
-			localStorage.removeItem(STORED);
+			keep(STORED, undefined);
 		} else {
-			localStorage.setItem(STORED, JSON.stringify(keeping));
+			keep(STORED, JSON.stringify(keeping));
 		}
 	} catch {
 		// A browser refusing storage leaves the setting lasting the call, which

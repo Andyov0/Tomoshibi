@@ -372,6 +372,75 @@ func TestActionsAreRecordedAgainstWhoTookThem(t *testing.T) {
 	}
 }
 
+// A page on a sibling subdomain is the same site, so a SameSite=Strict cookie
+// goes along with a form it posts. The browser says where a request came from in
+// a header the page cannot write, and anything that is not this origin is turned
+// away before the session is looked at.
+func TestAnotherSiteCannotActThroughASession(t *testing.T) {
+	api, mux := mount(t, []config.Admin{{Trip: room.Trip(key, "moderator"), Can: []string{config.Moderate}}})
+	_, token, ok := api.sessions.Open("", "moderator")
+	if !ok {
+		t.Fatal("the moderator could not sign in")
+	}
+
+	act := func(site string) int {
+		request := httptest.NewRequest(http.MethodPost, "/api/admin/rooms/x/participants/y/mute",
+			strings.NewReader(`{"track":"TR_x"}`))
+		request.Header.Set("Content-Type", "text/plain")
+		request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+		if site != "" {
+			request.Header.Set("Sec-Fetch-Site", site)
+		}
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, request)
+		return recorder.Code
+	}
+
+	for _, site := range []string{"same-site", "cross-site"} {
+		if code := act(site); code != http.StatusForbidden {
+			t.Errorf("a request from %s answered %d, want 403", site, code)
+		}
+	}
+
+	// These pages themselves, and anything that is not a browser, still reach
+	// the handler: the media server behind it is absent, so anything but a
+	// refusal from the gate will do.
+	for _, site := range []string{"same-origin", ""} {
+		if code := act(site); code == http.StatusForbidden || code == http.StatusUnauthorized {
+			t.Errorf("a request with Sec-Fetch-Site %q was refused: %d", site, code)
+		}
+	}
+}
+
+// The meeting endpoints honour the management cookie too -- closing a room,
+// removing somebody, moving a call -- and they ask through SessionOf, not
+// through the gate above. So SessionOf has to refuse the same requests the gate
+// does, or the gate only closes the door nobody needed.
+func TestASessionIsNotLentToAnotherSite(t *testing.T) {
+	api, _ := mount(t, []config.Admin{{Trip: room.Trip(key, "moderator"), Can: []string{config.Moderate}}})
+	_, token, _ := api.sessions.Open("", "moderator")
+
+	carrying := func(method, site string) bool {
+		request := httptest.NewRequest(method, "/api/rooms/standup/close", nil)
+		request.AddCookie(&http.Cookie{Name: cookieName, Value: token})
+		if site != "" {
+			request.Header.Set("Sec-Fetch-Site", site)
+		}
+		_, ok := api.SessionOf(request)
+		return ok
+	}
+
+	if carrying(http.MethodPost, "same-site") {
+		t.Error("a POST from a sibling subdomain carried the management session")
+	}
+	if !carrying(http.MethodPost, "same-origin") || !carrying(http.MethodPost, "") {
+		t.Error("a POST from these pages, or from something that is not a browser, lost the session")
+	}
+	if !carrying(http.MethodGet, "same-site") {
+		t.Error("a read from elsewhere lost the session, which buys nothing and breaks links")
+	}
+}
+
 func sign(body string) *http.Request {
 	request := httptest.NewRequest(http.MethodPost, "/api/admin/session", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")

@@ -474,3 +474,33 @@ func TestArrangingIsBoundedAndRefusedWhereInvitesAreIgnored(t *testing.T) {
 		t.Errorf("the %dth pending meeting was accepted: %d", arrangesAtOnce+1, answer.Code)
 	}
 }
+
+// The account cookie arranges and cancels meetings and hosts rooms, and
+// SameSite=Strict still sends it with a form posted from a sibling subdomain.
+// From another origin it is as if nobody were signed in.
+func TestAnotherSiteCannotArrangeAsSomebody(t *testing.T) {
+	mux, st := hosted(t)
+	host := signedInAs(t, st, "ada", "adaadaadaa")
+
+	arranging := func(site string) int {
+		request := httptest.NewRequest(http.MethodPost, "/api/meetings",
+			strings.NewReader(`{"room":"standup","at":"`+soon()+`"}`))
+		request.Header.Set("Content-Type", "text/plain")
+		request.AddCookie(host)
+		if site != "" {
+			request.Header.Set("Sec-Fetch-Site", site)
+		}
+		answer := httptest.NewRecorder()
+		mux.ServeHTTP(answer, request)
+		return answer.Code
+	}
+
+	if code := arranging("same-site"); code != http.StatusUnauthorized {
+		t.Errorf("a sibling subdomain arranged a meeting as somebody: %d", code)
+	}
+	for _, site := range []string{"same-origin", ""} {
+		if code := arranging(site); code == http.StatusUnauthorized {
+			t.Errorf("Sec-Fetch-Site %q was treated as signed out", site)
+		}
+	}
+}

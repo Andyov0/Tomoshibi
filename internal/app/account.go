@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"tomoshibi/internal/admin"
 	"tomoshibi/internal/limit"
 
 	"tomoshibi/internal/room"
@@ -193,6 +194,14 @@ func (a *App) signedIn(r *http.Request) (store.Account, bool) {
 	// rather than at each call so that adding a second caller cannot reintroduce
 	// the panic.
 	if a.store == nil {
+		return store.Account{}, false
+	}
+
+	// Nor from another origin, for anything that changes something. The account
+	// cookie hosts rooms, arranges and cancels meetings and changes the
+	// passphrase, and SameSite=Strict still sends it from a sibling subdomain;
+	// see admin.FromHere. A join from elsewhere simply arrives unsigned.
+	if !admin.FromHere(r) {
 		return store.Account{}, false
 	}
 

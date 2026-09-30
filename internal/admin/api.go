@@ -593,6 +593,11 @@ func (a *API) gate(
 	next func(Session, http.ResponseWriter, *http.Request),
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !FromHere(r) {
+			refuse(w, http.StatusForbidden, "cross_site")
+			return
+		}
+
 		session, ok := a.sessions.Of(r)
 		if !ok {
 			refuse(w, http.StatusUnauthorized, "signed_out")
@@ -1246,6 +1251,38 @@ func respond(w http.ResponseWriter, body any) {
 	}
 }
 
+// FromHere reports whether a request that changes something came from these
+// pages rather than from somebody else's.
+//
+// The session cookies are SameSite=Strict, which was meant to be the whole of
+// the defence and is most of it. What it misses is that "site" is wider than
+// "origin": a page on any sibling subdomain is the same site, its cookie goes
+// along, and a form it posts as text/plain reaches an endpoint that reads its
+// body without asking what kind it was. The deployment this runs on shares its
+// registrable domain with a good many other services, so that is not a
+// theoretical neighbour. Sec-Fetch-Site is set by the browser and cannot be
+// written by the page, and it says same-origin only for a request from this
+// exact origin.
+//
+// A request that does not carry it at all is let through, because only browsers
+// send it and only browsers carry a cookie somebody else can borrow; the
+// watchdog and the enrolment script send none. An older browser that predates
+// the header still has the cookie's own attribute between it and a stranger's
+// page.
+//
+// Reading is not asked, because a page on another origin cannot read what comes
+// back, and refusing it would cost nothing an attacker needs.
+func FromHere(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead:
+		return true
+	}
+
+	site := r.Header.Get("Sec-Fetch-Site")
+
+	return site == "" || site == "same-origin"
+}
+
 func refuse(w http.ResponseWriter, status int, reason string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -1271,8 +1308,14 @@ func secureRequest(r *http.Request, trustProxy bool) bool {
 // For the parts of the application outside these pages that have to know: the
 // relay list is published to everybody and holds back the relays reserved for
 // administrators, and an administrator reading it should see their own.
+//
+// A request that changes something and came from another origin carries no
+// session here, whatever cookie it brought. The meeting endpoints honour this
+// cookie for closing a room, removing somebody and moving a call, so checking
+// only at the management API's own gate would have left every one of those open
+// to a page on a sibling subdomain.
 func (a *API) SessionOf(r *http.Request) (Session, bool) {
-	if a == nil || a.sessions == nil {
+	if a == nil || a.sessions == nil || !FromHere(r) {
 		return Session{}, false
 	}
 

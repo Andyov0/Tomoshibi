@@ -582,7 +582,8 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// the ordinary case to protect against a guess nobody made.
 	isAdmin := false
 	if !body.Passphrase.Empty() {
-		if guessing := a.admin.Guessing(); guessing != nil && !guessing.Allow(limit.Caller(r, a.conf.Meet.Hops())) {
+		attempt, allowed := a.admin.Guessing().Take(limit.Caller(r, a.conf.Meet.Hops()))
+		if !allowed {
 			fail(w, http.StatusTooManyRequests, reasonRateLimited)
 			return
 		}
@@ -590,10 +591,9 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		_, isAdmin = config.Administrator(a.administrators(), body.Passphrase, a.tripKey)
 
 		if !isAdmin {
-			if guessing := a.admin.Guessing(); guessing != nil {
-				guessing.Failed(limit.Caller(r, a.conf.Meet.Hops()))
-			}
+			attempt.Failed()
 		}
+		attempt.Settled()
 	}
 
 	// A relay somebody may not use is refused rather than quietly swapped.

@@ -502,11 +502,13 @@ func (a *API) MountEnrolment(mux *http.ServeMux) {
 func (a *API) open(w http.ResponseWriter, r *http.Request) {
 	caller := limit.Caller(r, a.conf.Meet.Hops())
 
-	if !a.sessions.limit.Allow(caller) {
+	attempt, allowed := a.sessions.limit.Take(caller)
+	if !allowed {
 		a.log.Record(Entry{Action: "sign in", Trip: "-", Failed: true, Reason: "too many attempts"})
 		refuse(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
 	}
+	defer attempt.Settled()
 
 	var body struct {
 		// Name narrows the guess to one person.
@@ -522,7 +524,7 @@ func (a *API) open(w http.ResponseWriter, r *http.Request) {
 
 	session, token, ok := a.sessions.Open(body.Name, body.Passphrase)
 	if !ok {
-		a.sessions.limit.Failed(caller)
+		attempt.Failed()
 		// Recorded without anything derived from what was typed. A rejected
 		// passphrase is still a passphrase, and one of these logs is going to
 		// be read by somebody it does not belong to.

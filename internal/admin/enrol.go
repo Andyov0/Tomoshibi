@@ -170,10 +170,12 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 	}
 
 	caller := limit.Caller(r, a.conf.Meet.Hops())
-	if !a.sessions.limit.Allow(caller) {
+	attempt, allowed := a.sessions.limit.Take(caller)
+	if !allowed {
 		refuse(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
 	}
+	defer attempt.Settled()
 
 	var body struct {
 		Secret  string `json:"secret"`
@@ -211,7 +213,7 @@ func (a *API) claim(w http.ResponseWriter, r *http.Request) {
 		// signed with, the redis password, and the TLS private key. This is the
 		// one unauthenticated door that hands over the whole thing, and the
 		// secret behind it is a phrase somebody typed into a configuration file.
-		a.sessions.limit.Failed(caller)
+		attempt.Failed()
 
 		a.log.Record(Entry{
 			Action: "enrol", Trip: "-", Target: body.Prefix,
@@ -505,11 +507,12 @@ func (a *API) taken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caller := limit.Caller(r, a.conf.Meet.Hops())
-	if !a.sessions.limit.Allow(caller) {
+	attempt, allowed := a.sessions.limit.Take(limit.Caller(r, a.conf.Meet.Hops()))
+	if !allowed {
 		refuse(w, http.StatusTooManyRequests, "too_many_attempts")
 		return
 	}
+	defer attempt.Settled()
 
 	var body struct {
 		Secret string `json:"secret"`
@@ -525,7 +528,7 @@ func (a *API) taken(w http.ResponseWriter, r *http.Request) {
 		// Charged here too. This endpoint only says whether a name is taken, but
 		// it takes the same secret, so an unlimited door beside a limited one is
 		// one unlimited door.
-		a.sessions.limit.Failed(caller)
+		attempt.Failed()
 
 		refuse(w, http.StatusForbidden, "wrong_secret")
 		return

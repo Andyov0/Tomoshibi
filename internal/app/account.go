@@ -90,12 +90,12 @@ func (a *App) accountSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	caller := limit.Caller(r, a.conf.Meet.Hops())
-
-	if guessing := a.admin.Guessing(); guessing != nil && !guessing.Allow(caller) {
+	attempt, allowed := a.admin.Guessing().Take(limit.Caller(r, a.conf.Meet.Hops()))
+	if !allowed {
 		fail(w, http.StatusTooManyRequests, reasonRateLimited)
 		return
 	}
+	defer attempt.Settled()
 
 	var body struct {
 		Name       string          `json:"name"`
@@ -113,9 +113,7 @@ func (a *App) accountSignIn(w http.ResponseWriter, r *http.Request) {
 	if !ok || body.Passphrase.Empty() {
 		// Charged on the way out rather than on the way in, so that somebody
 		// signing in correctly does not spend from a budget meant for guesses.
-		if guessing := a.admin.Guessing(); guessing != nil {
-			guessing.Failed(caller)
-		}
+		attempt.Failed()
 
 		fail(w, http.StatusUnauthorized, reasonNotYours)
 		return

@@ -45,11 +45,10 @@ const (
 	overallAll = rate.Limit(Overall) / rate.Limit(time.Minute/time.Second)
 )
 
-// idle is how long a caller's bucket is kept after their last failure.
+// idle is how long a caller's bucket is kept after it was made or last failed.
 //
-// Only failures create one, so a map of these is a map of people who have got
-// it wrong recently. Swept on write rather than on a timer, which keeps it free
-// when nobody is trying.
+// Swept on write rather than on a timer, which keeps it free when nobody is
+// trying.
 const idle = 10 * time.Minute
 
 // Attempts bounds failed guesses, by address and in total.
@@ -66,11 +65,15 @@ type Attempts struct {
 	mu       sync.Mutex
 	byCaller map[string]*budget
 	all      *rate.Limiter
-	swept    time.Time
+	// pending is how many attempts are between Take and their outcome, across
+	// every caller. It is held against the ceiling as if already spent.
+	pending int
+	swept   time.Time
 }
 
 type budget struct {
 	limiter *rate.Limiter
+	pending int
 	seen    time.Time
 }
 
@@ -81,21 +84,120 @@ func New() *Attempts {
 	}
 }
 
-// Allow reports whether this address may try again, without spending anything.
+// Attempt is one guess between being let through and being decided.
+type Attempt struct {
+	of     *Attempts
+	caller *budget
+	done   bool
+}
+
+// Take lets one attempt through if both budgets can afford it failing.
 //
-// Asked rather than taken, because a successful sign-in should cost nothing:
+// The check and the hold happen under one lock, and that is the point of it.
+// Every door used to ask Allow and charge Failed afterwards, once the
+// passphrase had been judged, so every request arriving between the two saw the
+// same untouched bucket: a thousand concurrent guesses all passed a check of
+// thirty a minute overall, and each minute could buy another thousand. Now an
+// attempt in flight counts against both budgets until it is decided, and the
+// thirty-first concurrent one is refused before it is judged. Found by a review
+// of the sign-in; the join, the account sign-in and both enrolment endpoints had
+// the same gap because they share this budget.
+//
+// Held rather than spent, because a successful sign-in should cost nothing:
 // somebody who proves who they are has demonstrated they were not guessing, and
 // charging them for it makes an administrator's day harder than an attacker's.
+// A token bucket cannot be given a token back -- rate.Reservation.Cancel
+// restores nothing once an immediate reservation has taken effect -- so the hold
+// lives beside the bucket rather than in it.
+//
+// A nil Attempts lets everything through, which is what a deployment with no
+// administrators has always done.
+func (a *Attempts) Take(caller string) (*Attempt, bool) {
+	if a == nil {
+		return nil, true
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	now := time.Now()
+	a.sweep(now)
+
+	held := a.budgetOf(caller, now)
+	if held.limiter.TokensAt(now)-float64(held.pending) < 1 || a.all.TokensAt(now)-float64(a.pending) < 1 {
+		return nil, false
+	}
+
+	held.pending++
+	a.pending++
+
+	return &Attempt{of: a, caller: held}, true
+}
+
+// Failed spends what the attempt was holding.
+func (t *Attempt) Failed() {
+	if t == nil {
+		return
+	}
+
+	t.of.mu.Lock()
+	defer t.of.mu.Unlock()
+
+	if t.release() {
+		now := time.Now()
+		t.caller.seen = now
+		t.caller.limiter.AllowN(now, 1)
+		t.of.all.AllowN(now, 1)
+	}
+}
+
+// Settled lets go of whatever the attempt still holds, spending nothing.
+//
+// Safe to call after Failed and more than once, so that a door can defer it the
+// moment it takes an attempt. That is the guard that matters: an attempt nobody
+// settles is held for ever, and enough of those refuse every caller for good, so
+// no early return between Take and the verdict may be able to leak one.
+func (t *Attempt) Settled() {
+	if t == nil {
+		return
+	}
+
+	t.of.mu.Lock()
+	defer t.of.mu.Unlock()
+
+	t.release()
+}
+
+// release gives the hold back once, reporting whether this was that once.
+func (t *Attempt) release() bool {
+	if t.done {
+		return false
+	}
+	t.done = true
+	t.caller.pending--
+	t.of.pending--
+
+	return true
+}
+
+// Allow reports whether an attempt could be taken now, without taking one.
+//
+// Kept for tests and for anything that only needs to ask. A door that goes on
+// to judge a passphrase must use Take, for the reason given there.
 func (a *Attempts) Allow(caller string) bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	now := time.Now()
 	held, known := a.byCaller[caller]
+	if known && held.limiter.TokensAt(now)-float64(held.pending) < 1 {
+		return false
+	}
 
-	return (!known || held.limiter.Tokens() >= 1) && a.all.Tokens() >= 1
+	return a.all.TokensAt(now)-float64(a.pending) >= 1
 }
 
-// Failed records a refusal, spending from both buckets.
+// Failed charges a failure that was never taken as an attempt.
 func (a *Attempts) Failed(caller string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -103,15 +205,21 @@ func (a *Attempts) Failed(caller string) {
 	now := time.Now()
 	a.sweep(now)
 
+	held := a.budgetOf(caller, now)
+	held.seen = now
+	held.limiter.AllowN(now, 1)
+	a.all.AllowN(now, 1)
+}
+
+// budgetOf is the caller's bucket, made on first use. Called under the lock.
+func (a *Attempts) budgetOf(caller string, now time.Time) *budget {
 	held, known := a.byCaller[caller]
 	if !known {
-		held = &budget{limiter: rate.NewLimiter(perAddressAll, PerAddress)}
+		held = &budget{limiter: rate.NewLimiter(perAddressAll, PerAddress), seen: now}
 		a.byCaller[caller] = held
 	}
 
-	held.seen = now
-	held.limiter.Allow()
-	a.all.Allow()
+	return held
 }
 
 // sweep drops callers who have not failed in a while, so that a script cycling
@@ -123,7 +231,8 @@ func (a *Attempts) sweep(now time.Time) {
 	a.swept = now
 
 	for caller, held := range a.byCaller {
-		if now.Sub(held.seen) > idle {
+		// One still being judged is not idle, however long the judging takes.
+		if held.pending == 0 && now.Sub(held.seen) > idle {
 			delete(a.byCaller, caller)
 		}
 	}

@@ -131,3 +131,82 @@ out any deployment upgrading into this — and a test that only covered the happ
 path would let somebody later "tidy up" that branch and take the deployment with
 it.
 */
+
+// Guesses sent all at once used to pass together: each asked whether a token
+// was left and was charged only after it had been judged, so every one that
+// arrived in between saw the same untouched bucket. An attempt in flight now
+// holds its place, so the one past the limit is refused while the others are
+// still being judged.
+func TestAttemptsInFlightHoldTheirPlace(t *testing.T) {
+	limit := New()
+
+	for i := 0; i < PerAddress; i++ {
+		if _, ok := limit.Take("10.0.0.9"); !ok {
+			t.Fatalf("refused after %d attempts in flight, before the limit of %d", i, PerAddress)
+		}
+	}
+
+	if _, ok := limit.Take("10.0.0.9"); ok {
+		t.Error("an attempt past the per-caller limit was let through while the others were undecided")
+	}
+}
+
+func TestAttemptsInFlightHoldTheCeilingToo(t *testing.T) {
+	limit := New()
+
+	for i := 0; i < Overall; i++ {
+		if _, ok := limit.Take(strconv.Itoa(i)); !ok {
+			t.Fatalf("refused after %d callers in flight, before the ceiling of %d", i, Overall)
+		}
+	}
+
+	if _, ok := limit.Take("a caller that has never tried before"); ok {
+		t.Error("a fresh caller was let through past the ceiling while the others were undecided")
+	}
+}
+
+// Settling is deferred the moment an attempt is taken, so it runs after Failed
+// as well as instead of it. A second release would hand back a place that was
+// never taken; a missing one holds a place for ever, and enough of those shut
+// the door on everybody.
+func TestAnAttemptIsReleasedExactlyOnce(t *testing.T) {
+	limit := New()
+
+	for i := 0; i < PerAddress*3; i++ {
+		attempt, ok := limit.Take("10.0.0.10")
+		if !ok {
+			t.Fatalf("a caller who never failed was refused on attempt %d", i+1)
+		}
+		attempt.Settled()
+		attempt.Settled()
+	}
+
+	for i := 0; i < PerAddress; i++ {
+		attempt, ok := limit.Take("10.0.0.11")
+		if !ok {
+			t.Fatalf("refused after %d failures, before the limit of %d", i, PerAddress)
+		}
+		attempt.Failed()
+		attempt.Settled()
+	}
+
+	if _, ok := limit.Take("10.0.0.11"); ok {
+		t.Error("failures followed by a deferred Settled were given back")
+	}
+	if limit.pending != 0 {
+		t.Errorf("%d attempts are still held after every one was settled", limit.pending)
+	}
+}
+
+// A deployment without administrators has no limiter, and every door asks it
+// anyway.
+func TestNoLimiterLetsEverythingThrough(t *testing.T) {
+	var limit *Attempts
+
+	attempt, ok := limit.Take("10.0.0.12")
+	if !ok {
+		t.Fatal("a nil limiter refused")
+	}
+	attempt.Failed()
+	attempt.Settled()
+}

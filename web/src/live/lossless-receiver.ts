@@ -52,6 +52,20 @@ export const STALL_MS = 4000;
 export const MAX_UNDERRUNS = 2;
 
 /**
+ * The share of real time a stream must arrive at, measured over SLOW_WINDOW_MS.
+ *
+ * The quicker of the two verdicts on a path that cannot carry the stream. A
+ * second underrun takes a buffer fill, a play-out and another fill to arrive,
+ * which on that path was ten seconds and more of sound in pieces; a stream
+ * arriving at an eighth of its rate is plain in five. Half is far below what a
+ * working path delivers even through a retransmission stall -- the paths that
+ * worked never dipped below real time over any five seconds -- so it does not
+ * mistake a hiccup for a path that cannot do it.
+ */
+export const SLOW_RATIO = 0.5;
+export const SLOW_WINDOW_MS = 5000;
+
+/**
  * How often to ask until the first packet comes.
  *
  * Far more often than the keep-alive, because an unanswered first ask is the
@@ -84,6 +98,10 @@ interface Source {
 	stream?: number;
 	nextSeq?: number;
 	player?: Player;
+	/** Frames arrived since `windowStart`, against the rate they should arrive at. */
+	windowStart?: number;
+	windowFrames: number;
+	rate: number;
 }
 
 const sources = new WeakMap<Room, Map<string, Source>>();
@@ -163,7 +181,16 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 
 			if (!source || source.publication !== share.trackSid) {
 				source?.player?.close();
-				source = { publication: share.trackSid, wanted: false, failed: false, askedAt: 0, lastAsk: 0, lastPacket: 0 };
+				source = {
+					publication: share.trackSid,
+					wanted: false,
+					failed: false,
+					askedAt: 0,
+					lastAsk: 0,
+					lastPacket: 0,
+					windowFrames: 0,
+					rate: 0,
+				};
 				mine.set(identity, source);
 			}
 
@@ -175,7 +202,16 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 			// otherwise the Opus track stays held back and nothing is heard.
 			const stalled = now - Math.max(source.askedAt, source.lastPacket) > STALL_MS;
 			const starved = (source.player?.counts()?.underruns ?? 0) >= MAX_UNDERRUNS;
-			if (want && source.wanted && (stalled || starved || source.player?.broken())) {
+
+			let slow = false;
+			if (source.windowStart !== undefined && now - source.windowStart >= SLOW_WINDOW_MS) {
+				const due = ((now - source.windowStart) / 1000) * source.rate;
+				slow = source.windowFrames < SLOW_RATIO * due;
+				source.windowStart = now;
+				source.windowFrames = 0;
+			}
+
+			if (want && source.wanted && (stalled || starved || slow || source.player?.broken())) {
 				giveUp(identity, source);
 				want = false;
 			} else if (want && !source.wanted) {
@@ -231,6 +267,9 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 			source.player.volume(settingFor(participant.identity, "screen").volume);
 			source.stream = block.stream;
 			source.nextSeq = block.seq;
+			source.rate = block.rate;
+			source.windowStart = Date.now();
+			source.windowFrames = 0;
 		}
 
 		if (block.seq !== source.nextSeq) {
@@ -241,6 +280,7 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 
 		source.nextSeq = block.seq + 1;
 		source.lastPacket = Date.now();
+		source.windowFrames += block.channels[0]?.length ?? 0;
 		source.player?.push(block.channels.map((channel) => Float32Array.from(channel, fromInt24)));
 	};
 

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Room } from "livekit-client";
 import { setBlocked } from "./hearing";
 import { ASK_TOPIC, FRAMES, LOSSLESS, TOPIC, fromInt24, pack } from "./lossless";
-import { MAX_UNDERRUNS, type Player, STALL_MS, holdsBack, receiveLossless } from "./lossless-receiver";
+import { MAX_UNDERRUNS, type Player, SLOW_WINDOW_MS, STALL_MS, holdsBack, receiveLossless } from "./lossless-receiver";
 import { LISTENING } from "./sound";
 
 /*
@@ -151,8 +151,9 @@ describe("a lossless share", () => {
 		const stop = receiveLossless(room, () => {}, fakePlayers().make);
 		share("gfriend-1");
 
+		let seq = 0;
 		for (let second = 0; second < 11; second++) {
-			send("gfriend-1", second);
+			for (let i = 0; i < 50; i++) send("gfriend-1", seq++);
 			vi.advanceTimersByTime(1000);
 		}
 
@@ -235,6 +236,38 @@ describe("giving up, and giving Opus back", () => {
 		send("gfriend-1", 2);
 		vi.advanceTimersByTime(1000);
 		expect(holdsBack(room, "gfriend-1")).toBe(false);
+		stop();
+	});
+
+	it("when it arrives at a fraction of real time, without waiting for it to run dry", () => {
+		const { room, share, send } = fakeRoom();
+		const stop = receiveLossless(room, () => {}, fakePlayers().make);
+		share("gfriend-1");
+
+		// A packet is 20 ms; one every 200 ms is a tenth of real time.
+		let seq = 0;
+		for (let t = 0; t < SLOW_WINDOW_MS + 1000; t += 200) {
+			send("gfriend-1", seq++);
+			vi.advanceTimersByTime(200);
+		}
+
+		expect(holdsBack(room, "gfriend-1")).toBe(false);
+		stop();
+	});
+
+	it("but not when it arrives at real time in bursts", () => {
+		const { room, share, send } = fakeRoom();
+		const stop = receiveLossless(room, () => {}, fakePlayers().make);
+		share("gfriend-1");
+
+		// A second's worth at once, every second: lumpy, and all of it.
+		let seq = 0;
+		for (let second = 0; second < 12; second++) {
+			for (let i = 0; i < 50; i++) send("gfriend-1", seq++);
+			vi.advanceTimersByTime(1000);
+		}
+
+		expect(holdsBack(room, "gfriend-1")).toBe(true);
 		stop();
 	});
 

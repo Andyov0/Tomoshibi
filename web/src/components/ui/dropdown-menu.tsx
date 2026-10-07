@@ -9,14 +9,25 @@ export const DropdownMenuTrigger = Primitive.Trigger;
 export function DropdownMenuContent({
 	className,
 	sideOffset = 6,
+	collisionPadding = 8,
 	...props
 }: React.ComponentProps<typeof Primitive.Content>) {
 	return (
 		<Primitive.Portal>
 			<Primitive.Content
 				sideOffset={sideOffset}
+				collisionPadding={collisionPadding}
 				className={cn(
-					"z-50 min-w-56 overflow-hidden rounded-lg border border-border bg-surface p-1 shadow-lg",
+					// No taller than the window has room for, and scrolled past that.
+					// It was clipped instead: the device menu opens upward from a bar
+					// at the bottom, and on a short window its first items -- the
+					// microphones -- were above the top edge, where a press landed
+					// outside the menu and closed it. The width is held the same way,
+					// because a two-line item with a long description widened the
+					// menu past the edge of a phone.
+					"z-50 max-h-(--radix-dropdown-menu-content-available-height) max-w-(--radix-dropdown-menu-content-available-width)",
+					"min-w-56 overflow-y-auto overflow-x-hidden",
+					"rounded-lg border border-border bg-surface p-1 shadow-lg",
 					// This application's own motion, not a plugin's. The classes
 					// that used to be here — animate-in, fade-in-0 — belong to
 					// tailwindcss-animate, which is not in the manifest and never

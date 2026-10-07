@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { ArrowRight, Eye, EyeOff, KeyRound, Loader2, LogOut, Plus, Shield, UserRound } from "lucide-react";
 import { ServerList } from "@/components/room/ServerPicker";
 import { meeting } from "@/live/account";
+import { ScopedRoomInput } from "@/components/lobby/ScopedRoomInput";
 import { type Relay, relays } from "@/live/relays";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 
@@ -463,14 +464,15 @@ export function Lobby({
 					</span>
 
 					<div className="flex gap-2">
-						<input
+						<ScopedRoomInput
 							value={naming}
-							onChange={(event) => setNaming(event.target.value)}
+							onValueChange={setNaming}
+							scopes={me.scopes ?? []}
+							admin={me.admin}
 							placeholder={t("Room name")}
 							aria-label={t("Name for the new room")}
-							maxLength={64}
 							className={cn(
-								"h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-hi px-3 text-sm text-fg",
+								"h-10 min-w-0 rounded-lg border border-border bg-surface-hi px-3 text-sm text-fg",
 								"outline-none transition-[border-color,box-shadow] placeholder:text-fg-muted",
 								"focus-visible:border-fg/40 focus-visible:ring-2 focus-visible:ring-fg/25",
 							)}
@@ -516,14 +518,15 @@ export function Lobby({
 					</span>
 
 					<div className="flex gap-2">
-						<input
+						<ScopedRoomInput
 							value={typed}
-							onChange={(event) => setTyped(event.target.value)}
+							onValueChange={setTyped}
+							scopes={me.scopes ?? []}
+							admin={me.admin}
 							placeholder={t("Room name")}
 							aria-label={t("Room name")}
-							maxLength={64}
 							className={cn(
-								"h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-hi px-3 text-sm text-fg",
+								"h-10 min-w-0 rounded-lg border border-border bg-surface-hi px-3 text-sm text-fg",
 								"outline-none transition-[border-color,box-shadow] placeholder:text-fg-muted",
 								"focus-visible:border-fg/40 focus-visible:ring-2 focus-visible:ring-fg/25",
 							)}

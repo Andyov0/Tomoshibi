@@ -618,6 +618,8 @@ const zhHant: Dictionary = {
 	"A room held under a scope cannot be arranged ahead. Send a link with a time on it instead.": "屬於某個群組的房間不能預定。改為傳送一個附有時間的連結。",
 	"A scope uses lowercase letters, numbers and dashes, at most 32 of them.": "群組名稱只能用小寫字母、數字和連字號，最多 32 個字元。",
 	"Scopes": "所屬群組",
+	"Your scopes": "你所在的群組",
+	"You are not in {scope}, so this room will not let you in.": "你不在 {scope} 群組裡,進不了這個房間。",
 	"Add to a scope": "加入一個群組",
 	"That invitation opens {when}. Come back then.": "這個邀請 {when} 才生效,到時候再來。",
 	"You were invited to this room as {name}.": "你以 {name} 的名字受邀進入這個房間。",

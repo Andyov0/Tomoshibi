@@ -649,6 +649,8 @@ const en = {
 	"A room held under a scope cannot be arranged ahead. Send a link with a time on it instead.": "A room held under a scope cannot be arranged ahead. Send a link with a time on it instead.",
 	"A scope uses lowercase letters, numbers and dashes, at most 32 of them.": "A scope uses lowercase letters, numbers and dashes, at most 32 of them.",
 	"Scopes": "Scopes",
+	"Your scopes": "Your scopes",
+	"You are not in {scope}, so this room will not let you in.": "You are not in {scope}, so this room will not let you in.",
 	"Add to a scope": "Add to a scope",
 	"That invitation opens {when}. Come back then.": "That invitation opens {when}. Come back then.",
 	"You were invited to this room as {name}.": "You were invited to this room as {name}.",

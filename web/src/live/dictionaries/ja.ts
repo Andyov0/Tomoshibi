@@ -618,6 +618,8 @@ const ja: Dictionary = {
 	"A room held under a scope cannot be arranged ahead. Send a link with a time on it instead.": "グループの部屋は予約できません。代わりに時間を指定したリンクを送ってください。",
 	"A scope uses lowercase letters, numbers and dashes, at most 32 of them.": "グループ名に使えるのは英小文字・数字・ハイフンで、32 文字までです。",
 	"Scopes": "所属グループ",
+	"Your scopes": "所属グループ",
+	"You are not in {scope}, so this room will not let you in.": "{scope} のメンバーではないため、このルームには入れません。",
 	"Add to a scope": "グループに追加",
 	"That invitation opens {when}. Come back then.": "この招待は {when} から有効です。そのときにもう一度開いてください。",
 	"You were invited to this room as {name}.": "{name} としてこの部屋に招待されています。",

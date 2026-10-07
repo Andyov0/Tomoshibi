@@ -21,6 +21,11 @@ export interface Me {
 	 * browser that had been told otherwise.
 	 */
 	admin?: boolean;
+	/**
+	 * The scopes this account carries, for offering them where a room name is
+	 * typed. Like `admin`, it authorises nothing: the join asks the store.
+	 */
+	scopes?: string[];
 }
 
 /** The account this browser is signed in to, if any. */

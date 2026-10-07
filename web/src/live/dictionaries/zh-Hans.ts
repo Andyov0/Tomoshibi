@@ -618,6 +618,8 @@ const zhHans: Dictionary = {
 	"A room held under a scope cannot be arranged ahead. Send a link with a time on it instead.": "属于某个组的房间不能预定。改为发送一个带时间的链接。",
 	"A scope uses lowercase letters, numbers and dashes, at most 32 of them.": "组名只能用小写字母、数字和连字符，最多 32 个字符。",
 	"Scopes": "所属组",
+	"Your scopes": "你所在的组",
+	"You are not in {scope}, so this room will not let you in.": "你不在 {scope} 组里,进不了这个房间。",
 	"Add to a scope": "加入一个组",
 	"That invitation opens {when}. Come back then.": "这个邀请 {when} 才生效,到时候再来。",
 	"You were invited to this room as {name}.": "你以 {name} 的名字受邀进入这个房间。",

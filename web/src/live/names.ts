@@ -123,8 +123,14 @@ const VERBS = [
 /** How many digits follow the words. */
 const DIGITS = 4;
 
-/** The longest name the server will accept. */
+/** The longest name the server will accept, before any scope. */
 export const MAX_ROOM_NAME = 64;
+
+/** The longest scope the server will accept after the `@`. */
+export const MAX_SCOPE = 32;
+
+/** The longest a whole name can be: a room, its `@`, and its scope. */
+export const MAX_SCOPED_NAME = MAX_ROOM_NAME + 1 + MAX_SCOPE;
 
 /**
  * Generate a room name.
@@ -155,18 +161,68 @@ export function generateRoomName(): string {
  * match the server's, and it is still the server that decides.
  */
 export function normaliseRoomName(typed: string): string {
+	const lowered = typed.toLowerCase();
+	const at = lowered.indexOf("@");
+
+	if (at < 0) return plain(lowered, MAX_ROOM_NAME);
+
+	// One `@`, and each side held to its own rule. A second `@` is folded into
+	// the scope as a dash like any other character the server would refuse,
+	// because a name that splits two ways is the one thing a scope must never be.
+	//
+	// The `@` itself is kept while nothing follows it. This runs as somebody
+	// types, and a separator that vanished the moment it was pressed would be a
+	// scope nobody could type — only paste.
+	const local = plain(lowered.slice(0, at), MAX_ROOM_NAME);
+	const scope = plain(lowered.slice(at + 1), MAX_SCOPE);
+
+	return `${local}@${scope}`;
+}
+
+/** The rule a room name has always been held to, for either half of one. */
+function plain(typed: string, longest: number): string {
 	return typed
-		.toLowerCase()
 		.replace(/[^a-z0-9-]+/g, "-")
 		.replace(/-{2,}/g, "-")
 		.replace(/^-+/, "")
-		.slice(0, MAX_ROOM_NAME)
+		.slice(0, longest)
 		.replace(/-+$/, "");
 }
 
-/** Whether a name is one the server will authorise. */
+const PLAIN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * Whether a name is one the server will authorise.
+ *
+ * A room, or a room and the scope it is held under after a single `@`. Each half
+ * is a plain name, which is the server's rule as well; it is still the server
+ * that decides.
+ */
 export function validRoomName(name: string): boolean {
-	return name.length <= MAX_ROOM_NAME && /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(name);
+	const [local = "", scope, ...more] = name.split("@");
+
+	if (more.length > 0) return false;
+	if (local.length > MAX_ROOM_NAME || !PLAIN.test(local)) return false;
+
+	return scope === undefined || validScope(scope);
+}
+
+/** Whether a scope is one an account may carry and a room may name. */
+export function validScope(scope: string): boolean {
+	return scope.length <= MAX_SCOPE && PLAIN.test(scope);
+}
+
+/**
+ * The scope a room is held under, or nothing for a plain room.
+ *
+ * Read from the name because that is the only place it is written. There is no
+ * scope object to ask: a room under one is a name a group of people share, and
+ * what the suffix changes is who the server lets say it.
+ */
+export function scopeOf(name: string): string {
+	const at = name.indexOf("@");
+
+	return at < 0 ? "" : name.slice(at + 1);
 }
 
 /**

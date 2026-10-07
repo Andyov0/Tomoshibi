@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { generateRoomName, looksGenerated, normaliseRoomName, validRoomName } from "./names";
+import {
+	MAX_ROOM_NAME,
+	MAX_SCOPE,
+	generateRoomName,
+	looksGenerated,
+	normaliseRoomName,
+	scopeOf,
+	validRoomName,
+	validScope,
+} from "./names";
 import { impersonating, parseName, signatureOf, passphraseOf } from "./name";
 
 describe("generateRoomName", () => {
@@ -33,6 +42,49 @@ describe("normaliseRoomName", () => {
 
 	it("leaves an acceptable name alone", () => {
 		expect(normaliseRoomName("weekly-standup")).toBe("weekly-standup");
+	});
+});
+
+/*
+ * A room held under a scope: one `@`, and each half a plain name.
+ *
+ * Kept in step with the server's rule rather than looser than it, because the
+ * address bar is read through this and a name it accepted that the server
+ * refused would be a page that loads a room and then cannot join it.
+ */
+describe("scoped names", () => {
+	it("accepts a room and a scope", () => {
+		for (const name of ["standup@acme", "a@b", "weekly-standup@acme-cn"]) {
+			expect(validRoomName(name), name).toBe(true);
+		}
+
+		expect(validRoomName(`${"a".repeat(MAX_ROOM_NAME)}@${"b".repeat(MAX_SCOPE)}`)).toBe(true);
+	});
+
+	it("refuses anything that splits two ways or has an empty half", () => {
+		for (const name of ["@acme", "standup@", "a@b@c", "standup@-acme", `standup@${"b".repeat(MAX_SCOPE + 1)}`]) {
+			expect(validRoomName(name), name).toBe(false);
+		}
+
+		expect(validScope("")).toBe(false);
+		expect(validScope("a@b")).toBe(false);
+	});
+
+	it("normalises each half as it would a plain name", () => {
+		expect(normaliseRoomName("Weekly Standup@ACME Corp")).toBe("weekly-standup@acme-corp");
+		expect(normaliseRoomName("a@b@c")).toBe("a@b-c");
+	});
+
+	// Normalised as somebody types, so the separator has to survive the moment
+	// it is pressed or nobody could type a scope at all.
+	it("keeps the @ while the scope is still being typed", () => {
+		expect(normaliseRoomName("standup@")).toBe("standup@");
+		expect(validRoomName(normaliseRoomName("standup@"))).toBe(false);
+	});
+
+	it("reads the scope out of a name", () => {
+		expect(scopeOf("standup@acme")).toBe("acme");
+		expect(scopeOf("standup")).toBe("");
 	});
 });
 

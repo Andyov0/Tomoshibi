@@ -1,4 +1,4 @@
-import { type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
+import { type Invitation, type Me, inviteToken, invited, me as whoAmI } from "@/live/account";
 import { doorway } from "@/live/doorway";
 import { forget as forgetTimings } from "@/live/relays";
 import { chosenRelay, leftRoom, rememberRelay, wasIn } from "@/live/api";
@@ -6,7 +6,7 @@ import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { connect, create } from "@/live/room";
 import { sharpShares } from "@/live/sharpness";
-import { forgetMeeting, keepMeeting, meetingToken } from "@/live/meeting";
+import { forgetMeeting, keepMeeting, meetingToken, whenSaid } from "@/live/meeting";
 import { useT } from "@/hooks/useT";
 import { deviceFailed, joinFailed } from "@/live/notices";
 import { Lobby, SignIn } from "@/routes/Lobby";
@@ -69,7 +69,11 @@ type Front =
 	| { at: "sign in" }
 	| { at: "lobby"; me: Me }
 	| { at: "ready"; me: Me; relay: string }
-	| { at: "invited"; room: string }
+	/**
+	 * Holding a link. `invitation` is what the link says about the guest — the
+	 * name they will wear and when it stops working — for the page to show.
+	 */
+	| { at: "invited"; room: string; invitation?: Invitation }
 	/** Waiting on a meeting somebody arranged; `me` where the person is signed in. */
 	| { at: "arranged"; token: string; me?: Me }
 	| { at: "done" };
@@ -154,11 +158,18 @@ export function App() {
 				// when a link admitted one person, and one for a meeting reported
 				// as over, which it says a different way. Both were translated
 				// into four languages and reachable by nobody.
+				//
+				// And a third, for a link opened before the time it was made for.
+				// It is the right link at the wrong moment, and the one useful
+				// thing to say is when to come back — in the reader's own clock,
+				// since the person who made it may be somewhere else entirely.
 				if (invitation?.error) {
 					joinFailed(
-						invitation.error === "invite_expired"
-							? t("That meeting has ended.")
-							: t("That invitation is no longer good. Ask for another."),
+						invitation.error === "invite_not_yet" && invitation.from
+							? t("That invitation opens {when}. Come back then.", { when: whenSaid(invitation.from) })
+							: invitation.error === "invite_expired"
+								? t("That meeting has ended.")
+								: t("That invitation is no longer good. Ask for another."),
 					);
 				}
 
@@ -179,7 +190,14 @@ export function App() {
 
 				if (landing.at === "invited") {
 					setRoom(landing.room);
-					setFront({ at: "invited", room: landing.room });
+					setFront({
+						at: "invited",
+						room: landing.room,
+						// Only where it is about this room. A tab that kept last
+						// week's link and was sent somewhere else lands without it,
+						// and a name meant for that room is not this one's.
+						invitation: invitation?.room === landing.room ? invitation : undefined,
+					});
 
 					// Rejoining rather than arriving: this tab was in this room a
 					// moment ago and the devices go back exactly as they were, so
@@ -721,6 +739,7 @@ export function App() {
 			// to need one. Showing the field would be showing them a question
 			// they cannot answer, next to a name they did choose.
 			guest={front.at === "invited"}
+			invitation={front.at === "invited" ? front.invitation : undefined}
 			arranged={front.at === "arranged" ? { token: front.token } : undefined}
 			as={
 				front.at === "ready"

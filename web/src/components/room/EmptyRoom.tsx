@@ -38,7 +38,7 @@ import { useEffect, useState } from "react";
  */
 export function EmptyRoom({ room, host }: { room: Room; host: boolean }) {
 	const t = useT();
-	const linkWorks = useLinkWorks();
+	const linkWorks = useLinkWorks(room.name);
 	const [copied, setCopied] = useState(false);
 	const [minting, setMinting] = useState(false);
 

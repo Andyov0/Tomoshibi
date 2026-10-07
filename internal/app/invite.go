@@ -1,12 +1,15 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
+	"tomoshibi/internal/room"
 	"tomoshibi/internal/store"
 )
 
@@ -37,6 +40,12 @@ makes that safe, and that is what the revoke is for.
 
 The day is the ceiling under the real rule rather than the rule: a link found in
 a message from March should be dead however the asking went.
+
+A room held under a scope keeps all of this for a link made in a call, and adds
+a standing invitation, which a member makes on their own page for people who
+come back. That kind carries a name and a window instead of a day, lasts until
+revoked when nobody gave it an end, and survives the meeting being ended. See
+standingInvite, and the store's header for the rest of the argument.
 */
 
 // The ceiling on an invite, which is not the rule.
@@ -82,17 +91,27 @@ func (a *App) makeInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := a.now()
+	invite := store.Invite{Room: name, By: who.Mark.Trip, Created: now, Expires: now.Add(inviteFor)}
+
+	// A room held under a scope may be asked for a standing invitation, which
+	// is what a member's own page asks for. From inside a call nothing is said,
+	// and the link is the meeting's exactly as a plain room's is. See
+	// standingInvite.
+	if _, scope := room.Split(name); scope != "" {
+		var ok bool
+		if invite, ok = standingInvite(w, r, invite, now); !ok {
+			return
+		}
+	}
+
 	token, err := store.NewInviteToken()
 	if err != nil {
 		fail(w, http.StatusInternalServerError, reasonServerError)
 		return
 	}
 
-	now := time.Now().UTC()
-
-	if err := a.store.KeepInvite(token, store.Invite{
-		Room: name, By: who.Mark.Trip, Created: now, Expires: now.Add(inviteFor),
-	}); err != nil {
+	if err := a.store.KeepInvite(token, invite); err != nil {
 		fail(w, http.StatusInternalServerError, reasonServerError)
 		return
 	}
@@ -100,11 +119,116 @@ func (a *App) makeInvite(w http.ResponseWriter, r *http.Request) {
 	// Returned once and never again. What the store holds is the token's hash,
 	// on the same reasoning as a session: a copy of the database is not a set of
 	// working invitations.
-	respond(w, map[string]any{
-		"token":   token,
-		"room":    name,
-		"expires": now.Add(inviteFor).Format(time.RFC3339),
-	})
+	said := describe(invite)
+	said["token"] = token
+
+	respond(w, said)
+}
+
+/*
+standingInvite reads whether a link into a scoped room is to be a standing
+invitation and, where it is, what it is for: whose name it lets somebody wear,
+when it opens, and when it stops.
+
+Asked for by name rather than inferred from a body being there. An ordinary
+link is what a press in a call makes, and a request that grew a body for some
+other reason must not quietly become a link that outlives the meeting. Without
+it nothing else in the body is read.
+
+The three are optional. No end is a link that lasts until it is revoked, because
+these are made on purpose for people who come back — a client's weekly call —
+and a ceiling would be a link that dies on a schedule nobody chose. There is no
+upper bound on the end either: the window is checked only at the door, and a
+guest already in the call is never put out by it, so a long one gives nothing
+away that an unbounded one would not.
+
+Times arrive as instants with their zone, as an arrangement's does, because a
+time with no zone is a time in a zone somebody guessed.
+
+A name longer than a display name may be is refused rather than trimmed. The
+join trims what a guest typed, because their intent is obvious; here the person
+making the link is choosing what somebody else will be called, and a name that
+saved shorter than it was typed is one they did not choose.
+*/
+func standingInvite(w http.ResponseWriter, r *http.Request, invite store.Invite, now time.Time) (store.Invite, bool) {
+	var body struct {
+		Standing bool   `json:"standing"`
+		Name     string `json:"name"`
+		From     string `json:"from"`
+		Until    string `json:"until"`
+	}
+
+	// An empty body is the panel in a call, which says nothing. One that will
+	// not read is refused rather than taken as empty: that would be a link
+	// that ends with the meeting where its maker asked for one that does not,
+	// or the reverse.
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		fail(w, http.StatusBadRequest, reasonBadTime)
+		return invite, false
+	}
+
+	if !body.Standing {
+		return invite, true
+	}
+
+	invite.Standing = true
+
+	invite.Name = strings.TrimSpace(body.Name)
+	if len([]rune(invite.Name)) > room.MaxDisplayName {
+		fail(w, http.StatusBadRequest, reasonNameLong)
+		return invite, false
+	}
+
+	invite.Expires = time.Time{}
+
+	if said := strings.TrimSpace(body.From); said != "" {
+		from, err := time.Parse(time.RFC3339, said)
+		if err != nil {
+			fail(w, http.StatusBadRequest, reasonBadTime)
+			return invite, false
+		}
+
+		invite.From = from.UTC()
+	}
+
+	if said := strings.TrimSpace(body.Until); said != "" {
+		until, err := time.Parse(time.RFC3339, said)
+
+		// An end already past, or not after the start, is a link that could
+		// never let anybody in — refused now, while whoever made it can still
+		// see why, rather than discovered by the guest.
+		if err != nil || !until.After(now) || (!invite.From.IsZero() && !until.After(invite.From)) {
+			fail(w, http.StatusBadRequest, reasonBadTime)
+			return invite, false
+		}
+
+		invite.Expires = until.UTC()
+	}
+
+	return invite, true
+}
+
+// describe is what anybody is told about an invite: the room, and whatever was
+// said about who it is for and when. Never its maker, whose signature is their
+// identity in every room on this deployment.
+func describe(invite store.Invite) map[string]any {
+	said := map[string]any{"room": invite.Room}
+
+	// Absent rather than empty, so a page reading it does not have to tell a
+	// link with no end from one whose end failed to arrive.
+	if !invite.Expires.IsZero() {
+		said["expires"] = invite.Expires.UTC().Format(time.RFC3339)
+	}
+
+	if !invite.From.IsZero() {
+		said["from"] = invite.From.UTC().Format(time.RFC3339)
+	}
+
+	if invite.Name != "" {
+		said["name"] = invite.Name
+	}
+
+	return said
 }
 
 // revokeInvites throws away every link to a room, without ending the meeting.
@@ -125,7 +249,7 @@ func (a *App) revokeInvites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gone, err := a.store.DropInvites(name)
+	gone, err := a.store.DropInvites(name, true)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, reasonServerError)
 		return
@@ -153,8 +277,24 @@ func (a *App) readInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !invite.Live(time.Now().UTC()) {
+	now := a.now()
+
+	if !invite.Live(now) {
 		fail(w, http.StatusGone, reasonInviteExpired)
+		return
+	}
+
+	// Early, with when. A link opened before its time is the right link at the
+	// wrong moment, and the one useful thing to tell its holder is when to come
+	// back.
+	if !invite.Begun(now) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": reasonInviteNotYet,
+			"from":  invite.From.UTC().Format(time.RFC3339),
+		})
+
 		return
 	}
 
@@ -169,7 +309,16 @@ func (a *App) readInvite(w http.ResponseWriter, r *http.Request) {
 	// What ends a link is the room being closed, which throws the links away
 	// with it, and the ceiling above. Both are things somebody did or a clock
 	// did; neither is a gap between two connections.
-	respond(w, map[string]any{"room": invite.Room})
+	//
+	// Only a standing invitation says when, and whose name it carries. An
+	// ordinary link's end is the meeting's, and the day under it is a backstop
+	// a guest should not be told to plan around.
+	if !invite.Standing {
+		respond(w, map[string]any{"room": invite.Room})
+		return
+	}
+
+	respond(w, describe(invite))
 }
 
 // meeting reports whether a room is currently being held anywhere.
@@ -231,19 +380,12 @@ func (a *App) roomLive(w http.ResponseWriter, r *http.Request) {
 // are not an administrator, and the name they were sent is one they could not
 // have opened themselves.
 func (a *App) invited(r *http.Request, name string) bool {
-	token := strings.TrimSpace(r.URL.Query().Get("invite"))
-
-	if token == "" {
-		if cookie, err := r.Cookie(inviteCookie); err == nil {
-			token = cookie.Value
-		}
-	}
-
+	token := presented(r)
 	if token == "" {
 		return false
 	}
 
-	_, err := a.store.Redeem(token, name, time.Now().UTC())
+	_, err := a.store.Redeem(token, name, a.now())
 
 	switch {
 	case err == nil:
@@ -268,6 +410,20 @@ func (a *App) invited(r *http.Request, name string) bool {
 
 		return false
 	}
+}
+
+// presented is the invite a request carries: the one in the address, or the
+// one a previous join left in a cookie.
+func presented(r *http.Request) string {
+	if token := strings.TrimSpace(r.URL.Query().Get("invite")); token != "" {
+		return token
+	}
+
+	if cookie, err := r.Cookie(inviteCookie); err == nil {
+		return strings.TrimSpace(cookie.Value)
+	}
+
+	return ""
 }
 
 // keepInvite leaves the spent token in a cookie, so a reload is not a refusal.

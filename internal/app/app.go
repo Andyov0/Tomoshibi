@@ -63,6 +63,22 @@ type App struct {
 
 	stop    chan struct{}
 	closing sync.Once
+
+	// clock is what the invitation paths read the time from, and nil is the
+	// wall clock. A field so that a test can put a link's window around a fixed
+	// instant rather than around whatever moment the test happens to run at —
+	// a window computed from now and checked against a later now is a test that
+	// passes or fails by how long the machine took.
+	clock func() time.Time
+}
+
+// now is the time by this application's clock.
+func (a *App) now() time.Time {
+	if a.clock != nil {
+		return a.clock().UTC()
+	}
+
+	return time.Now().UTC()
 }
 
 // New assembles the application.
@@ -652,7 +668,39 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		signature = account.Trip
 	}
 
-	mayOpen := isAdmin
+	// What the token is minted from: the caller's own answers, except for a
+	// guest of a room held under a scope, who carries neither.
+	passphrase, account := body.Passphrase, signature
+
+	// What they are called, and whether an invitation let them in. A guest of
+	// a scoped room wears the name their link was made for, where it was made
+	// for one, rather than whatever they typed.
+	display, guest := body.Name, false
+
+	// A name held under a scope has a door of its own, and none of the three
+	// below applies to it: not the opening policy, not the joining policy, and
+	// not a reservation, which a scoped name cannot have. See scope.go.
+	_, scope := room.Split(name)
+	scoped := scope != ""
+
+	if scoped {
+		invite, ok := a.admitScoped(w, r, name, scope, isAdmin, signature, body.Passphrase)
+		if !ok {
+			return
+		}
+
+		if invite != nil {
+			passphrase, account, guest = "", "", true
+
+			if invite.Name != "" {
+				display = invite.Name
+			}
+		}
+	}
+
+	// Already decided for a scoped name, and nothing below can take it back:
+	// every setting only adds to who may open one.
+	mayOpen := isAdmin || scoped
 	switch a.opening() {
 	case room.ByAnyone:
 		mayOpen = true
@@ -684,7 +732,10 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// Making this fail closed on its own would look like the careful change and
 	// would turn a store outage into every call on the deployment dropping and
 	// nobody able to rejoin. The two halves have to keep agreeing.
-	known := a.store.Used(name)
+	//
+	// Not asked of a scoped name, whose door has already been decided and does
+	// not turn on whether anybody has said it before.
+	known := !scoped && a.store.Used(name)
 
 	// The second door, which did not exist. A room here is a name and nothing
 	// else, so knowing the name was the whole of the check — which is a fine
@@ -700,7 +751,10 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// is why this is a wrong number rather than a broken door; it is kept
 	// precisely because it cannot be recovered later, so recording it wrong is
 	// worse than not recording it.
-	invited := known && a.invited(r, name)
+	//
+	// A scoped room's door has redeemed it already, and asking here would count
+	// it twice.
+	invited := guest || (known && a.invited(r, name))
 
 	if known && !a.mayJoin(r, name, isAdmin, signature, body.Passphrase, invited) {
 		fail(w, http.StatusForbidden, reasonNotInvited)
@@ -715,7 +769,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// Refused here, at the opening, rather than sorted out afterwards by
 	// taking the room from whoever got there first — see the store's header
 	// for what taking it cost. Administrators are not refused anything.
-	if !known && !isAdmin {
+	if !known && !isAdmin && !scoped {
 		claimant := signature
 		if claimant == "" && !body.Passphrase.Empty() {
 			claimant = room.Trip(a.tripKey, strings.TrimSpace(string(body.Passphrase)))
@@ -744,9 +798,9 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	grant, err := room.Authorise(a.conf.Key, a.conf.Secret, room.Request{
 		Room:       name,
 		Identity:   body.Identity,
-		Display:    body.Name,
-		Passphrase: body.Passphrase,
-		Account:    signature,
+		Display:    display,
+		Passphrase: passphrase,
+		Account:    account,
 		TripKey:    a.tripKey,
 		TTL:        a.conf.Meet.TokenTTL,
 	})
@@ -949,7 +1003,13 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// join but the first — a later arrival becoming host by walking in is the
 	// fault this guards against, and it would be invisible until somebody used
 	// it.
-	a.hostOnOpening(name, grant)
+	//
+	// Except under a scope, where nobody does: every member runs the room, and
+	// a host recorded here would be one who might later leave the scope and keep
+	// the room answering to them. See scope.go.
+	if !scoped {
+		a.hostOnOpening(name, grant)
+	}
 	a.beginArranged(name, grant)
 
 	// Written down because nothing else will know it.
@@ -966,7 +1026,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		// What they called themselves. The media server has this for a call in
 		// progress and there is no media server to ask about one that ended, so
 		// a history without it is a page of addresses and hex.
-		Name:      body.Name,
+		Name:      display,
 		Forwarded: forward != nil,
 		At:        time.Now().UTC(),
 	}); err != nil {
@@ -1313,6 +1373,11 @@ const (
 	// the person holding the link and only one of them means "ask for another".
 	reasonNoSuchInvite  = "no_such_invite"
 	reasonInviteExpired = "invite_expired"
+	// reasonInviteNotYet is a link used before the time it was made for, which
+	// is a fourth sentence: the link is right, and the moment is not.
+	reasonInviteNotYet = "invite_not_yet"
+	// reasonNameLong is a name for somebody else, longer than a name may be.
+	reasonNameLong = "name_too_long"
 	// The meeting a link was to has ended, which is not the same as the link
 	// having expired: it is a link to nothing rather than a link that ran out,
 	// and that is the difference between "ask for another" and "you missed it".

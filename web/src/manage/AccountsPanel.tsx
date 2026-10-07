@@ -1,7 +1,7 @@
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import { actionFailed } from "@/live/notices";
-import { Ban, KeyRound, Loader2, Plus, Trash2, Undo2, X } from "lucide-react";
+import { AtSign, Ban, KeyRound, Loader2, Plus, Trash2, Undo2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { type Account, api } from "./api";
 import { usePoll } from "./poll";
@@ -154,6 +154,8 @@ export function AccountsPanel({
 								    name and a signature, and "which of the two Chens is
 								    this" had no answer anywhere. */}
 								<Note account={account} canModerate={canModerate} onSaved={refresh} />
+
+								<Scopes account={account} canModerate={canModerate} onSaved={refresh} />
 							</div>
 
 							<div className="ml-auto flex items-center gap-3">
@@ -478,6 +480,116 @@ function Note({
 			maxLength={200}
 			className={cn(
 				"w-full rounded-md border border-border bg-surface-hi px-2 py-1",
+				"text-[11.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40",
+			)}
+		/>
+	);
+}
+
+/**
+ * The groups somebody belongs to, each a key to every room held under it.
+ *
+ * Drawn the way a room names them, after an `@`, so the label on the account
+ * and the end of the room name read as the same thing — which they are: a member
+ * of `acme` is somebody who may say `standup@acme`.
+ *
+ * Edited as one line of text rather than a field per tag, because a list of
+ * three is typed faster than it is assembled, and the server tidies what was
+ * typed into what the door will read: lowercased, trimmed, and each one once.
+ * A tag it cannot read refuses the whole change rather than vanishing from it,
+ * since a tag that quietly did not save is somebody who believes they let a
+ * person in and did not.
+ */
+function Scopes({
+	account,
+	canModerate,
+	onSaved,
+}: { account: Account; canModerate: boolean; onSaved: () => Promise<void> | void }) {
+	const t = useT();
+	const held = account.scopes ?? [];
+	const [editing, setEditing] = useState(false);
+	const [said, setSaid] = useState(held.join(", "));
+	const [saving, setSaving] = useState(false);
+
+	// Reloaded when the record changes underneath, for the reason the note is.
+	const joined = held.join(", ");
+	useEffect(() => setSaid(joined), [joined]);
+
+	if (!editing) {
+		if (!canModerate && held.length === 0) return null;
+
+		return (
+			<span className="flex flex-wrap items-center gap-1">
+				{held.map((scope) => (
+					<span
+						key={scope}
+						className="readout rounded bg-surface-hi px-1.5 py-0.5 text-[10.5px] text-fg-muted"
+					>
+						@{scope}
+					</span>
+				))}
+
+				{canModerate && (
+					<button
+						type="button"
+						onClick={() => setEditing(true)}
+						aria-label={t("Scopes")}
+						title={t("Scopes")}
+						className={cn(
+							"flex items-center gap-1 rounded-sm text-[11px]",
+							held.length > 0 ? "p-0.5 text-fg-muted" : "text-fg-muted/50 italic",
+							"hover:text-fg",
+						)}
+					>
+						<AtSign className="size-3" />
+						{held.length === 0 && t("Add to a scope")}
+					</button>
+				)}
+			</span>
+		);
+	}
+
+	const save = async () => {
+		setSaving(true);
+		try {
+			await api.changeAccount(account.name, {
+				scopes: said
+					.split(/[\s,]+/)
+					.map((one) => one.replace(/^@/, ""))
+					.filter(Boolean),
+			});
+			await onSaved();
+			setEditing(false);
+		} catch (err) {
+			actionFailed(err instanceof Error ? err.message : String(err));
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	return (
+		<input
+			// biome-ignore lint/a11y/noAutofocus: opened by a press, and the press is the request to type
+			autoFocus
+			value={said}
+			disabled={saving}
+			onChange={(event) => setSaid(event.target.value)}
+			onBlur={() => void save()}
+			onKeyDown={(event) => {
+				if (event.key === "Enter") void save();
+				if (event.key === "Escape") {
+					setSaid(joined);
+					setEditing(false);
+				}
+			}}
+			aria-label={t("Scopes")}
+			// Not translated: these are names a room is held under, which are
+			// lowercase ASCII in every language, so an example in any other
+			// script would be an example of something the server refuses.
+			placeholder="acme, team-b"
+			maxLength={400}
+			className={cn(
+				"readout w-full rounded-md border border-border bg-surface-hi px-2 py-1",
 				"text-[11.5px] outline-none focus-visible:ring-2 focus-visible:ring-fg/40",
 			)}
 		/>

@@ -15,6 +15,7 @@ import {
 	useOthers,
 	type Standing,
 } from "@/live/host";
+import { scopeOf } from "@/live/names";
 import { actionDone, actionFailed, atTheDoor } from "@/live/notices";
 import { cn } from "@/lib/utils";
 import type { Room } from "livekit-client";
@@ -64,6 +65,12 @@ export function HostPanel({
 }) {
 	const t = useT();
 	const others = useOthers(room);
+
+	// A room held under a scope has no host to hand over: every member runs it,
+	// and the server refuses the handover outright. The button goes rather than
+	// answering with a refusal, because a control that can never work is a
+	// question somebody asks and nobody can answer.
+	const scoped = scopeOf(room.name) !== "";
 	const [busy, setBusy] = useState<string>();
 	const [link, setLink] = useState<string>();
 	const [copied, setCopied] = useState(false);
@@ -210,7 +217,10 @@ export function HostPanel({
 							) : (
 								<Link2Off className="size-3" />
 							)}
-							{t("Stop this link working")}
+							{/* Under a scope the revocation also takes the standing
+							    links members made on their own pages, so the button
+							    says every link rather than this one. */}
+							{scoped ? t("Stop every link to this room working") : t("Stop this link working")}
 						</button>
 					</>
 				)}
@@ -262,16 +272,18 @@ export function HostPanel({
 								<MicOff className="size-3.5" />
 							</button>
 
-							<button
-								type="button"
-								disabled={busy !== undefined}
-								onClick={() => act(one.identity, () => handOver(room, one))}
-								aria-label={t("Make host")}
-								title={t("Make host")}
-								className="rounded p-1 text-fg-muted hover:bg-surface-hi hover:text-tally disabled:opacity-30"
-							>
-								<Crown className="size-3.5" />
-							</button>
+							{!scoped && (
+								<button
+									type="button"
+									disabled={busy !== undefined}
+									onClick={() => act(one.identity, () => handOver(room, one))}
+									aria-label={t("Make host")}
+									title={t("Make host")}
+									className="rounded p-1 text-fg-muted hover:bg-surface-hi hover:text-tally disabled:opacity-30"
+								>
+									<Crown className="size-3.5" />
+								</button>
+							)}
 
 							<button
 								type="button"
@@ -293,7 +305,9 @@ export function HostPanel({
 			{ending ? (
 				<div className="flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/10 p-2.5">
 					<p className="text-[11.5px] text-fg leading-snug">
-						{t("Everybody will be disconnected and told the room has closed. Links to it stop working.")}
+						{scoped
+							? t("Everybody will be disconnected and told the room has closed. Links made in the call stop working; links made on an account page do not.")
+							: t("Everybody will be disconnected and told the room has closed. Links to it stop working.")}
 					</p>
 
 					<div className="flex gap-2">
@@ -507,6 +521,8 @@ function explain(err: unknown, t: (phrase: Phrase) => string): string {
 			return t("They have already left.");
 		case "not_yours":
 			return t("You no longer run this room.");
+		case "scoped_room":
+			return t("Every member of this room's scope runs it, so there is nobody to hand it to.");
 		case "rate_limited":
 			return t("Too many attempts. Try again in a moment.");
 		default:

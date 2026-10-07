@@ -275,6 +275,8 @@ export interface Account {
 	lastSeen?: string;
 	blocked?: boolean;
 	note?: string;
+	/** The groups they belong to, each a name a room may be held under after an `@`. */
+	scopes?: string[];
 }
 
 /** Who may use a name nobody has used before. */
@@ -461,6 +463,8 @@ function explain(reason: string | undefined, status: number): string {
 			return t("The request could not be read.");
 		case "avatar_too_large":
 			return t("That picture is too large.");
+		case "bad_scope":
+			return t("A scope uses lowercase letters, numbers and dashes, at most 32 of them.");
 		case "under_score":
 			return t("A name cannot start with an underscore.");
 		default:
@@ -787,7 +791,7 @@ export const api = {
 
 	changeAccount: (
 		name: string,
-		change: { name?: string; passphrase?: string; blocked?: boolean; note?: string },
+		change: { name?: string; passphrase?: string; blocked?: boolean; note?: string; scopes?: string[] },
 	) =>
 		call<{ name: string; trip: string }>(`/accounts/${encodeURIComponent(name)}`, {
 			method: "PATCH",

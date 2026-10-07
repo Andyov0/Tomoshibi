@@ -25,6 +25,7 @@ export function Identity({
 	onName,
 	onPassphrase,
 	nameOnly = false,
+	fixed = false,
 }: {
 	name: string;
 	passphrase: string;
@@ -40,6 +41,14 @@ export function Identity({
 	 * greyed-out box is still a box somebody wonders about.
 	 */
 	nameOnly?: boolean;
+	/**
+	 * A name somebody else chose, which is the one that will be worn.
+	 *
+	 * Shown and not editable, rather than hidden: the guest should see what the
+	 * room will call them before they are in it. Read-only rather than disabled,
+	 * so it can still be selected and read by a screen reader.
+	 */
+	fixed?: boolean;
 }) {
 	const t = useT();
 	const [shown, setShown] = useState(false);
@@ -56,6 +65,7 @@ export function Identity({
 			<input
 				value={name}
 				onChange={(event) => onName(event.target.value)}
+				readOnly={fixed}
 				placeholder={t("Your name")}
 				aria-label={t("Your name")}
 				// Named for the password manager rather than for this form. It is
@@ -63,11 +73,12 @@ export function Identity({
 				// beside it fill itself at the same time.
 				autoComplete="username"
 				// biome-ignore lint/a11y/noAutofocus: the screen exists to be typed into
-				autoFocus
+				autoFocus={!fixed}
 				maxLength={80}
 				className={cn(
 					"h-11 min-w-0 bg-transparent px-3 text-fg text-sm outline-none",
 					"placeholder:text-fg-muted",
+					fixed && "cursor-default text-fg-muted",
 				)}
 			/>
 

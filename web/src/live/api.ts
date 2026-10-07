@@ -1,5 +1,6 @@
 import { INVITE_KEY } from "./account";
 import { t } from "./i18n";
+import { scopeOf } from "./names";
 import { preferred } from "./relays";
 import { keepForTab, recallForTab } from "@/lib/storage";
 /*
@@ -302,6 +303,10 @@ function explain(reason: string | undefined, room: string): string {
 			return t("{room} is by invitation. Ask the organiser for a link.", {
 				room,
 			});
+		// Said as who the room is for, which is written in its name already, so
+		// nothing is given away that the person reading it did not type.
+		case "not_in_scope":
+			return t("Only members of {scope} can join {room}.", { room, scope: scopeOf(room) });
 		// Said plainly, and about the passphrase rather than about the person.
 		// It is the only thing this server recognises anybody by, and somebody
 		// who is reading this may well not know why — telling them to ask is

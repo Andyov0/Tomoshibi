@@ -10,6 +10,8 @@ import (
 	"time"
 
 	bolt "go.etcd.io/bbolt"
+
+	"tomoshibi/internal/room"
 )
 
 /*
@@ -62,6 +64,17 @@ type Account struct {
 	// Blocked refuses their joins, exactly as it does for anybody else.
 	Blocked bool   `json:"blocked,omitempty"`
 	Note    string `json:"note,omitempty"`
+
+	// Scopes are the groups this person belongs to, each a name a room may be
+	// held under after an `@`.
+	//
+	// A label on the account rather than a record of its own, and that is the
+	// design. A scope with no members means nothing, so there is nothing to
+	// keep about one that is not already here; and a membership kept on the
+	// account goes wherever the account goes — renamed with it, deleted with
+	// it, and never inherited by somebody given the same name later, which a
+	// list of names kept elsewhere would hand straight to them.
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 var (
@@ -72,6 +85,7 @@ var (
 	ErrAccountLongName  = errors.New("a name is at most 32 characters")
 	ErrAccountBadName   = errors.New("a name may use letters, digits, dots, dashes and underscores")
 	ErrAvatarTooLarge   = errors.New("an avatar is at most 64 kilobytes")
+	ErrAccountBadScope  = errors.New("a scope uses lowercase letters, digits and inner dashes, at most 32 of them")
 )
 
 // How large an avatar may be.
@@ -108,9 +122,38 @@ func (a Account) Valid() error {
 		return ErrAvatarTooLarge
 	}
 
+	// Each one by the rule a room's scope is read with, so a tag that could
+	// never appear after an `@` cannot be given to anybody: it would be a
+	// membership of a group no room can name.
+	for _, scope := range a.Scopes {
+		if !room.ValidScope(scope) {
+			return ErrAccountBadScope
+		}
+	}
+
 	// The signature is checked by the same rule the administrators use, so a
 	// name cannot be admitted with something that is not one.
 	return Admin{Trip: a.Trip, Name: name}.Valid()
+}
+
+// InScope reports whether this account carries a scope.
+//
+// Only the tag. Whether a blocked account counts is the caller's question,
+// because it is asked in more than one place: a blocked member is refused at the
+// door, and so is a link they made, and each says so where it decides rather
+// than here.
+func (a Account) InScope(scope string) bool {
+	if scope == "" {
+		return false
+	}
+
+	for _, one := range a.Scopes {
+		if one == scope {
+			return true
+		}
+	}
+
+	return false
 }
 
 // plainName keeps a username to what can be typed, said aloud and looked up.
@@ -387,4 +430,14 @@ func (s *Store) AccountSeen(trip string, at time.Time) {
 
 	account.LastSeen = at
 	_ = s.UpdateAccount(account.Name, account)
+}
+
+// Answering reports whether the store can be read at all.
+//
+// For a refusal that has to say which kind it is. Every lookup here answers "not
+// found" when the store fails, which is the safe direction for a sign-in and the
+// wrong sentence for a room that turned somebody away: asked once, on the way
+// out, so that an outage is logged as one and said as one.
+func (s *Store) Answering() error {
+	return s.db.View(func(*bolt.Tx) error { return nil })
 }

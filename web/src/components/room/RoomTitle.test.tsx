@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { forget } from "@/hooks/useJoining";
 import { generateRoomName } from "@/live/names";
 import { RoomTitle } from "./RoomTitle";
 
@@ -196,5 +197,48 @@ describe("a deployment that asks for an invitation", () => {
 		// somebody the wrong thing in the moment they were reading it.
 		expect(screen.queryByText(/anyone who guesses/i)).toBeNull();
 		expect(screen.queryByText(/by invitation/i)).toBeNull();
+	});
+});
+
+/*
+ * A room held under a scope, which keeps its own door and only that one.
+ *
+ * The deployment's two policies decide nothing there, so either of their
+ * sentences would describe somebody else's room — and the worst of them,
+ * "anyone who guesses this name can join", would be false in the one place it
+ * matters most that it is. What is said instead is who the room is for.
+ *
+ * And its address is not offered to be copied, even where a plain room's would
+ * be: it opens for the members, who can already say the name, and for nobody it
+ * would be sent to.
+ */
+describe("a room held under a scope", () => {
+	it("says who it is for, and nothing about the deployment's policies", async () => {
+		says({ openedBy: "signed", joinedBy: "anyone" });
+
+		render(<RoomTitle room="standup@acme" onChange={vi.fn()} />);
+
+		await waitFor(() => expect(screen.getByText(/only members of acme/i)).toBeDefined());
+
+		expect(screen.queryByText(/anyone who guesses/i)).toBeNull();
+		expect(screen.queryByText(/set a passphrase to start/i)).toBeNull();
+		expect(screen.queryByText(/by invitation/i)).toBeNull();
+	});
+
+	it("does not offer its address as a link", async () => {
+		forget();
+		says({ openedBy: "anyone", joinedBy: "anyone" });
+
+		const { unmount } = render(<RoomTitle room="standup" onChange={vi.fn()} />);
+
+		// The same deployment offers a plain room's address, so the absence
+		// below is the scope and not the fixture.
+		await waitFor(() => expect(screen.getByLabelText("Copy link")).toBeTruthy());
+		unmount();
+
+		render(<RoomTitle room="standup@acme" onChange={vi.fn()} />);
+
+		await waitFor(() => expect(screen.getByText(/only members of acme/i)).toBeDefined());
+		expect(screen.queryByLabelText("Copy link")).toBeNull();
 	});
 });

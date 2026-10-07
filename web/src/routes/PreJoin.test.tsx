@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Refused } from "@/live/api";
 import { remember } from "@/live/remember";
 import { PreJoin } from "./PreJoin";
 
@@ -217,5 +218,90 @@ describe("the password manager", () => {
 		await joinAsWith("Alex", "battery staple");
 		await waitFor(() => expect(remember).toHaveBeenCalledTimes(2));
 		expect(remember).toHaveBeenLastCalledWith("Alex", "battery staple");
+	});
+});
+
+/*
+ * A guest of a room held under a scope.
+ *
+ * The server signs the link's name into the token and mints an issued mark
+ * whatever the guest sends, so what this screen owes them is to show the name
+ * they will wear rather than ask for one, and to leave alone what this browser
+ * has kept about somebody else. The second half is the quiet one: a guest join
+ * used to write over the stored name and passphrase with the link's name and
+ * nothing, and offer the password manager a pair made of the two — which is a
+ * browser that has forgotten its owner's passphrase, and a credential filed
+ * under a client's name.
+ */
+describe("a guest of a scoped room", () => {
+	function invitedAs(onJoin: (choices: unknown) => Promise<void>, invitation: object) {
+		render(
+			<PreJoin
+				room="standup@acme"
+				onRoomChange={vi.fn()}
+				onJoin={onJoin as never}
+				guest
+				invitation={invitation}
+			/>,
+		);
+	}
+
+	it("joins under the name the link was made for, and sends no passphrase", async () => {
+		localStorage.setItem("meet-live.name", "Alex");
+		localStorage.setItem("meet-live.passphrase", "quietly");
+
+		const succeed = vi.fn((_choices: unknown) => Promise.resolve());
+		invitedAs(succeed, { name: "Client Co" });
+
+		const field = screen.getByRole("textbox", { name: "Your name" }) as HTMLInputElement;
+		expect(field.value).toBe("Client Co");
+		expect(field.readOnly).toBe(true);
+
+		fireEvent.click(screen.getByRole("button", { name: "Join" }));
+
+		await waitFor(() => expect(succeed).toHaveBeenCalled());
+
+		expect(succeed.mock.calls[0]?.[0]).toMatchObject({ name: "Client Co", passphrase: "" });
+
+		expect(localStorage.getItem("meet-live.name")).toBe("Alex");
+		expect(localStorage.getItem("meet-live.passphrase")).toBe("quietly");
+		expect(remember).not.toHaveBeenCalled();
+	});
+
+	it("lets the guest choose a name where the link did not", async () => {
+		const succeed = vi.fn((_choices: unknown) => Promise.resolve());
+		invitedAs(succeed, {});
+
+		const field = screen.getByRole("textbox", { name: "Your name" }) as HTMLInputElement;
+		expect(field.readOnly).toBe(false);
+
+		fireEvent.change(field, { target: { value: "Sam" } });
+		fireEvent.click(screen.getByRole("button", { name: "Join" }));
+
+		await waitFor(() => expect(succeed).toHaveBeenCalled());
+		expect(succeed.mock.calls[0]?.[0]).toMatchObject({ name: "Sam", passphrase: "" });
+	});
+
+	it("says when the link stops working, and says nothing for one that does not", async () => {
+		invitedAs(async () => {}, { until: "2026-03-03T04:00:00Z" });
+
+		expect(screen.getByText(/this link works until/i)).toBeDefined();
+
+		cleanup();
+		invitedAs(async () => {}, {});
+
+		expect(screen.queryByText(/this link works/i)).toBeNull();
+	});
+
+	// The door of a scoped room is answered by its members, so being turned
+	// away by it is the moment to offer the knock, as an invitation-only door's
+	// refusal is.
+	it("offers to knock when the scope turns somebody away", async () => {
+		const refuse = vi.fn(() => Promise.reject(new Refused("not_in_scope", "Only members of acme can join.")));
+
+		render(<PreJoin room="standup@acme" onRoomChange={vi.fn()} onJoin={refuse as never} />);
+		await joinAs("Sam");
+
+		await waitFor(() => expect(screen.getByRole("button", { name: "Ask to be let in" })).toBeDefined());
 	});
 });

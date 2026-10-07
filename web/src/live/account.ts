@@ -96,16 +96,39 @@ export function inviteToken(): string {
 	}
 }
 
+/**
+ * What an invite says about itself: the room, and for a room held under a
+ * scope, whose name it lets somebody wear and when it works.
+ *
+ * Times are instants as the server wrote them, and are turned into the reader's
+ * own clock only where they are shown.
+ */
+export interface Invitation {
+	room?: string;
+	/** The name the guest will be called, where whoever made the link chose one. */
+	name?: string;
+	/** When it begins to work. Also sent with a refusal for a link used too early. */
+	from?: string;
+	/** When it stops, or absent for a link that lasts until it is revoked. */
+	until?: string;
+	error?: string;
+}
+
 /** What room an invite is for, or why it is no good. */
-export async function invited(token: string): Promise<{ room?: string; error?: string }> {
+export async function invited(token: string): Promise<Invitation> {
 	try {
 		const response = await fetch(`/api/invites/${encodeURIComponent(token)}`);
+		const body = (await response.json().catch(() => ({}))) as {
+			room?: string;
+			name?: string;
+			from?: string;
+			expires?: string;
+			error?: string;
+		};
 
-		if (response.ok) return (await response.json()) as { room: string };
+		if (response.ok) return { room: body.room, name: body.name, from: body.from, until: body.expires };
 
-		const body = (await response.json().catch(() => ({}))) as { error?: string };
-
-		return { error: body.error ?? "no_such_invite" };
+		return { error: body.error ?? "no_such_invite", from: body.from };
 	} catch {
 		return { error: "no_such_invite" };
 	}

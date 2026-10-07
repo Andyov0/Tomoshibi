@@ -454,6 +454,10 @@ type accountView struct {
 	// browser that had been told otherwise.
 	Admin   bool   `json:"admin,omitempty"`
 	Created string `json:"created,omitempty"`
+	// Scopes are the groups they belong to, so their page can offer to send a
+	// link into a room held under one. Like Admin, a courtesy to the page and
+	// never a permission: the invitation endpoint asks the account itself.
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 func (a *App) accountOf(account store.Account) accountView {
@@ -465,7 +469,7 @@ func (a *App) accountOf(account store.Account) accountView {
 }
 
 func accountOf(account store.Account) accountView {
-	view := accountView{Name: account.Name, Trip: account.Trip}
+	view := accountView{Name: account.Name, Trip: account.Trip, Scopes: account.Scopes}
 
 	if account.Avatar != "" {
 		view.Avatar = "/api/avatar/" + account.Trip

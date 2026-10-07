@@ -4,7 +4,7 @@ import { useLinkWorks } from "@/hooks/useJoining";
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import { type Joining, type Opening, deployment } from "@/live/api";
-import { MAX_ROOM_NAME, looksGenerated, normaliseRoomName, validRoomName } from "@/live/names";
+import { MAX_SCOPED_NAME, looksGenerated, normaliseRoomName, scopeOf, validRoomName } from "@/live/names";
 import { Check, Copy, Pencil } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -59,7 +59,8 @@ export function RoomTitle({
 	const opening = said?.opening ?? "anyone";
 	const joining = said?.joining;
 	const field = useRef<HTMLInputElement>(null);
-	const linkWorks = useLinkWorks();
+	const linkWorks = useLinkWorks(room);
+	const scope = scopeOf(room);
 
 	// Asked once, here, because this is the only line on the screen it changes.
 	// Starting at the answer every deployment has until somebody changes it, so
@@ -105,7 +106,7 @@ export function RoomTitle({
 					ref={field}
 					defaultValue={room}
 					aria-label={t("Room name")}
-					maxLength={MAX_ROOM_NAME}
+					maxLength={MAX_SCOPED_NAME}
 					className="h-9 font-mono text-base"
 					onChange={(event) => {
 						// Normalised as they type, so a character the server would
@@ -203,7 +204,15 @@ export function RoomTitle({
 			    link was being told to go and do the thing they had just done —
 			    beside the line saying they were invited, so the screen said both
 			    at once and contradicted itself. */}
-			{!said || invited ? null : joining && joining !== "anyone" ? (
+			{/* And not the deployment's door at all for a room held under a
+			    scope, which has its own and only that one: neither who may
+			    open a name nor who may join one decides anything there, so
+			    either sentence would be describing somebody else's room. */}
+			{!said || invited ? null : scope ? (
+				<p className="text-fg-muted text-xs leading-snug">
+					{t("Only members of {scope} can join this room.", { scope })}
+				</p>
+			) : joining && joining !== "anyone" ? (
 				<p className="text-fg-muted text-xs leading-snug">
 					{joining === "accounts"
 						? t("Sign in to join a room here.")

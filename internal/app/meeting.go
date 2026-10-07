@@ -157,6 +157,15 @@ func (a *App) arrange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Not a name held under a scope. An arrangement makes its name the host's
+	// until it begins, and nothing here asks whether that host is a member — so
+	// anybody with an account could reserve a scope's room and keep its members
+	// out of it. A link with a time on it is what a scope has instead.
+	if _, scope := room.Split(name); scope != "" {
+		fail(w, http.StatusBadRequest, reasonScopedRoom)
+		return
+	}
+
 	now := time.Now().UTC()
 
 	// The moment is absolute and arrives as one: the client turns its local

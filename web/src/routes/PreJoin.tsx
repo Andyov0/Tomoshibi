@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 import { Refused, chosenRelay, deployment, rememberRelay } from "@/live/api";
 import { keepInvite } from "@/live/account";
+import { whenSaid } from "@/live/meeting";
+import { scopeOf } from "@/live/names";
 import { blur, possible as blurPossible, remember as rememberBlur, wanted as blurWanted } from "@/live/blur";
 import { devicesAvailable, insecureReason } from "@/live/context";
 import { ServerPicker } from "@/components/room/ServerPicker";
@@ -58,6 +60,11 @@ const DEVICES_KEY = "meet-live.devices";
  * join endpoint tests the same value against the administrator list — so an
  * administrator who signs into a room this way leaves that credential here in
  * the clear.
+ *
+ * And it is membership. A passphrase belonging to an account tagged with a scope
+ * lets whoever holds it into every room held under that scope, runs all of them,
+ * and sends links into them that last until somebody revokes them — so what is
+ * kept here can be a key to a whole group's meetings rather than to one room.
  *
  * It is kept anyway, deliberately, and the trade is the one at the top of this
  * comment: the alternative is retyping on every visit, which is how a field
@@ -129,6 +136,17 @@ export interface PreJoinProps {
 	 * invitation.
 	 */
 	guest?: boolean;
+	/**
+	 * What the link said about the guest, where it said anything: the name it
+	 * was made for, and when it works.
+	 *
+	 * A link into a room held under a scope may carry a name, and the server
+	 * signs that name into the token whatever is typed here — so the field
+	 * shows it and cannot be changed, rather than inviting somebody to type a
+	 * name that will be thrown away. The window is shown in the reader's own
+	 * clock, because the person who made the link may be somewhere else.
+	 */
+	invitation?: { name?: string; from?: string; until?: string };
 	/** Arrived on a meeting link: wait for it to begin rather than join. */
 	arranged?: { token: string };
 	/**
@@ -145,7 +163,7 @@ export interface PreJoinProps {
 	onBack?: () => void;
 }
 
-export function PreJoin({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged }: PreJoinProps) {
+export function PreJoin({ room, onRoomChange, onJoin, guest = false, invitation, as, onBack, arranged }: PreJoinProps) {
 	// Checked before anything reaches for a device, so the page explains why it
 	// cannot rather than failing on a property that is simply not there.
 	if (!devicesAvailable()) {
@@ -158,6 +176,7 @@ export function PreJoin({ room, onRoomChange, onJoin, guest = false, as, onBack,
 			onRoomChange={onRoomChange}
 			onJoin={onJoin}
 			guest={guest}
+			invitation={invitation}
 			as={as}
 			onBack={onBack}
 			arranged={arranged}
@@ -268,7 +287,7 @@ function Source() {
 	);
 }
 
-function Form({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged }: PreJoinProps) {
+function Form({ room, onRoomChange, onJoin, guest = false, invitation, as, onBack, arranged }: PreJoinProps) {
 	// Whether the door turned this person away for wanting an invitation, which
 	// is the one refusal there is something to do about from this screen.
 	const [refused, setRefused] = useState(false);
@@ -426,24 +445,41 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged 
 	 */
 	const { name: typedName, passphrase: written } = parseName(name);
 
+	// The name a link was made for, which is the name this guest will wear.
+	const locked = guest ? invitation?.name : undefined;
+
+	/*
+	 * A guest of a room held under a scope, who is a guest whatever else they
+	 * bring: the server mints them an issued mark and ignores a passphrase. So
+	 * none is sent, and nothing about the one this browser has kept is touched —
+	 * a guest join used to write over it with nothing, and offer the password
+	 * manager a pair made of the link's name and somebody's own secret.
+	 */
+	const scopedGuest = guest && scopeOf(room) !== "";
+
 	// Whoever is signed in, where somebody is. Their name is already theirs and
 	// their signature comes from the session, so nothing is typed and nothing is
 	// sent — a passphrase in the request would be a second answer to a question
 	// already settled, and the one that wins would be whichever the server read
 	// first.
-	const display = as ? as.name : typedName;
-	const passphrase = as ? "" : secret || written;
+	const display = as ? as.name : locked || typedName;
+	const passphrase = as || scopedGuest ? "" : secret || written;
 
 	const submit = async () => {
 		if (!display || joining) return;
 
-		keep(NAME_KEY, display);
+		// Not a name somebody else chose for them. It is this link's, and
+		// keeping it would greet them by it on every visit after.
+		if (!locked) keep(NAME_KEY, display);
 		keep(DEVICES_KEY, JSON.stringify(devices));
 
 		// Whatever was last joined with, which means clearing the field and
-		// joining is how somebody takes it back off this machine.
-		if (passphrase) keep(PASSPHRASE_KEY, passphrase);
-		else keep(PASSPHRASE_KEY, undefined);
+		// joining is how somebody takes it back off this machine — except as a
+		// scoped room's guest, who joined with nothing on purpose.
+		if (!scopedGuest) {
+			if (passphrase) keep(PASSPHRASE_KEY, passphrase);
+			else keep(PASSPHRASE_KEY, undefined);
+		}
 
 		// And offered to the password manager, which keeps it better than this
 		// can and carries it to the same person's other devices. Once, for any
@@ -475,7 +511,10 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged 
 			// asks for an invitation is a door somebody can knock on, and the
 			// moment they were turned away is the moment that is worth offering.
 			// Matched on the code rather than the sentence, which is translated.
-			if (whatever instanceof Refused && whatever.reason === "not_invited") {
+			//
+			// A room held under a scope is the same door with a different
+			// sentence: its members answer a knock as a host would.
+			if (whatever instanceof Refused && (whatever.reason === "not_invited" || whatever.reason === "not_in_scope")) {
 				setRefused(true);
 			}
 		} finally {
@@ -651,23 +690,42 @@ function Form({ room, onRoomChange, onJoin, guest = false, as, onBack, arranged 
 					{!as && (
 						<div className="flex flex-col gap-2">
 							<Identity
-								name={name}
+								name={locked ?? name}
 								passphrase={secret}
 								onName={setName}
 								onPassphrase={setSecret}
 								nameOnly={guest}
+								fixed={locked !== undefined}
 							/>
 
 							{/* One line, which changes rather than doubling: what a
 							    passphrase is for until there is one, and what it did
 							    once there is. */}
 							<p className="text-fg-muted text-xs leading-snug">
-								{guest
-									? t("You were invited to this room. Choose a name and go in.")
-									: passphrase
-										? t("Only you can join as {name}", { name: display || "?" })
-										: t("Add a passphrase to keep your name, and to run the room you open.")}
+								{locked
+									? t("You were invited to this room as {name}.", { name: locked })
+									: guest
+										? t("You were invited to this room. Choose a name and go in.")
+										: passphrase
+											? t("Only you can join as {name}", { name: display || "?" })
+											: t("Add a passphrase to keep your name, and to run the room you open.")}
 							</p>
+
+							{/* When the link stops working, where it does. Said once,
+							    here, because a guest who arrives early for a call at
+							    four should know the link will still be good at four;
+							    and in their own clock, since whoever sent it may not
+							    share it. A link with no end says nothing. */}
+							{guest && invitation?.until && (
+								<p className="text-fg-muted text-xs leading-snug">
+									{invitation.from
+										? t("This link works from {from} until {until}.", {
+												from: whenSaid(invitation.from),
+												until: whenSaid(invitation.until),
+											})
+										: t("This link works until {until}.", { until: whenSaid(invitation.until) })}
+								</p>
+							)}
 						</div>
 					)}
 

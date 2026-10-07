@@ -35,13 +35,66 @@ const MaxName = 64
 // evicting themselves.
 const random = 32
 
+// MaxScope is the longest scope accepted.
+//
+// Shorter than a room name, because it is the half people type after the one
+// they chose, and because it is a label an administrator puts on accounts — a
+// company or a team — rather than something generated to be hard to guess.
+const MaxScope = 32
+
+/*
+A scope is a name a group of people share, written after the room.
+
+`standup@acme` is the room `standup` as the people of `acme` hold it. It is
+still only a name: there is no scope object, no membership table and nothing
+created first. What the suffix changes is who may say it — the join asks, every
+time, whether the person saying it carries the tag on their account — and that
+question is asked of the name, which is the one thing anybody brings.
+
+One `@` and no more. A second would make a name that splits two ways, and the
+point of writing the scope into the name is that there is never a question of
+which group a room belongs to.
+*/
+
 // ValidName reports whether name is one this server will authorise.
 //
-// Lowercase letters, digits, and inner dashes. Narrow on purpose: the name
-// travels in URLs, gets read aloud, and gets typed from memory, and every
-// character class left out is a class of transcription error that cannot happen.
+// Lowercase letters, digits, and inner dashes, with at most one `@` between a
+// room and its scope. Narrow on purpose: the name travels in URLs, gets read
+// aloud, and gets typed from memory, and every character class left out is a
+// class of transcription error that cannot happen.
+//
+// Each half is held to the rule a plain name always was, so a scoped name is
+// two plain names and nothing a plain one could not already be.
 func ValidName(name string) bool {
-	if name == "" || len(name) > MaxName {
+	local, scope, scoped := strings.Cut(name, "@")
+	if !scoped {
+		return plain(name, MaxName)
+	}
+
+	return plain(local, MaxName) && ValidScope(scope)
+}
+
+// ValidScope reports whether scope is one an account may carry and a room may
+// name.
+func ValidScope(scope string) bool {
+	return plain(scope, MaxScope)
+}
+
+// Split takes a name apart into the room and the scope it is held under.
+//
+// The scope is empty for a name without one, which is every name there was
+// before scopes existed and is still the ordinary case. Callers are expected to
+// have checked the name already: this does not, so that asking which scope a
+// name belongs to cannot become a second, quieter definition of a valid one.
+func Split(name string) (local, scope string) {
+	local, scope, _ = strings.Cut(name, "@")
+
+	return local, scope
+}
+
+// plain is the rule a room name has always been held to.
+func plain(name string, longest int) bool {
+	if name == "" || len(name) > longest {
 		return false
 	}
 

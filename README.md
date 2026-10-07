@@ -367,6 +367,81 @@ signature. Everything that tries a passphrase, at any of those doors, spends
 from one budget: ten a minute per address with a ceiling on the endpoint. A
 limit on one door and not the others is not three limits.
 
+## Scopes
+
+A scope is a name a group of people share — a company, a team — and a room
+written `standup@acme` is a room only the people of `acme` may enter. It is
+still a name and nothing more: nothing is created first and nothing is cleaned
+up afterwards, exactly as with any other room.
+
+A scope is a label on an account, not a record of its own. In the management
+pages, **Accounts**, press the `@` beside somebody and type the scopes they
+belong to, separated by commas. Lowercase letters, digits and inner dashes, at
+most 32 of them; the change is written to the audit log with what it was.
+Renaming or deleting an account takes its scopes with it, and somebody given
+the same name later does not inherit them. Administrators belong to every scope
+without being given any.
+
+Who may enter `room@scope` is asked on **every** join, not only the first:
+
+- somebody signed in to an account carrying the scope, or to an administrator's;
+- somebody holding a live invitation to that room, who comes in as a **guest**
+  whatever else they bring — an issued mark, and the name the link was made
+  for, if it was made for one;
+- somebody whose passphrase belongs to an account carrying the scope, or to an
+  administrator.
+
+Nobody else. A blocked account is not a member. The deployment's
+`rooms.opened_by` and `rooms.joined_by` do not apply to scoped rooms at all,
+and a scoped name cannot be arranged in advance — a link with a time on it does
+that job instead.
+
+**Links.** Two kinds. *Invite somebody*, in the call, makes the same link it
+makes in any room: it lasts until the meeting is ended, and a day at most. A
+member also makes standing links on their own page at `/account`, under *Guest
+links*: the room, and optionally the name the guest will be called, when the
+link starts working, and when it stops. Leave the end empty and the link works
+until somebody stops it. The window is checked when somebody comes through the
+door and at no other time, so a guest already in the call stays when it closes.
+Either kind is worth exactly its maker's standing: take somebody out of the
+scope, or block them, and every link they made stops working.
+
+**Running the room.** A scoped room has no host on record. Every member, and
+every administrator who may moderate, runs it — mutes, removes, ends the
+meeting, moves it, answers a knock, stops the room's links — whether or not
+they are in the call. There is therefore nobody to hand it over to, and that control
+is not offered.
+
+**Ending is not revoking.** Ending a scoped meeting takes the links made in the
+call and keeps the standing ones, because those were made by members for other
+days and other people. To keep somebody out after ending a meeting, stop the
+room's links as well — *Stop every link to this room working*, in the call or on
+the account page — which stops all of them, whoever made them.
+
+**When the store does not answer**, scoped rooms refuse everybody, where every
+other room lets joins through. That rule protects a first use by people who
+already know a name; a scope protects every use, and letting it through would
+hand the meeting to anybody who guessed the name.
+
+What it does not do, said plainly:
+
+- A link past its end refuses a reload. Moving the room to another relay, or an
+  operator placing somebody on one, sends the client through the join again, so
+  a guest whose window has closed is dropped then too.
+- During a store outage nobody can enter a scoped room.
+- A link with no end sits in `?invite=`, and so in a reverse proxy's access log.
+  Ordinary invitations do too, but they stop working after a day.
+- A member who is signed in and opens a guest link comes in as themselves.
+- Any member can end any meeting in the scope, remove anybody in it (another
+  member included, who can come straight back), and stop links somebody else
+  made — without being in the call.
+- A member who typed their passphrase into the join screen without signing in
+  loses the room's controls about five minutes in, because the join token lasts
+  five minutes. Ordinary hosts have the same limit today; signing in avoids it.
+- *Close* on a room in the management pages does not remove that room's
+  invitations, unlike a host ending the meeting. That predates scopes and is
+  left as it is.
+
 ## How it works
 
 **The media server runs inside this process.** LiveKit ships as a library whose
@@ -658,7 +733,11 @@ driven through headless Chrome with fake media devices rather than unit-tested.
 camera, checks frames arrive at both ends and that the button on the
 one-person-left screen is not underneath the control island; `doorway.mjs`
 checks which screen somebody holding a room name lands on, against a deployment
-configured with `rooms.opened_by: signed`.
+configured with `rooms.opened_by: signed`; `scoped.mjs` takes three browsers
+through a room held under a scope — a member, a stranger turned away, links
+made on the account page and in the call, a meeting ended with only the lasting
+link still working, and a guest whose window closes while they are in the call
+and who is still there after the media server has renewed their token.
 
 The flags that matter are `--use-fake-device-for-media-stream` and
 `--use-fake-ui-for-media-stream`, and each run should use a fresh room name so

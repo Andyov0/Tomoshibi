@@ -124,8 +124,20 @@ func (a *App) mayHost(r *http.Request, name string) (bearer, bool) {
 			// Acting without a usable bearer, which is what an expired one is.
 			// The identity is unknown and unnecessary: what follows from this is
 			// authority over the room, not a claim about who is in it.
-			return bearer{Room: name}, true
+			//
+			// The mark is the session's, which is who is acting. It was left
+			// empty, which cost nothing while it went only into a log line, and
+			// costs an invitation now: one minted to a scoped room records its
+			// maker, and the store checks that maker is still entitled every
+			// time the link is used — an empty one is entitled to nothing.
+			return bearer{Room: name, Mark: room.Signature{Trip: session.Trip, Proven: true}}, true
 		}
+	}
+
+	// A room held under a scope has no host on record, and answers to every
+	// member instead. See scope.go.
+	if _, scope := room.Split(name); scope != "" {
+		return a.mayHostScoped(r, name, scope, who, ok)
 	}
 
 	// And an account session, which is a credential with a life measured in
@@ -253,9 +265,13 @@ func (a *App) whoseRoom(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	host := a.store.HostOf(name)
-
 	admin := a.administrating(r, who.Mark)
+
+	// The same question every control asks, asked the same way, so the panel
+	// cannot offer what the controls will refuse. It compared the host's mark
+	// here by hand, which was the same answer until a room under a scope, with
+	// no host to compare against, had to be answered as well.
+	_, yours := a.mayHost(r, name)
 
 	respond(w, map[string]any{
 		// Whether the person asking is it, worked out here rather than left to
@@ -269,7 +285,7 @@ func (a *App) whoseRoom(w http.ResponseWriter, r *http.Request) {
 		// in the call turned "be the host" into "send back the mark you were
 		// shown". What anybody needs to know is whether they may act, which is a
 		// yes or a no about themselves.
-		"yours": admin || (who.Mark.Proven && host != "" && host == who.Mark.Trip),
+		"yours": yours,
 		"admin": admin,
 	})
 }
@@ -280,6 +296,14 @@ func (a *App) handOver(w http.ResponseWriter, r *http.Request) {
 	who, ok := a.mayHost(r, name)
 	if !ok {
 		fail(w, http.StatusForbidden, reasonNotYours)
+		return
+	}
+
+	// Nothing to hand over. A room under a scope answers to every member, so
+	// writing a host down would make one where there is meant to be none — and
+	// the one written would keep the room after leaving the scope.
+	if _, scope := room.Split(name); scope != "" {
+		fail(w, http.StatusConflict, reasonScopedRoom)
 		return
 	}
 
@@ -419,7 +443,12 @@ func (a *App) dissolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if gone, err := a.store.DropInvites(name); err != nil {
+	// Not a standing invitation into a scoped room, which is not the meeting's.
+	// It was made by a member for another day, often by somebody who is not in
+	// this call — and Monday's meeting ending is no reason for Tuesday's client
+	// to find their link dead. Keeping somebody out after this is a revocation,
+	// which is a separate press and takes every link.
+	if gone, err := a.store.DropInvites(name, false); err != nil {
 		slog.Error("failed to drop the invites to a closed room", "room", name, "error", err)
 	} else if gone > 0 {
 		slog.Info("dropped invites to a closed room", "room", name, "gone", gone)

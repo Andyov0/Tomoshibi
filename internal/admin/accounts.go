@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
 
 	"tomoshibi/internal/store"
@@ -40,6 +41,9 @@ type accountView struct {
 	LastSeen string `json:"lastSeen,omitempty"`
 	Blocked  bool   `json:"blocked,omitempty"`
 	Note     string `json:"note,omitempty"`
+	// Scopes are the groups this account belongs to. Sent whole, because the
+	// list is short and the page edits it whole.
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 func (a *API) accounts(_ Session, w http.ResponseWriter, _ *http.Request) {
@@ -62,6 +66,7 @@ func (a *API) accounts(_ Session, w http.ResponseWriter, _ *http.Request) {
 		view := accountView{
 			Name: account.Name, Trip: account.Trip,
 			Avatar: account.Avatar != "", Blocked: account.Blocked, Note: account.Note,
+			Scopes: account.Scopes,
 		}
 
 		if !account.Created.IsZero() {
@@ -146,6 +151,9 @@ func (a *API) changeAccount(session Session, w http.ResponseWriter, r *http.Requ
 		Passphrase *string `json:"passphrase"`
 		Blocked    *bool   `json:"blocked"`
 		Note       *string `json:"note"`
+		// The whole list, replacing what was there. Absent leaves it alone;
+		// an empty list takes somebody out of every scope.
+		Scopes *[]string `json:"scopes"`
 	}
 
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
@@ -171,6 +179,18 @@ func (a *API) changeAccount(session Session, w http.ResponseWriter, r *http.Requ
 
 	if body.Note != nil {
 		account.Note = strings.TrimSpace(*body.Note)
+	}
+
+	// What the audit entry says changed, where a scope did. Recorded because a
+	// tag is a key to every room held under it, and "who gave this person the
+	// acme rooms" is a question somebody will ask after the fact.
+	scoped := ""
+
+	if body.Scopes != nil {
+		wanted := scopes(*body.Scopes)
+
+		scoped = "scopes " + strings.Join(account.Scopes, ",") + " -> " + strings.Join(wanted, ",")
+		account.Scopes = wanted
 	}
 
 	// Set rather than read. An administrator cannot be shown somebody's
@@ -204,7 +224,7 @@ func (a *API) changeAccount(session Session, w http.ResponseWriter, r *http.Requ
 	}
 
 	a.log.Record(Entry{
-		Action: "change account", Trip: session.Trip, Name: session.Name, Target: was,
+		Action: "change account", Trip: session.Trip, Name: session.Name, Target: was, Change: scoped,
 	})
 
 	respond(w, map[string]any{"name": account.Name, "trip": account.Trip})
@@ -230,6 +250,35 @@ func (a *API) dropAccount(session Session, w http.ResponseWriter, r *http.Reques
 	respond(w, map[string]any{"removed": name})
 }
 
+// scopes tidies a list of tags as an administrator typed it.
+//
+// Lowercased and trimmed, because a scope is read out of a room name that has
+// been through the same treatment, and a tag that differs from the name only in
+// case is a membership of nothing. Duplicates are dropped and the rest sorted, so
+// the record says the same thing however it was typed.
+//
+// Anything that still is not a scope is left in, for the store to refuse the
+// whole change: a tag dropped quietly here would be a person who thinks they
+// gave somebody access and did not.
+func scopes(typed []string) []string {
+	seen := make(map[string]bool, len(typed))
+	out := make([]string, 0, len(typed))
+
+	for _, one := range typed {
+		scope := strings.ToLower(strings.TrimSpace(one))
+		if scope == "" || seen[scope] {
+			continue
+		}
+
+		seen[scope] = true
+		out = append(out, scope)
+	}
+
+	sort.Strings(out)
+
+	return out
+}
+
 // failAccount turns a store's refusal into a status and a code the page says.
 func failAccount(w http.ResponseWriter, err error) {
 	switch {
@@ -244,6 +293,8 @@ func failAccount(w http.ResponseWriter, err error) {
 		refuse(w, http.StatusBadRequest, "bad_name")
 	case errors.Is(err, store.ErrAvatarTooLarge):
 		refuse(w, http.StatusRequestEntityTooLarge, "avatar_too_large")
+	case errors.Is(err, store.ErrAccountBadScope):
+		refuse(w, http.StatusBadRequest, "bad_scope")
 	default:
 		refuse(w, http.StatusInternalServerError, "store_unavailable")
 	}

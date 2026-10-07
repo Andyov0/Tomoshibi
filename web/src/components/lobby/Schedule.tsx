@@ -637,6 +637,8 @@ function explainArranging(whatever: unknown, t: ReturnType<typeof useT>): string
 			return t("You have as many meetings arranged as you can have.");
 		case "invalid_room":
 			return t("Room names can only use lowercase letters, numbers and dashes.");
+		case "scoped_room":
+			return t("A room held under a scope cannot be arranged ahead. Send a link with a time on it instead.");
 		case "relay_not_allowed":
 			return t("Access denied. That server is for administrators.");
 		case "not_signed_in":

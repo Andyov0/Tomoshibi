@@ -31,6 +31,41 @@ func TestValidName(t *testing.T) {
 	}
 }
 
+// A scope is a second plain name after one `@`, and nothing looser. The cases
+// refused are the ones that would make a name split two ways or carry a half
+// that a plain name could not be.
+func TestScopedNames(t *testing.T) {
+	for _, name := range []string{"standup@acme", "a@b", "weekly-standup@acme-cn",
+		strings.Repeat("a", MaxName) + "@" + strings.Repeat("b", MaxScope)} {
+		if !ValidName(name) {
+			t.Errorf("ValidName(%q) = false, want true", name)
+		}
+	}
+
+	for _, name := range []string{"@acme", "standup@", "standup@acme@else", "standup@Acme",
+		"standup@-acme", "standup@acme-", "stand up@acme", "standup@ac_me",
+		strings.Repeat("a", MaxName+1) + "@acme",
+		"standup@" + strings.Repeat("b", MaxScope+1)} {
+		if ValidName(name) {
+			t.Errorf("ValidName(%q) = true, want false", name)
+		}
+	}
+
+	for _, scope := range []string{"", "a@b", "-acme", strings.Repeat("b", MaxScope+1)} {
+		if ValidScope(scope) {
+			t.Errorf("ValidScope(%q) = true, want false", scope)
+		}
+	}
+
+	if local, scope := Split("standup@acme"); local != "standup" || scope != "acme" {
+		t.Errorf("Split(standup@acme) = %q, %q", local, scope)
+	}
+
+	if local, scope := Split("standup"); local != "standup" || scope != "" {
+		t.Errorf("Split(standup) = %q, %q; a plain name has no scope", local, scope)
+	}
+}
+
 func TestMintedIdentityIsValid(t *testing.T) {
 	minted := MintIdentity("")
 

@@ -46,6 +46,8 @@ func (k *kept) Handle(_ context.Context, record slog.Record) error {
 			entry.Target = attr.Value.String()
 		case "reason":
 			entry.Reason = attr.Value.String()
+		case "change":
+			entry.Change = attr.Value.String()
 		}
 
 		return true

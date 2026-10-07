@@ -24,7 +24,10 @@ import type { ReactNode } from "react";
  */
 export function RoomItems() {
 	const t = useT();
-	const linkWorks = useLinkWorks();
+
+	// The room as the address names it, because the address is what this
+	// copies.
+	const linkWorks = useLinkWorks(window.location.hash.replace(/^#\/?/, ""));
 
 	// Nothing at all where a plain link opens for nobody. See useJoining: an
 	// offer to copy the address reads as an offer to invite somebody, and under

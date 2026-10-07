@@ -139,6 +139,13 @@ also where an **administrator** types their administrator passphrase, since the
 same field is tested against the administrator list, so an administrator who
 does that leaves that credential in local storage in the clear.
 
+And, since scopes, it is **membership**. The same field is tested against the
+accounts, and a passphrase belonging to an account tagged `acme` lets whoever
+holds it into every room named `…@acme`, run every one of them — mute, remove,
+end, move, answer the door — whether or not they are in it, and send links into
+them that work until they are revoked, possibly for ever. The copy in local
+storage is a key to a group's meetings, not one person's room.
+
 This is an accepted risk on this deployment rather than an oversight: the cost
 of the alternative is retyping a passphrase on every visit, which is how a
 field stops being filled at all. Anybody weighing it again should weigh that,
@@ -166,6 +173,12 @@ slider.
   turns one broken thing into an outage. A store that will not answer lets a join
   through and says so loudly, because it cannot tell an unused name from one a
   meeting is happening in.
+
+  The one deliberate exception is a room held under a scope, which is refused
+  while the store is down. That rule protects a first use, by people who already
+  know the name; the scope protects every use, and letting it through would hand
+  the meeting to whoever guessed the name. `internal/app/scope.go` carries the
+  argument, and a test holds both directions apart.
 - `gofmt`, `go vet`, and `go test ./...` before every commit. The race detector
   when anything concurrent moved.
 

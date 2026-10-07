@@ -1,4 +1,5 @@
 import { type Joining, deployment } from "@/live/api";
+import { scopeOf } from "@/live/names";
 import { useEffect, useState } from "react";
 
 /**
@@ -60,6 +61,15 @@ export function useJoining(): Joining | undefined {
  * network or falls back to what every deployment starts with, so the wait is
  * one request and never an indefinite one.
  */
-export function useLinkWorks(): boolean {
-	return useJoining() === "anyone";
+export function useLinkWorks(room: string): boolean {
+	const joining = useJoining();
+
+	// Not for a room held under a scope. It opens for its members whatever the
+	// deployment says about plain names, and its members can already say its
+	// name — so a copy of the address reaches nobody it would let in, and the
+	// people it would be sent to need an invitation instead, exactly as under
+	// the invitation-only door.
+	if (scopeOf(room)) return false;
+
+	return joining === "anyone";
 }

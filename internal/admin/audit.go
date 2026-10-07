@@ -29,6 +29,11 @@ type Entry struct {
 	Action string
 	Room   string
 	Target string
+	// Change is what was changed, where the action alone does not say. Most
+	// actions are their own description; giving somebody a scope is not, and a
+	// record reading "change account" for it would be one nobody could answer
+	// "who gave them that" from.
+	Change string
 	// Whether it worked. A refusal is worth as much as a success here: a run of
 	// them is the only sign anybody has that somebody is trying doors.
 	Failed bool
@@ -59,6 +64,9 @@ func (l *Log) Record(entry Entry) {
 	}
 	if entry.Target != "" {
 		attrs = append(attrs, "target", entry.Target)
+	}
+	if entry.Change != "" {
+		attrs = append(attrs, "change", entry.Change)
 	}
 
 	to := l.to

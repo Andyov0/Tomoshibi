@@ -1,6 +1,7 @@
 import { SoundRow } from "@/components/room/SoundPanel";
 import { Button } from "@/components/ui/button";
 import { useRoster } from "@/hooks/useRoomState";
+import { rememberedDucking, setDucking, subscribeDuck } from "@/live/duck";
 import { useT } from "@/hooks/useT";
 import { keep, recall } from "@/lib/storage";
 import { cn } from "@/lib/utils";
@@ -37,14 +38,15 @@ import {
 	monitorVolume,
 	playDecoded,
 	rememberedLossless,
+	isMusic,
+	pauseMusic,
 	setMonitorVolume,
-	soundOnly,
-	stopListening,
+	stopMusic,
 	subscribePlaying,
 } from "@/live/sound";
 import type { Room } from "livekit-client";
-import { ArrowUpToLine, CircleStop, ListMusic, Loader2, Plus, Search, SkipForward, X } from "lucide-react";
-import { type FormEvent, useMemo, useState, useSyncExternalStore } from "react";
+import { ArrowUpToLine, CircleStop, ListMusic, Loader2, Pause, Play, Plus, Search, SkipForward, X } from "lucide-react";
+import { type FormEvent, type SetStateAction, useCallback, useMemo, useState, useSyncExternalStore } from "react";
 
 /**
  * The music panel: the song desk, and the library to choose from.
@@ -82,6 +84,41 @@ export function rememberedQuality(): Quality {
 }
 
 type Tab = "desk" | "search" | "playlist";
+
+/**
+ * What the panel was showing, kept per room for as long as the page lives.
+ *
+ * Not in the components' own state, because a tab not shown and a panel closed
+ * are both unmounted, and a playlist somebody had opened was gone the moment
+ * they looked at the desk to see what was playing. It stays until they open
+ * another; a search, until they search again.
+ */
+const remembered = new WeakMap<Room, Map<string, unknown>>();
+
+function useRemembered<T>(room: Room, key: string, initial: T | (() => T)): [T, (next: SetStateAction<T>) => void] {
+	let book = remembered.get(room);
+	if (!book) {
+		book = new Map();
+		remembered.set(room, book);
+	}
+	const kept = book;
+
+	const [value, setValue] = useState<T>(() =>
+		kept.has(key) ? (kept.get(key) as T) : initial instanceof Function ? initial() : initial,
+	);
+
+	const set = useCallback(
+		(next: SetStateAction<T>) =>
+			setValue((was) => {
+				const now = next instanceof Function ? next(was) : next;
+				kept.set(key, now);
+				return now;
+			}),
+		[kept, key],
+	);
+
+	return [value, set];
+}
 type Song = ReturnType<typeof songFrom>;
 
 const LINK = /https?:\/\//i;
@@ -100,7 +137,7 @@ export function MusicPanel({
 	onClose: () => void;
 }) {
 	const t = useT();
-	const [tab, setTab] = useState<Tab>("desk");
+	const [tab, setTab] = useRemembered<Tab>(room, "tab", "desk");
 	const desk = useSyncExternalStore(subscribeDesk, () => deskState(room));
 	const mine = desk !== undefined && desk.holder === room.localParticipant.identity;
 	const me = room.localParticipant.name || room.localParticipant.identity;
@@ -121,7 +158,8 @@ export function MusicPanel({
 				audioUrl,
 				fetchTrack: fetchLibraryTrack,
 				play: (decoded, onEnded) => playDecoded(room, decoded, rememberedLossless(), losslessGaveUp, onEnded),
-				stop: () => stopListening(room),
+				stop: () => stopMusic(room),
+				pause: (paused) => pauseMusic(room, paused),
 				describeAudio,
 				quality: rememberedQuality,
 				onSkipped: (entry) => actionFailed(t("Skipped {title}: the library's account cannot play it.", { title: entry.title })),
@@ -181,8 +219,8 @@ export function MusicPanel({
 			)}
 
 			{tab === "desk" && <DeskTab room={room} desk={desk} mine={mine} me={me} deps={deps} broadcast={broadcast} />}
-			{tab === "search" && libraries && <SearchTab libraries={libraries} onAdd={add} />}
-			{tab === "playlist" && libraries && <PlaylistTab onAdd={add} />}
+			{tab === "search" && libraries && <SearchTab room={room} libraries={libraries} onAdd={add} />}
+			{tab === "playlist" && libraries && <PlaylistTab room={room} onAdd={add} />}
 		</aside>
 	);
 }
@@ -207,12 +245,7 @@ function DeskTab({
 	const [asking, setAsking] = useState("");
 	const [busy, setBusy] = useState(false);
 	const speakers = useSyncExternalStore(subscribePlaying, monitorVolume);
-
-	// Somebody sharing sound with no desk -- an application's sound -- is music
-	// to turn down too.
-	const sharer = desk
-		? undefined
-		: roster.find((one) => !one.isLocal && [...one.trackPublications.values()].some((publication) => soundOnly(publication)));
+	const ducks = useSyncExternalStore(subscribeDuck, rememberedDucking);
 
 	const ask = async (event: FormEvent) => {
 		event.preventDefault();
@@ -238,6 +271,12 @@ function DeskTab({
 		}
 	};
 
+	// Music arriving from somebody whose desk this page has not heard of -- in
+	// an encrypted call desks say nothing -- still has a volume here.
+	const player = desk
+		? undefined
+		: roster.find((one) => !one.isLocal && [...one.trackPublications.values()].some((publication) => isMusic(publication)));
+
 	const voted = desk?.votes.includes(room.localParticipant.identity) ?? false;
 	const canAsk = desk !== undefined || deps !== undefined;
 
@@ -258,7 +297,9 @@ function DeskTab({
 								<span className="truncate font-medium text-[13px]">{desk.now.title}</span>
 								<span className="truncate text-[11.5px] text-fg-muted">{desk.now.artists.join(" / ")}</span>
 								<span className="truncate text-[10.5px] text-fg-muted">
-									{[t("Asked for by {name}", { name: desk.now.by }), desk.quality].filter(Boolean).join(" · ")}
+									{[desk.paused ? t("Paused") : undefined, t("Asked for by {name}", { name: desk.now.by }), desk.quality]
+										.filter(Boolean)
+										.join(" · ")}
 								</span>
 							</span>
 						</div>
@@ -279,12 +320,32 @@ function DeskTab({
 								<span className="readout w-9 shrink-0 text-right tabular-nums">{`${Math.round(speakers * 100)}%`}</span>
 							</label>
 						) : (
-							<SoundRow identity={desk.holder} sound="screen" name={t("Music")} />
+							<SoundRow identity={desk.holder} sound="music" name={t("Music")} />
 						)}
+
+						{/* This browser's own, like the volume above it: see live/duck.ts. */}
+						<label className="flex cursor-pointer items-center gap-2 px-2 text-[11px] text-fg-muted">
+							<input
+								type="checkbox"
+								checked={ducks}
+								onChange={(event) => setDucking(event.target.checked)}
+								className="accent-fg"
+							/>
+							{t("Lower the music while anybody talks")}
+						</label>
 
 						<div className="flex gap-1.5">
 							{mine ? (
 								<>
+									<Button
+										variant="secondary"
+										size="sm"
+										className="h-7 gap-1 text-[12px]"
+										aria-label={desk.paused ? t("Play") : t("Pause")}
+										onClick={() => myDesk(room)?.pause(!desk.paused)}
+									>
+										{desk.paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
+									</Button>
 									<Button variant="secondary" size="sm" className="h-7 flex-1 gap-1 text-[12px]" onClick={() => myDesk(room)?.skip()}>
 										<SkipForward className="size-3.5" />
 										{t("Next song")}
@@ -299,7 +360,9 @@ function DeskTab({
 									variant="secondary"
 									size="sm"
 									className="h-7 flex-1 gap-1 text-[12px]"
-									disabled={voted}
+									// Not while the next is on its way: the desk does not
+									// count those votes; see Desk.vote.
+									disabled={voted || desk.loading}
 									onClick={() => voteToSkip(room)}
 								>
 									<SkipForward className="size-3.5" />
@@ -311,12 +374,12 @@ function DeskTab({
 							)}
 						</div>
 					</div>
-				) : sharer ? (
+				) : player ? (
 					<div className="border-border border-b p-1.5">
 						<SoundRow
-							identity={sharer.identity}
-							sound="screen"
-							name={t("{name} (screen)", { name: sharer.name || sharer.identity })}
+							identity={player.identity}
+							sound="music"
+							name={t("{name} (music)", { name: player.name || player.identity })}
 						/>
 					</div>
 				) : (
@@ -339,11 +402,24 @@ function DeskTab({
 					</div>
 				)}
 
-				{desk?.loading && (
-					<p className="flex items-center gap-1.5 px-3 py-2 text-[11.5px] text-fg-muted">
-						<Loader2 className="size-3.5 animate-spin" />
-						{t("Loading the next song")}
-					</p>
+				{desk?.next && (
+					<div className="flex items-center gap-2 px-3.5 py-2 text-[11.5px] text-fg-muted">
+						<Loader2 className="size-3.5 shrink-0 animate-spin" />
+						<span className="min-w-0 flex-1 truncate">{t("Loading {title}", { title: desk.next.title })}</span>
+						{/* Out of the queue already, and still the holder's to
+						    take out: it was on the list a moment ago. */}
+						{mine && (
+							<Button
+								variant="ghost"
+								size="icon"
+								className="size-6"
+								aria-label={t("Take {title} off", { title: desk.next.title })}
+								onClick={() => myDesk(room)?.remove(desk.next?.key ?? "")}
+							>
+								<X className="size-3" />
+							</Button>
+						)}
+					</div>
 				)}
 
 				{desk && desk.queue.length > 0 && (
@@ -416,14 +492,18 @@ function QueueRow({ entry, index, room, mine }: { entry: Entry; index: number; r
 	);
 }
 
-function SearchTab({ libraries, onAdd }: { libraries: Library[]; onAdd: (songs: Song[]) => void }) {
+function SearchTab({ room, libraries, onAdd }: { room: Room; libraries: Library[]; onAdd: (songs: Song[]) => void }) {
 	const t = useT();
-	const [source, setSource] = useState(() => (libraries.find((one) => one.signedIn) ?? libraries[0])?.id ?? "");
-	const [query, setQuery] = useState("");
-	const [results, setResults] = useState<LibraryTrack[]>();
+	const [source, setSource] = useRemembered(
+		room,
+		"search.source",
+		() => (libraries.find((one) => one.signedIn) ?? libraries[0])?.id ?? "",
+	);
+	const [query, setQuery] = useRemembered(room, "search.query", "");
+	const [results, setResults] = useRemembered<LibraryTrack[] | undefined>(room, "search.results", undefined);
 	const [searching, setSearching] = useState(false);
 	const [problem, setProblem] = useState<string>();
-	const [added, setAdded] = useState<Set<string>>(new Set());
+	const [added, setAdded] = useRemembered<Set<string>>(room, "search.added", () => new Set());
 	const [quality, setQuality] = useState<Quality>(rememberedQuality);
 	const library = libraries.find((one) => one.id === source);
 
@@ -539,13 +619,13 @@ function SearchTab({ libraries, onAdd }: { libraries: Library[]; onAdd: (songs: 
 	);
 }
 
-function PlaylistTab({ onAdd }: { onAdd: (songs: Song[]) => void }) {
+function PlaylistTab({ room, onAdd }: { room: Room; onAdd: (songs: Song[]) => void }) {
 	const t = useT();
-	const [pasted, setPasted] = useState("");
-	const [found, setFound] = useState<Linked>();
+	const [pasted, setPasted] = useRemembered(room, "playlist.pasted", "");
+	const [found, setFound] = useRemembered<Linked | undefined>(room, "playlist.found", undefined);
 	const [reading, setReading] = useState(false);
 	const [problem, setProblem] = useState<string>();
-	const [added, setAdded] = useState<Set<string>>(new Set());
+	const [added, setAdded] = useRemembered<Set<string>>(room, "playlist.added", () => new Set());
 
 	const open = async (event: FormEvent) => {
 		event.preventDefault();

@@ -1,3 +1,5 @@
+import { Track } from "livekit-client";
+
 /**
  * Sound carried without loss: the format.
  *
@@ -40,6 +42,63 @@ export const ASK_TOPIC = "lossless-ask";
  * named LISTENING in sound.ts.
  */
 export const LOSSLESS = "listening-lossless";
+
+/**
+ * One way of sharing sound by itself, and everything that tells it apart.
+ *
+ * There are two, and they are kept apart from top to bottom: sound captured
+ * from an application or a tab, which goes out as a share's sound does, and
+ * music played from the library by the song desk. They used to be one. The
+ * desk published its music as a share's sound, and the SDK keeps one such
+ * track per person: starting a screen share while a song played sent the
+ * screen without its sound, and stopping it took the song with it, because
+ * stopping a screen share unpublishes the share's sound as well. So the music
+ * has a source of its own, Unknown, which nothing else here publishes, and its
+ * own names and topics, so that a listener can hear both at once, losslessly,
+ * and turn either down without the other.
+ */
+export interface Channel {
+	/** What a listener's settings call it; see hearing.ts. */
+	sound: "screen" | "music";
+	source: Track.Source.ScreenShareAudio | Track.Source.Unknown;
+	/** The Opus track's name when no lossless stream is offered beside it. */
+	opus: string;
+	/** Its name when one is: how a listener learns there is one to ask for. */
+	lossless: string;
+	/** Data-packet topics: the sound, and asking for it. */
+	topic: string;
+	ask: string;
+}
+
+/** Sound shared from an application or a tab. The names it has always had. */
+export const SHARED: Channel = {
+	sound: "screen",
+	source: Track.Source.ScreenShareAudio,
+	opus: "listening",
+	lossless: LOSSLESS,
+	topic: TOPIC,
+	ask: ASK_TOPIC,
+};
+
+/** The song desk's music. */
+export const MUSIC: Channel = {
+	sound: "music",
+	source: Track.Source.Unknown,
+	opus: "music",
+	lossless: "music-lossless",
+	topic: "lossless-music",
+	ask: "lossless-music-ask",
+};
+
+export const CHANNELS: readonly Channel[] = [SHARED, MUSIC];
+
+/** Whether a publication is sound shared on this channel, in either form. */
+export function onChannel(channel: Channel, publication: { source: Track.Source; trackName: string }): boolean {
+	return (
+		publication.source === channel.source &&
+		(publication.trackName === channel.opus || publication.trackName === channel.lossless)
+	);
+}
 
 /** How often a listener repeats its ask; an ask lasts three of these. */
 export const ASK_EVERY = 5000;

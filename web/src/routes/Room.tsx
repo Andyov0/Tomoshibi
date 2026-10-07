@@ -17,7 +17,7 @@ import { MusicPanel } from "@/components/room/MusicPanel";
 import { useLingering } from "@/hooks/useLingering";
 import { type Library, libraries as askLibraries } from "@/live/music";
 import { closeDesk, deskState, hearDesks, subscribeDesk } from "@/live/jukebox";
-import { soundOnly } from "@/live/sound";
+import { isMusic } from "@/live/sound";
 import { SaidInCorner } from "@/components/room/Said";
 import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
@@ -107,7 +107,9 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	useEffect(() => () => void closeDesk(room), [room]);
 	const desk = useSyncExternalStore(subscribeDesk, () => deskState(room));
 	const roster = useRoster(room);
-	const sharingSound = roster.some((one) => [...one.trackPublications.values()].some((publication) => soundOnly(publication)));
+	// Music somebody is playing whose desk this page has not heard of yet --
+	// an encrypted call, where desks say nothing -- still wants a volume.
+	const playingMusic = roster.some((one) => [...one.trackPublications.values()].some((publication) => isMusic(publication)));
 
 	// Where the controls sit. Held here rather than read where they are drawn,
 	// because what is drawn around them depends on it: a card that clears the
@@ -213,8 +215,8 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 					// reach the library has one before there is.
 					// And while the panel is open, so the button that opened it
 					// is there to close it after the music has stopped.
-					available: library !== undefined || desk !== undefined || sharingSound || panel === "music",
-					playing: desk?.now !== undefined || sharingSound,
+					available: library !== undefined || desk !== undefined || playingMusic || panel === "music",
+					playing: desk?.now !== undefined || playingMusic,
 				}}
 				onMusic={() => setPanel(panel === "music" ? undefined : "music")}
 				onLeave={onLeave}

@@ -22,10 +22,10 @@ import { keep, recall } from "@/lib/storage";
  */
 
 /** One thing there is to hear from somebody. */
-export type Sound = "voice" | "screen";
+export type Sound = "voice" | "screen" | "music";
 
-/** Both of them, in the order a panel should list them. */
-export const SOUNDS: readonly Sound[] = ["voice", "screen"];
+/** All of them, in the order a panel should list them. */
+export const SOUNDS: readonly Sound[] = ["voice", "screen", "music"];
 
 /**
  * The track each is carried on.
@@ -36,9 +36,12 @@ export const SOUNDS: readonly Sound[] = ["voice", "screen"];
  * film they are playing are separate acts because they were always separate
  * tracks.
  */
-export const SOURCE: Record<Sound, Track.Source.Microphone | Track.Source.ScreenShareAudio> = {
+export const SOURCE: Record<Sound, Track.Source.Microphone | Track.Source.ScreenShareAudio | Track.Source.Unknown> = {
 	voice: Track.Source.Microphone,
 	screen: Track.Source.ScreenShareAudio,
+	// The song desk's music, on a source of its own so that it and a screen's
+	// sound never take each other's place; see Channel in lossless.ts.
+	music: Track.Source.Unknown,
 };
 
 /** The sound belonging to a picture. */

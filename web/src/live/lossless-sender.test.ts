@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Room } from "livekit-client";
-import { ASK_TOPIC, FRAMES, TOPIC, toInt24, unpack } from "./lossless";
+import { ASK_TOPIC, FRAMES, MUSIC, TOPIC, toInt24, unpack } from "./lossless";
 import { LosslessSender } from "./lossless-sender";
 
 /*
@@ -50,10 +50,12 @@ class Processor {
 function fakeRoom(slow = false) {
 	const handlers = new Map<string, Set<Handler>>();
 	const sent: { bytes: Uint8Array; to: string[] }[] = [];
+	const sentOn: string[] = [];
 	const publishData = vi.fn(
 		(bytes: Uint8Array, options: { topic: string; destinationIdentities: string[] }) =>
 			new Promise<void>((resolve) => {
-				if (options.topic === TOPIC) sent.push({ bytes, to: options.destinationIdentities });
+				sentOn.push(options.topic);
+				if (options.topic === TOPIC || options.topic === MUSIC.topic) sent.push({ bytes, to: options.destinationIdentities });
 				if (!slow) resolve();
 			}),
 	);
@@ -72,13 +74,13 @@ function fakeRoom(slow = false) {
 	};
 
 	const join = (identity: string) => remoteParticipants.set(identity, { identity });
-	const ask = (identity: string, yes = true) => {
+	const ask = (identity: string, yes = true, topic = ASK_TOPIC) => {
 		for (const handler of handlers.get("dataReceived") ?? []) {
-			handler(new TextEncoder().encode(yes ? "1" : "0"), remoteParticipants.get(identity), 0, ASK_TOPIC);
+			handler(new TextEncoder().encode(yes ? "1" : "0"), remoteParticipants.get(identity), 0, topic);
 		}
 	};
 
-	return { room: room as unknown as Room, sent, join, ask };
+	return { room: room as unknown as Room, sent, sentOn, join, ask };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -216,3 +218,20 @@ it("turns floats into samples the way it was told to", async () => {
 	expect(Array.from(block?.channels[0] ?? []).every((sample) => sample === 4242)).toBe(true);
 	sender.stop();
 });
+
+it("as the song desk's music, answers only asks for the music, and only on the music's topic", async () => {
+	const { room, sent, sentOn, join, ask } = fakeRoom();
+	join("gfriend-1");
+	const sender = new LosslessSender(room, {} as MediaStreamTrack, () => {}, toInt24, MUSIC);
+
+	ask("gfriend-1");
+	await capture(2);
+	expect(sent).toHaveLength(0);
+
+	ask("gfriend-1", true, MUSIC.ask);
+	await capture(2, 2);
+	expect(sent).toHaveLength(1);
+	expect(new Set(sentOn)).toEqual(new Set([MUSIC.topic]));
+	sender.stop();
+});
+

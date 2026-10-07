@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { Room } from "livekit-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rememberedDucking } from "@/live/duck";
 import { setBlocked, settingFor } from "@/live/hearing";
 import { closeDesk, hearDesks } from "@/live/jukebox";
 import { MusicPanel } from "./MusicPanel";
@@ -140,7 +141,7 @@ describe("choosing a track", () => {
 
 		await waitFor(() => expect(playDecoded).toHaveBeenCalledTimes(1));
 		expect(searchLibrary).toHaveBeenCalledWith("one", "sunny");
-		expect(describeTrack).toHaveBeenCalledWith("one", "0039", "lossless");
+		expect(describeTrack).toHaveBeenCalledWith("one", "0039", "lossless", expect.any(AbortSignal));
 		const [audio] = fetchLibraryTrack.mock.calls[0] as [{ url: string; rate: number; now: { quality: string } }];
 		expect(audio.url).toBe("/api/music/audio?source=one&id=0039&quality=lossless");
 		expect(audio.rate).toBe(44_100);
@@ -165,7 +166,7 @@ describe("choosing a track", () => {
 		await addFromSearch();
 
 		await waitFor(() => expect(playDecoded).toHaveBeenCalledTimes(1));
-		expect(describeTrack).toHaveBeenCalledWith("one", "0039", "best");
+		expect(describeTrack).toHaveBeenCalledWith("one", "0039", "best", expect.any(AbortSignal));
 	});
 
 	it("plays nothing, and says why, for a track the account may not play", async () => {
@@ -213,6 +214,26 @@ it("opens a pasted playlist and queues every song in it", async () => {
 	expect(readLink).toHaveBeenCalledWith("listen https://example.invalid/p/1");
 	fireEvent.click(screen.getByRole("tab", { name: "Song desk" }));
 	expect(screen.getByText("Rainy Day")).toBeTruthy();
+});
+
+it("keeps an opened playlist through a look at the desk, and through closing the panel, until another is opened", async () => {
+	readLink.mockResolvedValue({ source: "one", kind: "playlist", title: "A mix", tracks: [track] });
+	const { room } = fakeRoom();
+	show(room);
+	fireEvent.click(screen.getByRole("tab", { name: "Playlist" }));
+	fireEvent.change(screen.getByRole("textbox", { name: "Playlist link" }), { target: { value: "https://example.invalid/p/1" } });
+	fireEvent.click(screen.getByRole("button", { name: "Open" }));
+	await screen.findByText("A mix");
+
+	fireEvent.click(screen.getByRole("tab", { name: "Song desk" }));
+	fireEvent.click(screen.getByRole("tab", { name: "Playlist" }));
+	expect(screen.getByText("A mix")).toBeTruthy();
+
+	cleanup();
+	render(<MusicPanel room={room} libraries={libraries} onClose={vi.fn()} />);
+	expect(screen.getByRole("tab", { name: "Playlist" }).getAttribute("aria-selected")).toBe("true");
+	expect(screen.getByText("A mix")).toBeTruthy();
+	expect((screen.getByRole("textbox", { name: "Playlist link" }) as HTMLInputElement).value).toBe("https://example.invalid/p/1");
 });
 
 describe("somebody who cannot reach the library", () => {
@@ -284,14 +305,15 @@ describe("somebody who cannot reach the library", () => {
 		stop();
 	});
 
-	it("mutes the music for themselves alone, as the holder's shared sound", () => {
+	it("mutes the music for themselves alone, and neither the holder's voice nor their screen", () => {
 		const { stop } = listening();
 
 		fireEvent.click(screen.getByRole("button", { name: "Mute Music" }));
 
-		expect(settingFor("gholder-2", "screen").blocked).toBe(true);
+		expect(settingFor("gholder-2", "music").blocked).toBe(true);
 		expect(settingFor("gholder-2", "voice").blocked).toBe(false);
-		setBlocked("gholder-2", "screen", false);
+		expect(settingFor("gholder-2", "screen").blocked).toBe(false);
+		setBlocked("gholder-2", "music", false);
 		stop();
 	});
 });
@@ -309,6 +331,21 @@ it("lets whoever runs the desk put it away once the music has run out", async ()
 
 	await waitFor(() => expect(screen.getByText(/Search a song or paste a playlist link/)).toBeTruthy());
 	expect(sent.at(-1)?.message).toEqual({ t: "closed" });
+});
+
+it("lets anybody stop the music making way for speech, for themselves", async () => {
+	const { room } = fakeRoom();
+	show(room);
+	await addFromSearch();
+	await waitFor(() => expect(playDecoded).toHaveBeenCalledTimes(1));
+	fireEvent.click(screen.getByRole("tab", { name: "Song desk" }));
+
+	const box = screen.getByRole("checkbox", { name: "Lower the music while anybody talks" }) as HTMLInputElement;
+	expect(box.checked).toBe(true);
+	fireEvent.click(box);
+
+	expect(rememberedDucking()).toBe(false);
+	expect(box.checked).toBe(false);
 });
 
 it("turns down the music in the holder's own speakers, and nobody's setting for anybody", async () => {

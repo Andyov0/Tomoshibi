@@ -4,6 +4,7 @@ import { useRoster } from "@/hooks/useRoomState";
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import { type Sound, setBlocked, setVolume, silenced } from "@/live/hearing";
+import { isMusic } from "@/live/sound";
 import { type Participant, type Room, Track } from "livekit-client";
 import { Volume2, VolumeX, X } from "lucide-react";
 
@@ -86,6 +87,9 @@ function Person({ participant }: { participant: Participant }) {
 	// whose tab audio was never granted has nothing to turn down, and an
 	// inert slider would be a promise the picture cannot keep.
 	const sharing = participant.getTrackPublication(Track.Source.ScreenShareAudio) !== undefined;
+	// And one for the song desk's music, which is a track of its own beside a
+	// screen's sound and is turned down on its own.
+	const music = [...participant.trackPublications.values()].some((publication) => isMusic(publication));
 
 	return (
 		<>
@@ -106,6 +110,8 @@ function Person({ participant }: { participant: Participant }) {
 					name={t("{name} (screen)", { name })}
 				/>
 			)}
+
+			{music && <SoundRow identity={participant.identity} sound="music" name={t("{name} (music)", { name })} />}
 		</>
 	);
 }

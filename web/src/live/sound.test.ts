@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Room } from "livekit-client";
-import { LOSSLESS } from "./lossless";
+import { FADE_IN_MS, resetDuck } from "./duck";
+import { LOSSLESS, MUSIC } from "./lossless";
 import {
 	LISTENING,
 	LISTENING_BITRATE,
@@ -10,13 +11,16 @@ import {
 	VOICE_BITRATE,
 	listening,
 	monitorVolume,
+	musicPaused,
 	nowPlaying,
+	pauseMusic,
 	playLibraryTrack,
 	setMonitorVolume,
 	sendingLossless,
 	startListening,
 	subscribePlaying,
 	stopListening,
+	stopMusic,
 	voiceCapture,
 	voicePublish,
 } from "./sound";
@@ -82,11 +86,13 @@ function fakeRoom(options: Record<string, unknown> = {}) {
 	const publications = new Map<string, unknown>();
 	const publishTrack = vi.fn(async (track: unknown, options: { source: string; name: string }) => {
 		const publication = { source: options.source, trackName: options.name, track };
-		publications.set("one", publication);
+		publications.set(options.name, publication);
 		return publication;
 	});
-	const unpublishTrack = vi.fn(async () => {
-		publications.clear();
+	const unpublishTrack = vi.fn(async (track: unknown) => {
+		for (const [name, publication] of publications) {
+			if ((publication as { track: unknown }).track === track) publications.delete(name);
+		}
 	});
 	const room = {
 		options,
@@ -295,13 +301,20 @@ describe("sharing sound losslessly, in order", () => {
 describe("playing a track from the library", () => {
 	function stubAudio() {
 		const contexts: { options: AudioContextOptions; closed: boolean; monitor: { value: number } }[] = [];
-		const nodes: { started: boolean; stopped: boolean; connected: unknown[]; listeners: Record<string, () => void> }[] = [];
+		const nodes: {
+			started: boolean;
+			stopped: boolean;
+			from?: number;
+			connected: unknown[];
+			listeners: Record<string, () => void>;
+		}[] = [];
 		const decodedAt: number[] = [];
 		const fetched: string[] = [];
 		const destinationTrack = fakeTrack("audio");
 
 		class FakeContext {
 			record: { options: AudioContextOptions; closed: boolean; monitor: { value: number } };
+			currentTime = 0;
 			destination = { name: "speakers" };
 			out = { name: "out", stream: { getAudioTracks: () => [destinationTrack] }, channelCount: 0, channelCountMode: "" };
 			constructor(options: AudioContextOptions) {
@@ -312,17 +325,40 @@ describe("playing a track from the library", () => {
 			async close() {
 				this.record.closed = true;
 			}
+			hums: { offset: number; connected: unknown[]; started: boolean }[] = [];
+			createConstantSource() {
+				const hum = { offset: 1, connected: [] as unknown[], started: false };
+				this.hums.push(hum);
+				return {
+					offset: {
+						set value(v: number) {
+							hum.offset = v;
+						},
+					},
+					connect: (target: unknown) => hum.connected.push(target),
+					start: () => {
+						hum.started = true;
+					},
+				};
+			}
 			createGain() {
 				return { name: "monitor", gain: this.record.monitor, connect: vi.fn() };
 			}
 			createBufferSource() {
-				const record = { started: false, stopped: false, connected: [] as unknown[], listeners: {} as Record<string, () => void> };
+				const record = {
+					started: false,
+					stopped: false,
+					from: undefined as number | undefined,
+					connected: [] as unknown[],
+					listeners: {} as Record<string, () => void>,
+				};
 				nodes.push(record);
 				return {
 					buffer: null,
 					connect: (target: unknown) => record.connected.push(target),
-					start: () => {
+					start: (_when?: number, from?: number) => {
 						record.started = true;
+						record.from = from;
 					},
 					stop: () => {
 						record.stopped = true;
@@ -345,11 +381,19 @@ describe("playing a track from the library", () => {
 			) {}
 			async decodeAudioData() {
 				decodedAt.push(this.sampleRate);
-				return { sampleRate: this.sampleRate };
+				return { sampleRate: this.sampleRate, duration: 240 };
 			}
 		}
 
 		vi.stubGlobal("AudioContext", FakeContext);
+		const made: FakeContext[] = [];
+		const Tracked = class extends FakeContext {
+			constructor(options: AudioContextOptions) {
+				super(options);
+				made.push(this);
+			}
+		};
+		vi.stubGlobal("AudioContext", Tracked);
 		vi.stubGlobal("OfflineAudioContext", FakeOffline);
 		vi.stubGlobal(
 			"fetch",
@@ -362,12 +406,20 @@ describe("playing a track from the library", () => {
 			readable = new ReadableStream({ start() {} });
 		});
 
-		return { contexts, nodes, decodedAt, fetched, destinationTrack };
+		/** Move the newest context's clock on, as playing would. */
+		const advance = (seconds: number) => {
+			const context = made.at(-1);
+			if (context) context.currentTime += seconds;
+		};
+
+		return { contexts, nodes, decodedAt, fetched, destinationTrack, advance, made };
 	}
 
 	afterEach(() => {
 		vi.unstubAllGlobals();
+		vi.restoreAllMocks();
 		localStorage.clear();
+		resetDuck();
 	});
 
 	it("decodes at the track's own rate, so nothing resamples it, and shares it losslessly", async () => {
@@ -388,10 +440,12 @@ describe("playing a track from the library", () => {
 		expect(fetched).toEqual(["/api/music/audio?x"]);
 		expect(progress).toHaveBeenLastCalledWith(1);
 		expect(nodes[0]?.started).toBe(true);
-		expect(publishTrack.mock.calls[0]?.[1]).toMatchObject({ name: LOSSLESS, source: "screen_share_audio" });
+		// On a source of its own, not as a share's sound; see MUSIC in lossless.ts.
+		expect(publishTrack.mock.calls[0]?.[1]).toMatchObject({ name: MUSIC.lossless, source: "unknown" });
 		expect((publishTrack.mock.calls[0]?.[0] as { mediaStreamTrack: unknown }).mediaStreamTrack).toBe(destinationTrack);
 		expect(nowPlaying(room)?.title).toBe("t");
-		expect(sendingLossless(room)).toBe(true);
+		expect(sendingLossless(room, MUSIC)).toBe(true);
+		expect(sendingLossless(room)).toBe(false);
 	});
 
 	it("plays on through the same output when the next track has its rate and depth", async () => {
@@ -447,12 +501,72 @@ describe("playing a track from the library", () => {
 		const { room } = fakeRoom();
 
 		await playLibraryTrack(room, { url: "/u", rate: 44_100 }, true);
+		// Past the fade-in, which starts the music from nothing; see duck.ts.
+		const later = performance.now() + FADE_IN_MS + 100;
+		vi.spyOn(performance, "now").mockReturnValue(later);
 		setMonitorVolume(room, 0.25);
 
 		expect(contexts[0]?.monitor.value).toBe(0.25);
 		// The published track takes the node straight; only the monitor is turned down.
 		expect(nodes[0]?.connected.map((target) => (target as { name: string }).name)).toEqual(["out", "monitor"]);
 		expect(monitorVolume()).toBe(0.25);
+	});
+
+	it("plays on beside sound shared from an application, and each stops without the other", async () => {
+		const { nodes } = stubAudio();
+		const { room, unpublishTrack } = fakeRoom();
+		const shared = fakeTrack("audio");
+		const getDisplayMedia = vi.fn(async () => ({ getAudioTracks: () => [shared], getVideoTracks: () => [], getTracks: () => [shared] }));
+		Object.defineProperty(navigator, "mediaDevices", { value: { getDisplayMedia }, configurable: true });
+
+		const now = { title: "t", artists: "a", quality: "q" };
+		await playLibraryTrack(room, { url: "/u", rate: 44_100, now }, true, () => {}, () => {}, () => {});
+		await startListening(room, true);
+		expect(sendingLossless(room)).toBe(true);
+		expect(sendingLossless(room, MUSIC)).toBe(true);
+
+		await stopListening(room);
+		expect(listening(room)).toBeUndefined();
+		expect(nowPlaying(room)).toBeDefined();
+		expect(nodes[0]?.stopped).toBe(false);
+		expect(sendingLossless(room, MUSIC)).toBe(true);
+
+		await startListening(room, true);
+		await stopMusic(room);
+		expect(listening(room)).toBeDefined();
+		expect(sendingLossless(room)).toBe(true);
+		expect(unpublishTrack).toHaveBeenCalledTimes(2);
+	});
+
+	it("pauses by stopping the node and keeping the stream, and goes on from the same place", async () => {
+		const { nodes, advance, made } = stubAudio();
+		const { room, unpublishTrack } = fakeRoom();
+		const ended = vi.fn();
+		const now = { title: "t", artists: "a", quality: "q" };
+		await playLibraryTrack(room, { url: "/u", rate: 44_100, now }, true, () => {}, () => {}, ended);
+
+		advance(12.5);
+		pauseMusic(room, true);
+		expect(nodes[0]?.stopped).toBe(true);
+		expect(musicPaused(room)).toBe(true);
+		// The stopped node ends, and that is not the track ending.
+		nodes[0]?.listeners.ended?.();
+		expect(ended).not.toHaveBeenCalled();
+		expect(unpublishTrack).not.toHaveBeenCalled();
+		expect(sendingLossless(room, MUSIC)).toBe(true);
+		// What keeps the stream going with nothing playing: zeros, into what is sent.
+		const [hum] = made[0]?.hums ?? [];
+		expect(hum).toMatchObject({ offset: 0, started: true });
+		expect((hum?.connected[0] as { name: string }).name).toBe("out");
+
+		advance(30);
+		pauseMusic(room, false);
+		expect(nodes[1]?.started).toBe(true);
+		expect(nodes[1]?.from).toBe(12.5);
+		expect(musicPaused(room)).toBe(false);
+
+		nodes[1]?.listeners.ended?.();
+		expect(ended).toHaveBeenCalledTimes(1);
 	});
 
 	it("stops playing, lets the context go and says nothing is playing when stopped", async () => {
@@ -462,12 +576,12 @@ describe("playing a track from the library", () => {
 		const unsubscribe = subscribePlaying(told);
 
 		await playLibraryTrack(room, { url: "/u", rate: 48_000 }, true);
-		await stopListening(room);
+		await stopMusic(room);
 
 		expect(nodes[0]?.stopped).toBe(true);
 		expect(contexts[0]?.closed).toBe(true);
 		expect(nowPlaying(room)).toBeUndefined();
-		expect(sendingLossless(room)).toBe(false);
+		expect(sendingLossless(room, MUSIC)).toBe(false);
 		expect(told).toHaveBeenCalled();
 		unsubscribe();
 	});

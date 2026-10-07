@@ -89,9 +89,13 @@ const en = {
 	"Hide music": "Hide music",
 	"In your speakers": "In your speakers",
 	"Music volume in your speakers": "Music volume in your speakers",
+	"Lower the music while anybody talks": "Lower the music while anybody talks",
 	"Music": "Music",
 	"Next song": "Next song",
-	"Loading the next song": "Loading the next song",
+	"Loading {title}": "Loading {title}",
+	"Paused": "Paused",
+	"Pause": "Pause",
+	"Play": "Play",
 	"Nobody is running the song desk.": "Nobody is running the song desk.",
 	"Open": "Open",
 	"Paste a link shared from a music app.": "Paste a link shared from a music app.",
@@ -133,6 +137,7 @@ const en = {
 
 	// What a picture is labelled with.
 	"{name} (screen)": "{name} (screen)",
+	"{name} (music)": "{name} (music)",
 	"{name} (you)": "{name} (you)",
 	unverified: "unverified",
 	"Only this person can use this name": "Only this person can use this name",

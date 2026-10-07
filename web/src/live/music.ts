@@ -93,9 +93,14 @@ export async function searchLibrary(source: string, query: string, page = 1): Pr
 }
 
 /** What a track's audio is, or "unavailable" where this library's account may not play it. */
-export async function describeTrack(source: string, id: string, quality: Quality = "best"): Promise<TrackAudio | "unavailable"> {
+export async function describeTrack(
+	source: string,
+	id: string,
+	quality: Quality = "best",
+	signal?: AbortSignal,
+): Promise<TrackAudio | "unavailable"> {
 	const params = new URLSearchParams({ source, id, quality });
-	const response = await fetch(`/api/music/track?${params}`, { credentials: "same-origin" });
+	const response = await fetch(`/api/music/track?${params}`, { credentials: "same-origin", signal });
 	if (response.status === 404) return "unavailable";
 	if (!response.ok) throw new LibraryFailed(response.status);
 

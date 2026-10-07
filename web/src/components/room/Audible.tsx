@@ -1,8 +1,10 @@
-import { SOUNDS, SOURCE, settingFor, subscribe } from "@/live/hearing";
+import { musicArrived, musicFactor, musicLeft, subscribeDuck, watchSpeech } from "@/live/duck";
+import { SOUNDS, SOURCE, type Sound, settingFor, subscribe } from "@/live/hearing";
 import { holdsBack, receiveLossless } from "@/live/lossless-receiver";
 import { audioBlocked } from "@/live/notices";
+import { isMusic } from "@/live/sound";
 import { RoomAudioRenderer, useAudioPlayback } from "@livekit/components-react";
-import { type Room, RoomEvent } from "livekit-client";
+import { type RemoteParticipant, type Room, RoomEvent, Track } from "livekit-client";
 import { useEffect } from "react";
 
 /**
@@ -55,10 +57,18 @@ export function Audible({ room }: { room: Room }) {
 		// changes, the settings are put back with that taken into account.
 		const unlisten = receiveLossless(room, put);
 
+		// The music turned down under speech, and faded in when it starts; see
+		// live/duck.ts. Only the music's volume moves, many times a second while
+		// it does, so only that is put back then.
+		const unwatch = watchSpeech(room);
+		const unduck = subscribeDuck(() => applyMusic(room));
+
 		return () => {
 			for (const event of HEARING_EVENTS) room.off(event, put);
 			stop();
 			unlisten();
+			unwatch();
+			unduck();
 		};
 	}, [room]);
 
@@ -99,15 +109,18 @@ function apply(room: Room): void {
 			const setting = settingFor(participant.identity, sound);
 
 			// Kept on the participant rather than the track, so it is waiting
-			// for a microphone that has not been turned on yet.
-			participant.setVolume(setting.volume, source);
+			// for a microphone that has not been turned on yet. The SDK's type
+			// names two sources, but what it does -- file the volume by source
+			// and apply it to that source's track when one arrives -- is the same
+			// for any, and the music's is Unknown; see hearing.ts.
+			participant.setVolume(volumeOf(participant, sound), source as Parameters<typeof participant.setVolume>[1]);
 
 			const publication = participant.getTrackPublication(source);
 
 			// Held back as well while the same sound is arriving losslessly:
 			// asked of the media server like a block, so it is not downloaded
 			// alongside, and given back the moment the lossless stream ends.
-			const off = setting.blocked || (sound === "screen" && holdsBack(room, participant.identity));
+			const off = setting.blocked || (sound !== "voice" && holdsBack(room, participant.identity, sound));
 
 			// Only where it differs, because this one leaves the machine: every
 			// call with a new answer sends the media server a settings update,
@@ -116,5 +129,25 @@ function apply(room: Room): void {
 				publication.setEnabled(!off);
 			}
 		}
+	}
+}
+
+/** How loud one sound from one person is to be: their setting, and for music the duck and the fade-in. */
+function volumeOf(participant: RemoteParticipant, sound: Sound): number {
+	const volume = settingFor(participant.identity, sound).volume;
+	if (sound !== "music") return volume;
+
+	if ([...participant.trackPublications.values()].some((publication) => isMusic(publication))) {
+		musicArrived(participant.identity);
+	} else {
+		musicLeft(participant.identity);
+	}
+	return volume * musicFactor(participant.identity);
+}
+
+/** Only the music's volumes, for the many times a second they move. */
+function applyMusic(room: Room): void {
+	for (const participant of room.remoteParticipants.values()) {
+		participant.setVolume(volumeOf(participant, "music"), Track.Source.Unknown as Parameters<typeof participant.setVolume>[1]);
 	}
 }

@@ -49,6 +49,10 @@ export interface DeskState {
 	needed: number;
 	/** The next song is being fetched. */
 	loading: boolean;
+	/** Which: off the queue already, and not playing yet. */
+	next?: Entry;
+	/** What is playing is paused, by whoever runs the desk. */
+	paused: boolean;
 	/** What is playing actually is: "FLAC · 24-bit · 44.1 kHz". */
 	quality?: string;
 }
@@ -68,11 +72,12 @@ export interface DeskDeps {
 	libraries: () => Library[];
 	search: (source: string, query: string) => Promise<LibraryTrack[]>;
 	readLink: (text: string) => Promise<{ source: string; tracks: LibraryTrack[] } | undefined>;
-	describe: (source: string, id: string, quality: Quality) => Promise<TrackAudio | "unavailable">;
+	describe: (source: string, id: string, quality: Quality, signal?: AbortSignal) => Promise<TrackAudio | "unavailable">;
 	audioUrl: (source: string, id: string, quality: Quality) => string;
 	fetchTrack: (audio: LibraryAudio, signal: AbortSignal, onProgress: (fraction: number) => void) => Promise<Decoded>;
 	play: (decoded: Decoded, onEnded: () => void) => Promise<void>;
 	stop: () => Promise<void>;
+	pause: (paused: boolean) => void;
 	describeAudio: (audio: TrackAudio) => string;
 	quality: () => Quality;
 	/** A track was skipped because it could not be played. */
@@ -101,8 +106,11 @@ export class Desk {
 	private queue: Entry[] = [];
 	private now?: Entry;
 	private quality?: string;
+	private paused = false;
 	private votes = new Set<string>();
 	private ahead?: { key: string; abort: AbortController; result: Promise<Decoded | "unavailable"> };
+	/** The song being fetched to play next, and how to abandon it. */
+	private fetching?: { entry: Entry; abort: AbortController };
 	private starting = false;
 	private closed = false;
 	private listeners = new Set<() => void>();
@@ -140,6 +148,8 @@ export class Desk {
 			votes: [...this.votes],
 			needed: this.needed(),
 			loading: this.starting,
+			next: this.fetching?.entry,
+			paused: this.now !== undefined && this.paused,
 			quality: this.now ? this.quality : undefined,
 		};
 		return this.cached;
@@ -177,7 +187,10 @@ export class Desk {
 	}
 
 	vote(identity: string): void {
-		if (!this.now) return;
+		// Not while the next song is on its way. What everybody still sees then
+		// is the song already being skipped, and a vote against it would skip
+		// the one coming as well.
+		if (!this.now || this.starting) return;
 		this.votes.add(identity);
 		if (this.votes.size >= this.needed()) void this.next();
 		else this.changed();
@@ -187,9 +200,20 @@ export class Desk {
 		void this.next();
 	}
 
+	/** Pause what is playing, or go on with it. The next song plays unpaused. */
+	pause(paused: boolean): void {
+		if (!this.now || this.paused === paused) return;
+		this.paused = paused;
+		this.deps.pause(paused);
+		this.changed();
+	}
+
 	remove(key: string): void {
 		this.queue = this.queue.filter((one) => one.key !== key);
 		if (this.ahead?.key === key) this.dropAhead();
+		// The song already on its way to playing is taken out too: it was in
+		// the list a moment ago, and taking it out has to mean it never plays.
+		if (this.fetching?.entry.key === key) this.fetching.abort.abort();
 		this.changed();
 		this.prefetch();
 	}
@@ -206,6 +230,7 @@ export class Desk {
 		if (this.closed) return;
 		this.closed = true;
 		this.dropAhead();
+		this.fetching?.abort.abort();
 		this.queue = [];
 		this.now = undefined;
 		if (this.timer) clearInterval(this.timer);
@@ -223,12 +248,19 @@ export class Desk {
 	}
 
 	private async next(): Promise<void> {
-		// One at a time: a skip voted through while the next song is still
-		// loading would otherwise take two songs off the queue and play one.
-		if (this.closed || this.starting) return;
+		if (this.closed) return;
+
+		// One at a time. Asked again while a song is on its way -- a second
+		// press, or a skip voted through -- it is that song that is skipped:
+		// abandoned, and the one after fetched in its place. Before, this did
+		// nothing at all, and a song slow to arrive could not be got past.
+		if (this.starting) {
+			this.fetching?.abort.abort();
+			return;
+		}
+
 		this.starting = true;
 		this.votes.clear();
-		this.changed();
 
 		try {
 			for (;;) {
@@ -240,14 +272,25 @@ export class Desk {
 					return;
 				}
 
-				const decoded = await this.decode(entry, true);
+				// Said at once. The song left the queue here and the list on
+				// everybody's screen did not change until it began to play, so it
+				// sat at the top of the queue while it loaded, and taking it out
+				// there took out nothing: it loaded and played regardless.
+				const abort = new AbortController();
+				this.fetching = { entry, abort };
+				this.changed();
+
+				const decoded = await this.decode(entry, abort.signal);
+				this.fetching = undefined;
 				if (this.closed) return;
+				if (abort.signal.aborted) continue;
 				if (decoded === "unavailable") {
 					this.deps.onSkipped(entry);
 					continue;
 				}
 
 				this.now = entry;
+				this.paused = false;
 				this.quality = decoded.now?.quality;
 				await this.deps.play(decoded, () => void this.next());
 				this.changed();
@@ -276,19 +319,20 @@ export class Desk {
 		this.ahead = undefined;
 	}
 
-	private async decode(entry: Entry, now: boolean): Promise<Decoded | "unavailable"> {
+	private async decode(entry: Entry, signal: AbortSignal): Promise<Decoded | "unavailable"> {
 		if (this.ahead?.key === entry.key) {
-			const { result } = this.ahead;
+			const ahead = this.ahead;
 			this.ahead = undefined;
+			signal.addEventListener("abort", () => ahead.abort.abort(), { once: true });
 			try {
-				return await result;
+				return await ahead.result;
 			} catch {
-				// Fetched ahead and failed; try once more now.
+				// Fetched ahead and failed; try once more now, unless abandoned.
+				if (signal.aborted) return "unavailable";
 			}
 		}
-		const abort = new AbortController();
 		try {
-			return await this.load(entry, abort.signal, now ? this.deps.onProgress : () => {});
+			return await this.load(entry, signal, this.deps.onProgress);
 		} catch {
 			return "unavailable";
 		}
@@ -296,7 +340,7 @@ export class Desk {
 
 	private async load(entry: Entry, signal: AbortSignal, onProgress: (fraction: number) => void): Promise<Decoded | "unavailable"> {
 		const quality = this.deps.quality();
-		const audio = await this.deps.describe(entry.source, entry.id, quality);
+		const audio = await this.deps.describe(entry.source, entry.id, quality, signal);
 		if (audio === "unavailable") return "unavailable";
 
 		const now: NowPlaying = { title: entry.title, artists: entry.artists.join(" / "), quality: this.deps.describeAudio(audio) };

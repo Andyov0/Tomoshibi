@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Room } from "livekit-client";
 import { setBlocked } from "./hearing";
-import { ASK_TOPIC, FRAMES, LOSSLESS, TOPIC, fromInt24, pack } from "./lossless";
+import { ASK_TOPIC, FRAMES, LOSSLESS, MUSIC, TOPIC, fromInt24, pack } from "./lossless";
 import { MAX_UNDERRUNS, type Player, SLOW_WINDOW_MS, STALL_MS, holdsBack, receiveLossless } from "./lossless-receiver";
 import { LISTENING } from "./sound";
 
@@ -335,3 +335,56 @@ it("asks again every second until the first packet, in case the first ask arrive
 	expect(asks().length).toBe(before);
 	stop();
 });
+
+describe("music beside a shared sound, from the same person", () => {
+	function both() {
+		const made = fakeRoom();
+		const room = made.room as unknown as { remoteParticipants: Map<string, unknown> };
+		room.remoteParticipants.set("gfriend-1", {
+			identity: "gfriend-1",
+			trackPublications: new Map([
+				["TR_app", { source: "screen_share_audio", trackName: LOSSLESS, trackSid: "TR_app" }],
+				["TR_music", { source: "unknown", trackName: MUSIC.lossless, trackSid: "TR_music" }],
+			]),
+		});
+		return made;
+	}
+
+	it("is asked for on its own topic and played by its own player, sample for sample", () => {
+		const { room, emit } = both();
+		const players = fakePlayers();
+		const publishData = (room as unknown as { localParticipant: { publishData: ReturnType<typeof vi.fn> } }).localParticipant
+			.publishData;
+		const stop = receiveLossless(room, () => {}, players.make);
+		emit("trackPublished");
+
+		const topics = publishData.mock.calls.map((call) => (call[1] as { topic: string }).topic);
+		expect(topics).toContain(ASK_TOPIC);
+		expect(topics).toContain(MUSIC.ask);
+
+		const friend = (room as unknown as { remoteParticipants: Map<string, unknown> }).remoteParticipants.get("gfriend-1");
+		emit("dataReceived", pack({ rate: 44_100, stream: 7, seq: 0, channels: samples(0) }), friend, 0, MUSIC.topic);
+		emit("dataReceived", pack({ rate: 48_000, stream: 8, seq: 0, channels: samples(1) }), friend, 0, TOPIC);
+
+		expect(players.made).toHaveLength(2);
+		expect(Array.from(players.made[0]?.blocks[0]?.[0] ?? [])).toEqual(Array.from(samples(0)[0] as Int32Array, fromInt24));
+		expect(Array.from(players.made[1]?.blocks[0]?.[0] ?? [])).toEqual(Array.from(samples(1)[0] as Int32Array, fromInt24));
+		expect(holdsBack(room, "gfriend-1", "music")).toBe(true);
+		expect(holdsBack(room, "gfriend-1", "screen")).toBe(true);
+		stop();
+	});
+
+	it("is let go of on its own when the music is turned off, and the shared sound is not", () => {
+		const { room, emit } = both();
+		const stop = receiveLossless(room, () => {}, fakePlayers().make);
+		emit("trackPublished");
+
+		setBlocked("gfriend-1", "music", true);
+
+		expect(holdsBack(room, "gfriend-1", "music")).toBe(false);
+		expect(holdsBack(room, "gfriend-1", "screen")).toBe(true);
+		setBlocked("gfriend-1", "music", false);
+		stop();
+	});
+});
+

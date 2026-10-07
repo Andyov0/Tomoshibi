@@ -1,5 +1,5 @@
 import { type RemoteParticipant, type Room, RoomEvent } from "livekit-client";
-import { ASK_EVERY, ASK_TOPIC, FRAMES, TOPIC, pack, toInt24 } from "./lossless";
+import { ASK_EVERY, type Channel, FRAMES, SHARED, pack, toInt24 } from "./lossless";
 
 /**
  * Sending shared sound without loss, alongside the Opus track that carries it
@@ -73,6 +73,8 @@ export class LosslessSender {
 		 * recovered exactly.
 		 */
 		private readonly toInt: (sample: number) => number = toInt24,
+		/** Which of the two kinds of shared sound this is; their streams never mix. */
+		private readonly channel: Channel = SHARED,
 	) {
 		room.on(RoomEvent.DataReceived, this.onAsk);
 		room.on(RoomEvent.ParticipantDisconnected, this.onLeft);
@@ -94,7 +96,7 @@ export class LosslessSender {
 		_kind?: unknown,
 		topic?: string,
 	): void => {
-		if (topic !== ASK_TOPIC || !participant) return;
+		if (topic !== this.channel.ask || !participant) return;
 
 		if (new TextDecoder().decode(payload) === "1") this.wanting.set(participant.identity, Date.now());
 		else this.wanting.delete(participant.identity);
@@ -217,7 +219,7 @@ export class LosslessSender {
 				try {
 					await this.room.localParticipant.publishData(next.bytes as Uint8Array<ArrayBuffer>, {
 						reliable: true,
-						topic: TOPIC,
+						topic: this.channel.topic,
 						destinationIdentities: next.to,
 					});
 				} catch {

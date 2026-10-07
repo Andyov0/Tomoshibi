@@ -1,6 +1,7 @@
-import { type RemoteParticipant, type Room, RoomEvent, Track } from "livekit-client";
+import { type RemoteParticipant, type Room, RoomEvent } from "livekit-client";
+import { musicFactor, subscribeDuck } from "./duck";
 import { settingFor, silenced, subscribe as onHearing } from "./hearing";
-import { ASK_EVERY, ASK_TOPIC, LOSSLESS, Malformed, TOPIC, fromInt24, unpack } from "./lossless";
+import { ASK_EVERY, CHANNELS, type Channel, Malformed, fromInt24, unpack } from "./lossless";
 import type { Counts } from "./playout";
 
 /**
@@ -88,6 +89,8 @@ export interface Player {
 export type MakePlayer = (rate: number, channels: number) => Player;
 
 interface Source {
+	identity: string;
+	channel: Channel;
 	/** The publication this is about. A new share is a new publication and a fresh start. */
 	publication: string;
 	wanted: boolean;
@@ -104,16 +107,25 @@ interface Source {
 	rate: number;
 }
 
+/** Filed by person and by channel: somebody can be sharing an application's sound and playing music at once. */
 const sources = new WeakMap<Room, Map<string, Source>>();
 
-/** Whether this person's Opus sound track should be held back, because the lossless one is playing. */
-export function holdsBack(room: Room, identity: string): boolean {
-	return sources.get(room)?.get(identity)?.wanted === true;
+const keyOf = (identity: string, sound: Channel["sound"]) => `${sound}\n${identity}`;
+
+/** Whether this person's Opus track for a sound should be held back, because the lossless one is playing. */
+export function holdsBack(room: Room, identity: string, sound: Channel["sound"] = "screen"): boolean {
+	return sources.get(room)?.get(keyOf(identity, sound))?.wanted === true;
 }
 
 /** How a person's lossless stream is doing, if one is being played. For the panel and the tests. */
-export function losslessCounts(room: Room, identity: string): Counts | undefined {
-	return sources.get(room)?.get(identity)?.player?.counts();
+export function losslessCounts(room: Room, identity: string, sound: Channel["sound"] = "screen"): Counts | undefined {
+	return sources.get(room)?.get(keyOf(identity, sound))?.player?.counts();
+}
+
+/** How loud a stream plays: the listener's setting, and for music the duck; see duck.ts. */
+function levelOf(source: Source): number {
+	const volume = settingFor(source.identity, source.channel.sound).volume;
+	return source.channel.sound === "music" ? volume * musicFactor(source.identity) : volume;
 }
 
 /** Whether this browser can play a lossless stream at all. */
@@ -121,9 +133,9 @@ export function canReceiveLossless(): boolean {
 	return typeof AudioWorkletNode === "function" && typeof AudioContext === "function";
 }
 
-function losslessShare(participant: RemoteParticipant) {
+function losslessShare(participant: RemoteParticipant, channel: Channel) {
 	for (const publication of participant.trackPublications.values()) {
-		if (publication.source === Track.Source.ScreenShareAudio && publication.trackName === LOSSLESS) {
+		if (publication.source === channel.source && publication.trackName === channel.lossless) {
 			return publication;
 		}
 	}
@@ -144,36 +156,41 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 		return () => sources.delete(room);
 	}
 
-	const ask = (identity: string, yes: boolean) => {
+	const ask = (source: Source, yes: boolean) => {
 		room.localParticipant
 			.publishData(new TextEncoder().encode(yes ? "1" : "0"), {
 				reliable: true,
-				topic: ASK_TOPIC,
-				destinationIdentities: [identity],
+				topic: source.channel.ask,
+				destinationIdentities: [source.identity],
 			})
 			.catch(() => {});
 	};
 
-	const giveUp = (identity: string, source: Source) => {
+	const giveUp = (source: Source) => {
 		source.failed = true;
 		source.player?.close();
 		source.player = undefined;
-		ask(identity, false);
+		ask(source, false);
 	};
 
 	const refresh = () => {
 		const now = Date.now();
 		let moved = false;
 
-		for (const participant of room.remoteParticipants.values()) {
+		const offers = [...room.remoteParticipants.values()].flatMap((participant) =>
+			CHANNELS.map((channel) => ({ participant, channel })),
+		);
+
+		for (const { participant, channel } of offers) {
 			const identity = participant.identity;
-			const share = losslessShare(participant);
-			let source = mine.get(identity);
+			const key = keyOf(identity, channel.sound);
+			const share = losslessShare(participant, channel);
+			let source = mine.get(key);
 
 			if (!share) {
 				if (source) {
 					source.player?.close();
-					mine.delete(identity);
+					mine.delete(key);
 					moved ||= source.wanted;
 				}
 				continue;
@@ -182,6 +199,8 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 			if (!source || source.publication !== share.trackSid) {
 				source?.player?.close();
 				source = {
+					identity,
+					channel,
 					publication: share.trackSid,
 					wanted: false,
 					failed: false,
@@ -191,10 +210,10 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 					windowFrames: 0,
 					rate: 0,
 				};
-				mine.set(identity, source);
+				mine.set(key, source);
 			}
 
-			const setting = settingFor(identity, "screen");
+			const setting = settingFor(identity, channel.sound);
 			let want = !source.failed && !silenced(setting);
 
 			// Packets arriving for a player that cannot play is the same failure
@@ -212,20 +231,20 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 			}
 
 			if (want && source.wanted && (stalled || starved || slow || source.player?.broken())) {
-				giveUp(identity, source);
+				giveUp(source);
 				want = false;
 			} else if (want && !source.wanted) {
 				source.askedAt = now;
 				source.lastAsk = now;
-				ask(identity, true);
+				ask(source, true);
 			} else if (want && now - source.lastAsk >= (source.lastPacket ? ASK_EVERY : ASK_UNTIL_ANSWERED)) {
 				source.lastAsk = now;
-				ask(identity, true);
+				ask(source, true);
 			} else if (!want && source.wanted && !source.failed) {
 				source.player?.close();
 				source.player = undefined;
 				source.stream = undefined;
-				ask(identity, false);
+				ask(source, false);
 			}
 
 			if (want !== source.wanted) {
@@ -233,13 +252,13 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 				moved = true;
 			}
 
-			source.player?.volume(setting.volume);
+			source.player?.volume(levelOf(source));
 		}
 
-		for (const [identity, source] of mine) {
-			if (!room.remoteParticipants.has(identity)) {
+		for (const [key, source] of mine) {
+			if (!room.remoteParticipants.has(source.identity)) {
 				source.player?.close();
-				mine.delete(identity);
+				mine.delete(key);
 				moved ||= source.wanted;
 			}
 		}
@@ -248,9 +267,10 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 	};
 
 	const onData = (payload: Uint8Array, participant?: RemoteParticipant, _kind?: unknown, topic?: string) => {
-		if (topic !== TOPIC || !participant) return;
+		const channel = CHANNELS.find((one) => one.topic === topic);
+		if (!channel || !participant) return;
 
-		const source = mine.get(participant.identity);
+		const source = mine.get(keyOf(participant.identity, channel.sound));
 		if (!source?.wanted) return;
 
 		let block: ReturnType<typeof unpack>;
@@ -264,7 +284,7 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 		if (block.stream !== source.stream) {
 			source.player?.close();
 			source.player = makePlayer(block.rate, block.channels.length);
-			source.player.volume(settingFor(participant.identity, "screen").volume);
+			source.player.volume(levelOf(source));
 			source.stream = block.stream;
 			source.nextSeq = block.seq;
 			source.rate = block.rate;
@@ -273,7 +293,7 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 		}
 
 		if (block.seq !== source.nextSeq) {
-			giveUp(participant.identity, source);
+			giveUp(source);
 			refresh();
 			return;
 		}
@@ -294,17 +314,23 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 	for (const event of events) room.on(event, refresh);
 	room.on(RoomEvent.DataReceived, onData);
 	const unhear = onHearing(refresh);
+	// The music's level moves under speech many times a second; only the
+	// players' volumes follow it, not the whole of refresh.
+	const unduck = subscribeDuck(() => {
+		for (const source of mine.values()) if (source.channel.sound === "music") source.player?.volume(levelOf(source));
+	});
 	const timer = setInterval(refresh, 1000);
 	refresh();
 
 	return () => {
 		clearInterval(timer);
 		unhear();
+		unduck();
 		for (const event of events) room.off(event, refresh);
 		room.off(RoomEvent.DataReceived, onData);
-		for (const [identity, source] of mine) {
+		for (const source of mine.values()) {
 			source.player?.close();
-			if (source.wanted) ask(identity, false);
+			if (source.wanted) ask(source, false);
 		}
 		mine.clear();
 		sources.delete(room);
@@ -375,7 +401,9 @@ function audioPlayer(rate: number, channels: number): Player {
 			else early.push(block);
 		},
 		volume(level) {
-			gain.gain.value = level;
+			// Eased rather than set: under speech it moves every few tens of
+			// milliseconds, and a gain stepped that often is heard as clicks.
+			gain.gain.setTargetAtTime(level, context.currentTime, 0.03);
 		},
 		close() {
 			closed = true;

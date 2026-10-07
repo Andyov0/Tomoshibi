@@ -7,7 +7,8 @@ import {
 	type TrackPublishOptions,
 } from "livekit-client";
 import { keep, recall } from "@/lib/storage";
-import { LOSSLESS, decodedToInt24, toInt24 } from "./lossless";
+import { LOCAL, musicArrived, musicFactor, musicLeft, subscribeDuck } from "./duck";
+import { type Channel, MUSIC, SHARED, decodedToInt24, onChannel, toInt24 } from "./lossless";
 import { LosslessSender, canSendLossless } from "./lossless-sender";
 
 /**
@@ -87,14 +88,16 @@ export const LISTENING_PUBLISH: TrackPublishOptions = {
 };
 
 /** The trackName that marks sound shared on its own, without a picture. */
-export const LISTENING = "listening";
+export const LISTENING = SHARED.opus;
 
-/** Whether a publication is sound shared on its own, in either form. */
+/** Whether a publication is sound shared on its own, in either form. Not the song desk's music. */
 export function soundOnly(publication: { source: Track.Source; trackName: string }): boolean {
-	return (
-		publication.source === Track.Source.ScreenShareAudio &&
-		(publication.trackName === LISTENING || publication.trackName === LOSSLESS)
-	);
+	return onChannel(SHARED, publication);
+}
+
+/** Whether a publication is the song desk's music, in either form. */
+export function isMusic(publication: { source: Track.Source; trackName: string }): boolean {
+	return onChannel(MUSIC, publication);
 }
 
 const LOSSLESS_KEY = "meet-live.lossless";
@@ -123,11 +126,20 @@ export function losslessUnavailable(room: Room): "encrypted" | "browser" | undef
 }
 
 /** The lossless stream going out of a room, if one is. */
-const senders = new WeakMap<Room, LosslessSender>();
+const senders = new WeakMap<Room, Map<Channel["sound"], LosslessSender>>();
 
-/** Whether the sound being shared from here is going out losslessly. */
-export function sendingLossless(room: Room): boolean {
-	return senders.has(room);
+function senderOf(room: Room, channel: Channel): LosslessSender | undefined {
+	return senders.get(room)?.get(channel.sound);
+}
+
+function dropSender(room: Room, channel: Channel): void {
+	senders.get(room)?.get(channel.sound)?.stop();
+	senders.get(room)?.delete(channel.sound);
+}
+
+/** Whether the sound being shared from here -- or the music, if asked about -- is going out losslessly. */
+export function sendingLossless(room: Room, channel: Channel = SHARED): boolean {
+	return senderOf(room, channel) !== undefined;
 }
 
 const ORIGINAL_KEY = "meet-live.original-sound";
@@ -319,6 +331,7 @@ async function publishSound(
 	lossless: boolean,
 	onLosslessGaveUp: () => void,
 	toInt: (sample: number) => number = toInt24,
+	channel: Channel = SHARED,
 ): Promise<LocalTrackPublication> {
 	const offered = lossless && losslessUnavailable(room) === undefined;
 
@@ -327,18 +340,18 @@ async function publishSound(
 	// anything here was listening, and the ask was lost: found in two browsers,
 	// where the first ask arrived in the gap and the listener gave up waiting.
 	if (offered) {
-		senders.set(
+		if (!senders.has(room)) senders.set(room, new Map());
+		const sender: LosslessSender = new LosslessSender(
 			room,
-			new LosslessSender(
-				room,
-				sound,
-				() => {
-					senders.delete(room);
-					onLosslessGaveUp();
-				},
-				toInt,
-			),
+			sound,
+			() => {
+				if (senders.get(room)?.get(channel.sound) === sender) senders.get(room)?.delete(channel.sound);
+				onLosslessGaveUp();
+			},
+			toInt,
+			channel,
 		);
+		senders.get(room)?.set(channel.sound, sender);
 	}
 
 	const track = new LocalAudioTrack(sound, MUSIC_CAPTURE, true);
@@ -346,12 +359,11 @@ async function publishSound(
 	try {
 		publication = await room.localParticipant.publishTrack(track, {
 			...LISTENING_PUBLISH,
-			source: Track.Source.ScreenShareAudio,
-			name: offered ? LOSSLESS : LISTENING,
+			source: channel.source,
+			name: offered ? channel.lossless : channel.opus,
 		});
 	} catch (err) {
-		senders.get(room)?.stop();
-		senders.delete(room);
+		dropSender(room, channel);
 		throw err;
 	}
 
@@ -384,8 +396,20 @@ interface Output {
 	monitor: GainNode;
 	rate: number;
 	bits: number;
+	/** The music's own published track; see MUSIC in lossless.ts. */
+	publication?: LocalTrackPublication;
 	node?: AudioBufferSourceNode;
 	now?: NowPlaying;
+	/** The track playing, or paused: what a resumed node plays from. */
+	buffer?: AudioBuffer;
+	/** Where in it the playing node began, and when, in the context's time. */
+	offset: number;
+	startedAt: number;
+	/** Set while paused: the place to go on from. */
+	pausedAt?: number;
+	onEnded?: () => void;
+	/** Stops the monitor following the duck; see duck.ts. */
+	unduck?: () => void;
 }
 
 const outputs = new WeakMap<Room, Output>();
@@ -427,7 +451,7 @@ export function setMonitorVolume(room: Room, volume: number): void {
 	const level = Math.max(0, Math.min(1, volume));
 	keep(MONITOR_KEY, level === 1 ? undefined : String(level));
 	const output = outputs.get(room);
-	if (output) output.monitor.gain.value = level;
+	if (output) output.monitor.gain.value = level * musicFactor(LOCAL);
 	changed();
 }
 
@@ -493,17 +517,40 @@ export async function playDecoded(
 	let output = outputs.get(room);
 
 	if (!output || output.rate !== decoded.rate || output.bits !== decoded.bits) {
-		await stopListening(room);
+		await stopMusic(room);
 
 		const context = new AudioContext({ sampleRate: decoded.rate, latencyHint: "playback" });
 		const out = context.createMediaStreamDestination();
 		out.channelCount = 2;
 		out.channelCountMode = "explicit";
+
+		// Something always playing into the stream, if only zeros. With nothing
+		// connected -- paused, or between one song and the next -- the browser
+		// stops delivering the track at all rather than delivering silence:
+		// measured in two browsers, a two-second pause sent one 20 ms block and
+		// then nothing, and a lossless stream with nothing in it for four
+		// seconds is given up on by every listener for the rest of the track.
+		const hum = context.createConstantSource();
+		hum.offset.value = 0;
+		hum.connect(out);
+		hum.start();
 		const monitor = context.createGain();
-		monitor.gain.value = monitorVolume();
+		// This page's own speakers make way for speech as everybody else's do,
+		// and fade the music in; nothing about it touches what is sent.
+		musicArrived(LOCAL);
+		monitor.gain.value = monitorVolume() * musicFactor(LOCAL);
 		monitor.connect(context.destination);
 
-		output = { context, out, monitor, rate: decoded.rate, bits: decoded.bits };
+		output = {
+			context,
+			out,
+			monitor,
+			rate: decoded.rate,
+			bits: decoded.bits,
+			offset: 0,
+			startedAt: 0,
+			unduck: subscribeDuck(() => monitor.gain.setTargetAtTime(monitorVolume() * musicFactor(LOCAL), context.currentTime, 0.03)),
+		};
 		try {
 			await context.resume();
 			const sound = out.stream.getAudioTracks()[0];
@@ -512,9 +559,18 @@ export async function playDecoded(
 			outputs.set(room, output);
 			// A 16-bit FLAC's own integers are recovered from what the browser
 			// decoded; see decodedToInt24. Anything else was never integers.
-			await publishSound(room, sound, lossless, onLosslessGaveUp, decodedToInt24(decoded.bits));
+			output.publication = await publishSound(
+				room,
+				sound,
+				lossless,
+				onLosslessGaveUp,
+				decodedToInt24(decoded.bits),
+				MUSIC,
+			);
 		} catch (err) {
 			if (outputs.get(room) === output) outputs.delete(room);
+			output.unduck?.();
+			musicLeft(LOCAL);
 			void context.close().catch(() => {});
 			changed();
 			throw err;
@@ -522,27 +578,11 @@ export async function playDecoded(
 	}
 
 	const previous = output.node;
-	const node = output.context.createBufferSource();
-	node.buffer = decoded.buffer;
-	node.connect(output.out);
-	node.connect(output.monitor);
-
-	const current = output;
-	node.addEventListener(
-		"ended",
-		() => {
-			// Only the node still playing speaks for the output: one that was
-			// replaced, or stopped by stopListening, ends too.
-			if (current.node !== node) return;
-			if (onEnded) onEnded();
-			else void stopListening(room);
-		},
-		{ once: true },
-	);
-
-	output.node = node;
 	output.now = decoded.now;
-	node.start();
+	output.buffer = decoded.buffer;
+	output.onEnded = onEnded;
+	output.pausedAt = undefined;
+	startNode(room, output, 0);
 	if (previous) {
 		try {
 			previous.stop();
@@ -551,6 +591,70 @@ export async function playDecoded(
 		}
 	}
 	changed();
+}
+
+/** Play the output's track from a place in it, on a node of its own. */
+function startNode(room: Room, output: Output, from: number): void {
+	const node = output.context.createBufferSource();
+	node.buffer = output.buffer ?? null;
+	node.connect(output.out);
+	node.connect(output.monitor);
+
+	node.addEventListener(
+		"ended",
+		() => {
+			// Only the node still playing speaks for the output: one that was
+			// replaced, paused, or stopped by stopMusic, ends too.
+			if (output.node !== node) return;
+			if (output.onEnded) output.onEnded();
+			else void stopMusic(room);
+		},
+		{ once: true },
+	);
+
+	output.node = node;
+	output.offset = from;
+	output.startedAt = output.context.currentTime;
+	node.start(0, from);
+}
+
+/**
+ * Pause the music, or go on with it.
+ *
+ * A buffer source cannot be paused, only stopped, so pausing stops it and
+ * remembers the place, and going on starts another from there. The output and
+ * its published track stay as they are: the context goes on running with
+ * nothing playing into it, so what everybody receives is silence rather than
+ * nothing. Suspending the context instead would stop the stream itself, and a
+ * lossless stream that stops is given up on by every listener after a few
+ * seconds and does not come back for the rest of the track.
+ */
+export function pauseMusic(room: Room, paused: boolean): void {
+	const output = outputs.get(room);
+	if (!output?.buffer) return;
+
+	if (paused && output.pausedAt === undefined) {
+		const node = output.node;
+		output.pausedAt = Math.min(output.buffer.duration, output.offset + output.context.currentTime - output.startedAt);
+		output.node = undefined;
+		try {
+			node?.stop();
+		} catch {
+			// Already finished.
+		}
+	} else if (!paused && output.pausedAt !== undefined) {
+		const from = output.pausedAt;
+		output.pausedAt = undefined;
+		startNode(room, output, from);
+	} else {
+		return;
+	}
+	changed();
+}
+
+/** Whether the music playing from here is paused. */
+export function musicPaused(room: Room): boolean {
+	return outputs.get(room)?.pausedAt !== undefined;
 }
 
 /**
@@ -618,33 +722,46 @@ export function listening(room: Room): LocalTrackPublication | undefined {
 	return undefined;
 }
 
-/** Stop sharing sound on its own. Safe to call when nothing is being shared. */
+/**
+ * Stop sharing sound on its own. Safe to call when nothing is being shared.
+ *
+ * The song desk's music is not this, and goes on: see stopMusic.
+ */
 export async function stopListening(room: Room): Promise<void> {
 	const publication = listening(room);
 	const picture = pictures.get(room);
 	pictures.delete(room);
 	picture?.stop();
-	senders.get(room)?.stop();
-	senders.delete(room);
-
-	loading.get(room)?.abort();
-	loading.delete(room);
-
-	const output = outputs.get(room);
-	outputs.delete(room);
-	if (output) {
-		const node = output.node;
-		output.node = undefined;
-		changed();
-		try {
-			node?.stop();
-		} catch {
-			// Already finished: the track ended, which is what called this.
-		}
-		void output.context.close().catch(() => {});
-	}
+	dropSender(room, SHARED);
 
 	if (publication?.track) {
 		await room.localParticipant.unpublishTrack(publication.track, true);
+	}
+}
+
+/** Stop the music playing from the library. Safe to call when none is. */
+export async function stopMusic(room: Room): Promise<void> {
+	loading.get(room)?.abort();
+	loading.delete(room);
+	dropSender(room, MUSIC);
+
+	const output = outputs.get(room);
+	outputs.delete(room);
+	if (!output) return;
+	output.unduck?.();
+	musicLeft(LOCAL);
+
+	const node = output.node;
+	output.node = undefined;
+	changed();
+	try {
+		node?.stop();
+	} catch {
+		// Already finished: the track ended, which is what called this.
+	}
+	void output.context.close().catch(() => {});
+
+	if (output.publication?.track) {
+		await room.localParticipant.unpublishTrack(output.publication.track, true);
 	}
 }

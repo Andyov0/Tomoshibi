@@ -44,6 +44,7 @@ export function ControlBar({
 	hidden,
 	onChat,
 	onListen,
+	onMusic,
 	onLeave,
 	host,
 	where,
@@ -65,6 +66,8 @@ export function ControlBar({
 	hidden?: boolean;
 	onChat: () => void;
 	onListen: () => void;
+	/** Open the music library; absent where this deployment has none for this person. */
+	onMusic?: () => void;
 	onLeave: () => void;
 	/** Whether this person may end the meeting rather than only leave it. */
 	host: boolean;
@@ -272,6 +275,7 @@ export function ControlBar({
 						})()
 					}
 					onStopListening={() => void guard(() => stopListening(room))()}
+					onMusic={onMusic}
 				/>
 			)}
 

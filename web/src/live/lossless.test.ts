@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type Block, FRAMES, Malformed, fromInt24, pack, toInt24, unpack } from "./lossless";
+import { type Block, FRAMES, Malformed, decodedToInt24, fromInt24, pack, toInt24, unpack } from "./lossless";
 
 /*
  * The lossless format.
@@ -172,9 +172,53 @@ describe("the float a browser has, as a 24-bit integer", () => {
 		}
 	});
 
+	it("rounds a float between two samples to the nearer, on either side of zero", () => {
+		const step = 1 / 8_388_608;
+		expect(toInt24(1000.6 * step)).toBe(1001);
+		expect(toInt24(1000.4 * step)).toBe(1000);
+		expect(toInt24(-1000.6 * step)).toBe(-1001);
+		expect(toInt24(-1000.4 * step)).toBe(-1000);
+	});
+
 	it("clips rather than wraps a float past full scale", () => {
 		expect(toInt24(1.5)).toBe(TOP);
 		expect(toInt24(-1.5)).toBe(BOTTOM);
 		expect(toInt24(1)).toBe(TOP);
+	});
+});
+
+describe("a sample Chrome decoded, back to the integer the file held", () => {
+	// What Chrome does: negative over 2^(n-1), positive over 2^(n-1) - 1, to a 32-bit float.
+	const chrome16 = (v: number) => Math.fround(v < 0 ? v / 32_768 : v / 32_767);
+	const chrome24 = (v: number) => {
+		const wide = v * 256;
+		return Math.fround(wide < 0 ? wide / 2_147_483_648 : wide / 2_147_483_647);
+	};
+
+	it("is every 16-bit sample, exactly, shifted into 24 bits", () => {
+		const recover = decodedToInt24(16);
+		for (let v = -32_768; v <= 32_767; v++) {
+			if (recover(chrome16(v)) !== v * 256) throw new Error(`16-bit ${v} came back as ${recover(chrome16(v)) / 256}`);
+		}
+	});
+
+	it("is every 24-bit sample, exactly, across the range and at both rails", () => {
+		const recover = decodedToInt24(24);
+		const next = random(7);
+		const values = [-8_388_608, -8_388_607, -1, 0, 1, 4_194_303, 4_194_304, 8_388_606, 8_388_607];
+		for (let i = 0; i < 200_000; i++) values.push(Math.floor(next() * 16_777_216) - 8_388_608);
+		for (const v of values) {
+			if (recover(chrome24(v)) !== v) throw new Error(`24-bit ${v} came back as ${recover(chrome24(v))}`);
+		}
+	});
+
+	it("is not what the one-scale conversion gives, which is why it exists", () => {
+		expect(toInt24(chrome16(6827))).not.toBe(6827 * 256);
+	});
+
+	it("leaves 24-bit files, and anything that was never integers, to the one-scale conversion", () => {
+		expect(decodedToInt24(24)).toBe(toInt24);
+		expect(decodedToInt24(0)).toBe(toInt24);
+		expect(decodedToInt24(32)).toBe(toInt24);
 	});
 });

@@ -7,7 +7,7 @@ import {
 	type TrackPublishOptions,
 } from "livekit-client";
 import { keep, recall } from "@/lib/storage";
-import { LOSSLESS } from "./lossless";
+import { LOSSLESS, decodedToInt24, toInt24 } from "./lossless";
 import { LosslessSender, canSendLossless } from "./lossless-sender";
 
 /**
@@ -296,6 +296,30 @@ export async function startListening(
 		pictures.set(room, picture);
 	}
 
+	const publication = await publishSound(room, sound, lossless, onLosslessGaveUp);
+
+	// Ended from outside -- the browser's own "stop sharing" bar, or the
+	// application being closed -- is the same as ended from here.
+	sound.addEventListener("ended", () => void stopListening(room), { once: true });
+	picture?.addEventListener("ended", () => void stopListening(room), { once: true });
+
+	return publication;
+}
+
+/**
+ * Publish a track of sound as sound shared on its own: Opus at its ceiling for
+ * everybody, and the lossless stream beside it for whoever asks, where lossless
+ * was wanted and can be had. Shared by an application's captured sound and a
+ * track played from the music library, which differ only in where the samples
+ * come from.
+ */
+async function publishSound(
+	room: Room,
+	sound: MediaStreamTrack,
+	lossless: boolean,
+	onLosslessGaveUp: () => void,
+	toInt: (sample: number) => number = toInt24,
+): Promise<LocalTrackPublication> {
 	const offered = lossless && losslessUnavailable(room) === undefined;
 
 	// Listening for asks before the track that invites them exists. The other
@@ -305,10 +329,15 @@ export async function startListening(
 	if (offered) {
 		senders.set(
 			room,
-			new LosslessSender(room, sound, () => {
-				senders.delete(room);
-				onLosslessGaveUp();
-			}),
+			new LosslessSender(
+				room,
+				sound,
+				() => {
+					senders.delete(room);
+					onLosslessGaveUp();
+				},
+				toInt,
+			),
 		);
 	}
 
@@ -326,12 +355,146 @@ export async function startListening(
 		throw err;
 	}
 
-	// Ended from outside -- the browser's own "stop sharing" bar, or the
-	// application being closed -- is the same as ended from here.
-	sound.addEventListener("ended", () => void stopListening(room), { once: true });
-	picture?.addEventListener("ended", () => void stopListening(room), { once: true });
-
 	return publication;
+}
+
+/** What a library track playing into a room is, for the panel to show. */
+export interface NowPlaying {
+	title: string;
+	artists: string;
+	/** What is being played, as read off the file: "FLAC · 24-bit · 44.1 kHz". */
+	quality: string;
+}
+
+/** A library track playing into a room: what plays it, its context, and what it is. */
+const players = new WeakMap<Room, { node: AudioBufferSourceNode; context: AudioContext; now?: NowPlaying }>();
+/** A track still being fetched, so stopping or choosing another can abandon it. */
+const loading = new WeakMap<Room, AbortController>();
+const playing = new Set<() => void>();
+
+function changed(): void {
+	for (const listener of playing) listener();
+}
+
+/** Be told when what the library is playing changes. */
+export function subscribePlaying(listener: () => void): () => void {
+	playing.add(listener);
+	return () => playing.delete(listener);
+}
+
+/** What the library is playing into a room, if anything. */
+export function nowPlaying(room: Room): NowPlaying | undefined {
+	return players.get(room)?.now;
+}
+
+/**
+ * Play a track from the music library into the call, as sound shared on its own.
+ *
+ * The whole file is fetched and decoded here, by an audio context made at the
+ * track's own sample rate -- read off the file by the library -- and played
+ * from memory, so the one step that could resample is under this code's
+ * control and does not: decodeAudioData resamples only to a rate other than
+ * the file's. The first version played the file in an audio element. Its
+ * samples arrived changed, three in four, and that was put down to the element
+ * resampling; it was not, it was how Chrome scales a decoded integer to a float
+ * (see decodedToInt24), and it was found only after this was rewritten. Whether
+ * the element would have resampled was never settled, and this way does not
+ * depend on it.
+ *
+ * The decoded track goes two ways: to this machine's speakers, so whoever
+ * played it hears it, and to a track published exactly as a shared
+ * application's sound is. The cost of decoding first is a wait while the file
+ * arrives -- `onProgress` says how far -- and memory for the decoded track,
+ * about 95 MB for four and a half minutes at 44.1 kHz.
+ *
+ * Whatever was being shared is stopped first: one sound at a time is the rule
+ * for sound shared on its own. The track ending stops the share.
+ */
+export async function playLibraryTrack(
+	room: Room,
+	audio: { url: string; rate: number; format?: string; bits?: number; now?: NowPlaying },
+	lossless = rememberedLossless(),
+	onLosslessGaveUp: () => void = () => {},
+	onProgress: (fraction: number) => void = () => {},
+): Promise<LocalTrackPublication> {
+	await stopListening(room);
+
+	const abort = new AbortController();
+	loading.set(room, abort);
+
+	const context = new AudioContext(
+		audio.rate > 0 ? { sampleRate: audio.rate, latencyHint: "playback" } : { latencyHint: "playback" },
+	);
+
+	try {
+		const file = await download(audio.url, abort.signal, onProgress);
+		const decoded = await context.decodeAudioData(file);
+		if (abort.signal.aborted) throw new DOMException("abandoned", "AbortError");
+
+		const node = context.createBufferSource();
+		node.buffer = decoded;
+		const out = context.createMediaStreamDestination();
+		out.channelCount = 2;
+		out.channelCountMode = "explicit";
+		node.connect(out);
+		node.connect(context.destination);
+
+		await context.resume();
+		node.start();
+
+		const sound = out.stream.getAudioTracks()[0];
+		if (!sound) throw new NoSound();
+
+		loading.delete(room);
+		players.set(room, { node, context, now: audio.now });
+		changed();
+		// A FLAC's own integers are recovered from what the browser decoded; see
+		// decodedToInt24. A lossy file was never integers.
+		const toInt = audio.format === "flac" ? decodedToInt24(audio.bits ?? 0) : toInt24;
+		const publication = await publishSound(room, sound, lossless, onLosslessGaveUp, toInt);
+		node.addEventListener("ended", () => void stopListening(room), { once: true });
+		return publication;
+	} catch (err) {
+		if (loading.get(room) === abort) loading.delete(room);
+		if (players.get(room)?.context === context) {
+			players.delete(room);
+			changed();
+		}
+		void context.close().catch(() => {});
+		throw err;
+	}
+}
+
+/** Fetch a whole file, saying how far it has got where the length is known. */
+async function download(url: string, signal: AbortSignal, onProgress: (fraction: number) => void): Promise<ArrayBuffer> {
+	const response = await fetch(url, { credentials: "same-origin", signal });
+	if (!response.ok || !response.body) throw new Error(`the track answered ${response.status}`);
+
+	const total = Number(response.headers.get("Content-Length")) || 0;
+	const reader = response.body.getReader();
+	const parts: Uint8Array[] = [];
+	let received = 0;
+
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		parts.push(value);
+		received += value.length;
+		if (total) onProgress(Math.min(1, received / total));
+	}
+
+	const whole = new Uint8Array(received);
+	let at = 0;
+	for (const part of parts) {
+		whole.set(part, at);
+		at += part.length;
+	}
+	return whole.buffer;
+}
+
+/** Whether what is being shared from here is a track from the library. */
+export function playingLibrary(room: Room): boolean {
+	return players.has(room);
 }
 
 /** The sound being shared on its own, if any. */
@@ -351,6 +514,21 @@ export async function stopListening(room: Room): Promise<void> {
 	picture?.stop();
 	senders.get(room)?.stop();
 	senders.delete(room);
+
+	loading.get(room)?.abort();
+	loading.delete(room);
+
+	const player = players.get(room);
+	players.delete(room);
+	if (player) {
+		changed();
+		try {
+			player.node.stop();
+		} catch {
+			// Already stopped: the track ended, which is what called this.
+		}
+		void player.context.close().catch(() => {});
+	}
 
 	if (publication?.track) {
 		await room.localParticipant.unpublishTrack(publication.track, true);

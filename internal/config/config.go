@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -276,7 +277,31 @@ type Meet struct {
 	// wherever a changed copy lives: a link to somebody else's repository is
 	// not an offer of the source anybody is actually running.
 	SourceURL string `yaml:"source_url"`
+
+	// Music is a library somebody signed in may play into a call. See Music.
+	Music Music `yaml:"music"`
 }
+
+// Music is a gateway to a music library, run by this deployment somewhere else.
+//
+// The server passes signed-in people's searches and plays on to it with a token
+// only the server holds, and the client plays what comes back into the call as
+// shared sound -- see internal/app/music.go. What the gateway reaches is the
+// deployment's business; the client is shown four paths and no address. Unset,
+// there is no library on this deployment and the client offers none.
+type Music struct {
+	// URL is where the gateway answers, reachable from this server only. The
+	// gateway's paths are appended to it.
+	URL string `yaml:"url"`
+
+	// Token is sent with every request so the gateway can tell this server from
+	// anything else that reaches its address.
+	Token string `yaml:"token"`
+}
+
+// MinMusicToken is the shortest token accepted: a guessable one would let
+// anything on the gateway's network play from somebody's subscription.
+const MinMusicToken = 24
 
 // Enrol is what a machine running the install script is told.
 //
@@ -594,7 +619,38 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	if err := checkMusic(meet.Music); err != nil {
+		return nil, err
+	}
+
 	return &Config{Meet: meet, LiveKit: lk, Key: key, Secret: secret}, nil
+}
+
+// checkMusic refuses a library half set up: an address with no token, a token
+// with no address, a token short enough to guess, or an address that is not one.
+// Each would otherwise be a library that answers nothing, discovered by
+// somebody pressing play.
+func checkMusic(music Music) error {
+	if music.URL == "" && music.Token == "" {
+		return nil
+	}
+
+	if music.URL == "" {
+		return fmt.Errorf("meet.music.token is set and meet.music.url is not; the token is " +
+			"for a gateway, so name it or remove both")
+	}
+
+	parsed, err := url.Parse(music.URL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return fmt.Errorf("meet.music.url: %q is not an http or https address", music.URL)
+	}
+
+	if len(music.Token) < MinMusicToken {
+		return fmt.Errorf("meet.music.token is %d characters and needs at least %d: the gateway "+
+			"trusts whoever holds it with somebody's subscription", len(music.Token), MinMusicToken)
+	}
+
+	return nil
 }
 
 // checkTLS refuses a certificate that cannot be served, at startup.

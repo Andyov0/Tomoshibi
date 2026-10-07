@@ -13,6 +13,9 @@ import { Signal } from "@/components/room/Signal";
 import { useConnectionQuality } from "@/live/connection";
 import { ShareCard } from "@/components/room/ShareCard";
 import { SoundPanel } from "@/components/room/SoundPanel";
+import { MusicPanel } from "@/components/room/MusicPanel";
+import { useLingering } from "@/hooks/useLingering";
+import { type Library, libraries as askLibraries } from "@/live/music";
 import { SaidInCorner } from "@/components/room/Said";
 import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
@@ -79,7 +82,21 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 
 	// One at a time, because both float over the same corner and the second
 	// would simply be drawn on top of the first.
-	const [panel, setPanel] = useState<"messages" | "sound">();
+	const [panel, setPanel] = useState<"messages" | "sound" | "music">();
+
+	// Whether this deployment has a music library this person may play from:
+	// asked once, and absent -- no menu item, no panel -- wherever the answer
+	// is no, which is most deployments and everybody not signed in.
+	const [library, setLibrary] = useState<Library[]>();
+	useEffect(() => {
+		let live = true;
+		void askLibraries().then((found) => {
+			if (live) setLibrary(found);
+		});
+		return () => {
+			live = false;
+		};
+	}, []);
 
 	// Where the controls sit. Held here rather than read where they are drawn,
 	// because what is drawn around them depends on it: a card that clears the
@@ -163,6 +180,8 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				screen={screen}
 				onClosePanel={() => setPanel(undefined)}
 				onOpenSound={() => setPanel("sound")}
+				music={panel === "music"}
+				library={library}
 				aside={aside}
 			/>
 			<ControlBar
@@ -176,6 +195,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				hidden={screen.active}
 				onChat={() => (chatting ? setPanel(undefined) : openChat())}
 				onListen={() => setPanel(listening ? undefined : "sound")}
+				onMusic={library ? () => setPanel("music") : undefined}
 				onLeave={onLeave}
 				host={standing.yours}
 				where={where}
@@ -205,6 +225,8 @@ function Stage({
 	aside,
 	onClosePanel,
 	onOpenSound,
+	music,
+	library,
 }: {
 	room: LiveRoom;
 	/* Passed in rather than read again here. A reaction is an event held in a
@@ -223,10 +245,15 @@ function Stage({
 	screen: ReturnType<typeof useFullscreen<HTMLDivElement>>;
 	onClosePanel: () => void;
 	onOpenSound: () => void;
+	/** The music panel is open. */
+	music: boolean;
+	library?: Library[];
 }) {
 	const t = useT();
 	const heard = useHearing();
 	const participants = useRoster(room);
+	// Kept on screen for its exit, rather than gone the frame it is closed.
+	const musicPanel = useLingering(music, 160);
 	const state = useConnection(room);
 
 	// Measured in the browser rather than reported by the server, because the
@@ -511,6 +538,10 @@ function Stage({
 			)}
 
 			{listening && <SoundPanel room={room} onClose={onClosePanel} />}
+
+			{library && musicPanel.mounted && (
+				<MusicPanel room={room} libraries={library} leaving={musicPanel.leaving} onClose={onClosePanel} />
+			)}
 
 			{/* Everything said, for everybody. Not only for somebody with no tile
 			    to borrow: a bubble on one tile in a grid is missed by a reader who

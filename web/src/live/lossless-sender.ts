@@ -67,6 +67,12 @@ export class LosslessSender {
 		private readonly track: MediaStreamTrack,
 		/** Called once, if the stream is given up on. */
 		private readonly onGiveUp: () => void = () => {},
+		/**
+		 * How a float the browser hands over becomes the 24-bit sample sent: see
+		 * decodedToInt24 for a file the browser decoded, whose own integers can be
+		 * recovered exactly.
+		 */
+		private readonly toInt: (sample: number) => number = toInt24,
 	) {
 		room.on(RoomEvent.DataReceived, this.onAsk);
 		room.on(RoomEvent.ParticipantDisconnected, this.onLeft);
@@ -168,7 +174,7 @@ export class LosslessSender {
 					for (let c = 0; c < channels; c++) {
 						const from = copies[c] as Float32Array;
 						const to = block[c] as Int32Array;
-						for (let i = 0; i < take; i++) to[filled + i] = toInt24(from[offset + i] as number);
+						for (let i = 0; i < take; i++) to[filled + i] = this.toInt(from[offset + i] as number);
 					}
 					filled += take;
 					offset += take;

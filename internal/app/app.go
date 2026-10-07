@@ -361,6 +361,7 @@ func (a *App) Handler() http.Handler {
 
 	mux.HandleFunc("POST /api/rooms/{room}/join", a.join)
 	mux.HandleFunc("GET /api/deployment", a.deployment)
+	mux.HandleFunc("GET /api/music/{what}", a.music)
 
 	// The pages somebody uses to look after their own account, which are not
 	// the management pages and never overlap with them.

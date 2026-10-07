@@ -9,8 +9,11 @@ import {
 	ORIGINAL_BITRATE,
 	VOICE_BITRATE,
 	listening,
+	nowPlaying,
+	playLibraryTrack,
 	sendingLossless,
 	startListening,
+	subscribePlaying,
 	stopListening,
 	voiceCapture,
 	voicePublish,
@@ -284,5 +287,121 @@ describe("sharing sound losslessly, in order", () => {
 		expect(order.indexOf("on:dataReceived")).toBeLessThan(order.indexOf("publish"));
 		await stopListening(room);
 		vi.unstubAllGlobals();
+	});
+});
+
+describe("playing a track from the library", () => {
+	function stubAudio() {
+		const contexts: { options: AudioContextOptions; closed: boolean }[] = [];
+		const nodes: { started: boolean; stopped: boolean; listeners: Record<string, () => void> }[] = [];
+		const fetched: string[] = [];
+		const destinationTrack = fakeTrack("audio");
+
+		class FakeContext {
+			record: { options: AudioContextOptions; closed: boolean };
+			destination = {};
+			constructor(options: AudioContextOptions) {
+				this.record = { options, closed: false };
+				contexts.push(this.record);
+			}
+			async resume() {}
+			async close() {
+				this.record.closed = true;
+			}
+			async decodeAudioData(data: ArrayBuffer) {
+				return { decodedFrom: data.byteLength };
+			}
+			createBufferSource() {
+				const record = { started: false, stopped: false, listeners: {} as Record<string, () => void> };
+				nodes.push(record);
+				return {
+					buffer: null,
+					connect: vi.fn(),
+					start: () => {
+						record.started = true;
+					},
+					stop: () => {
+						record.stopped = true;
+					},
+					addEventListener: (name: string, listener: () => void) => {
+						record.listeners[name] = listener;
+					},
+				};
+			}
+			createMediaStreamDestination() {
+				return { stream: { getAudioTracks: () => [destinationTrack] }, channelCount: 0, channelCountMode: "" };
+			}
+		}
+
+		vi.stubGlobal("AudioContext", FakeContext);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (url: string) => {
+				fetched.push(url);
+				return new Response(new Uint8Array(1000), { headers: { "Content-Length": "1000" } });
+			}),
+		);
+		vi.stubGlobal("MediaStreamTrackProcessor", class {
+			readable = new ReadableStream({ start() {} });
+		});
+
+		return { contexts, nodes, fetched, destinationTrack };
+	}
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	it("decodes at the track's own rate, so nothing resamples it, and shares it losslessly", async () => {
+		const { contexts, nodes, fetched, destinationTrack } = stubAudio();
+		const { room, publishTrack } = fakeRoom();
+		const progress = vi.fn();
+
+		await playLibraryTrack(
+			room,
+			{ url: "/api/music/audio?x", rate: 44_100, now: { title: "t", artists: "a", quality: "q" } },
+			true,
+			() => {},
+			progress,
+		);
+
+		expect(contexts[0]?.options.sampleRate).toBe(44_100);
+		expect(fetched).toEqual(["/api/music/audio?x"]);
+		expect(progress).toHaveBeenLastCalledWith(1);
+		expect(nodes[0]?.started).toBe(true);
+		expect(publishTrack.mock.calls[0]?.[1]).toMatchObject({ name: LOSSLESS, source: "screen_share_audio" });
+		expect((publishTrack.mock.calls[0]?.[0] as { mediaStreamTrack: unknown }).mediaStreamTrack).toBe(destinationTrack);
+		expect(nowPlaying(room)?.title).toBe("t");
+		expect(sendingLossless(room)).toBe(true);
+	});
+
+	it("stops playing, lets the context go and says nothing is playing when stopped", async () => {
+		const { contexts, nodes } = stubAudio();
+		const { room } = fakeRoom();
+		const told = vi.fn();
+		const unsubscribe = subscribePlaying(told);
+
+		await playLibraryTrack(room, { url: "/u", rate: 48_000 }, true);
+		await stopListening(room);
+
+		expect(nodes[0]?.stopped).toBe(true);
+		expect(contexts[0]?.closed).toBe(true);
+		expect(nowPlaying(room)).toBeUndefined();
+		expect(sendingLossless(room)).toBe(false);
+		expect(told).toHaveBeenCalled();
+		unsubscribe();
+	});
+
+	it("stops by itself when the track ends", async () => {
+		const { nodes } = stubAudio();
+		const { room, unpublishTrack } = fakeRoom();
+
+		await playLibraryTrack(room, { url: "/u", rate: 44_100 }, false);
+		nodes[0]?.listeners.ended?.();
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(unpublishTrack).toHaveBeenCalled();
+		expect(nowPlaying(room)).toBeUndefined();
 	});
 });

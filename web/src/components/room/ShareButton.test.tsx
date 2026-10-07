@@ -282,3 +282,33 @@ describe("lossless", () => {
 		expect(screen.queryByRole("menuitemcheckbox", { name: /Lossless/ })).toBeNull();
 	});
 });
+
+describe("the music library", () => {
+	const open = (onMusic?: () => void) => {
+		render(
+			<ShareButton
+				sharing={false}
+				listening={false}
+				onStart={vi.fn()}
+				onAdjust={vi.fn()}
+				onStop={vi.fn()}
+				onListen={vi.fn()}
+				onStopListening={vi.fn()}
+				onMusic={onMusic}
+			/>,
+		);
+		fireEvent.keyDown(screen.getByRole("button", { name: "Share your screen" }), { key: "Enter" });
+	};
+
+	it("is offered where there is one, and opens it", () => {
+		const onMusic = vi.fn();
+		open(onMusic);
+		fireEvent.click(screen.getByRole("menuitem", { name: /Play music/ }));
+		expect(onMusic).toHaveBeenCalledTimes(1);
+	});
+
+	it("is not offered where there is none", () => {
+		open(undefined);
+		expect(screen.queryByRole("menuitem", { name: /Play music/ })).toBeNull();
+	});
+});

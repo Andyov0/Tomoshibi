@@ -203,3 +203,16 @@ it("stops sending to somebody no longer in the room, and to an ask not repeated"
 	clock.mockRestore();
 	sender.stop();
 });
+
+it("turns floats into samples the way it was told to", async () => {
+	const { room, sent, join, ask } = fakeRoom();
+	join("gfriend-1");
+	const sender = new LosslessSender(room, {} as MediaStreamTrack, () => {}, () => 4242);
+	ask("gfriend-1");
+
+	await capture(2);
+
+	const [block] = sent.map((packet) => unpack(packet.bytes));
+	expect(Array.from(block?.channels[0] ?? []).every((sample) => sample === 4242)).toBe(true);
+	sender.stop();
+});

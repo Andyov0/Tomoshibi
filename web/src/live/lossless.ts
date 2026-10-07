@@ -87,6 +87,39 @@ export function fromInt24(sample: number): number {
 	return sample / 8_388_608;
 }
 
+/**
+ * The 24-bit sample a file held, from the float Chrome decoded it to.
+ *
+ * Chrome turns a decoded integer into a float asymmetrically: a negative one is
+ * divided by 2^(n-1) and a positive one by 2^(n-1) - 1, so that both rails land
+ * on exactly -1 and 1. Found by printing what decodeAudioData made of a 16-bit
+ * FLAC whose every sample was known: -24849 came back as -24849/32768 and 6827
+ * as 6827/32767. Nothing is lost -- each integer still has its own float -- but
+ * toInt24, which assumes one scale for both signs, moves every positive sample
+ * a little, and three samples in four of a stereo file were reported changed.
+ *
+ * So for a 16-bit file the integer is recovered with the scale Chrome used for
+ * its sign, and sent as the file's own sample shifted up eight bits.
+ *
+ * A 24-bit file needs nothing of the kind, and this says so rather than doing
+ * something: Chrome decodes it through 32-bit integers, where the two scales
+ * differ by one part in two thousand million, which moves a 24-bit sample by
+ * less than a two-hundred-and-fifty-sixth of a step -- rounding takes it back
+ * to the file's integer every time. A special case was written for it first,
+ * and breaking it changed no result; the test that would have caught it now
+ * holds toInt24 to every 24-bit value instead.
+ *
+ * Anything else -- a lossy file, captured sound -- was never integers, and
+ * takes toInt24.
+ */
+export function decodedToInt24(bits: number): (sample: number) => number {
+	if (bits === 16) {
+		return (sample) => (sample > 0 ? Math.round(sample * 32_767) : Math.round(sample * 32_768)) * 256;
+	}
+
+	return toInt24;
+}
+
 /** Thrown for a packet that is not one of ours, or not whole. */
 export class Malformed extends Error {
 	constructor(why: string) {

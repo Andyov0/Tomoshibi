@@ -44,7 +44,7 @@ beforeEach(() => {
 	playLibraryTrack.mockClear();
 });
 
-async function find(libraries = [{ id: "qq", name: "QQ", signedIn: true }]) {
+async function find(libraries = [{ id: "one", name: "Library one", signedIn: true }]) {
 	render(<MusicPanel room={room} libraries={libraries} onClose={vi.fn()} />);
 	fireEvent.change(screen.getByRole("textbox", { name: "Search songs" }), { target: { value: "sunny" } });
 	fireEvent.click(screen.getByRole("button", { name: "Search" }));
@@ -63,9 +63,9 @@ describe("playing a track", () => {
 			{ url: string; rate: number; now: { quality: string } },
 			boolean,
 		];
-		expect(searchLibrary).toHaveBeenCalledWith("qq", "sunny");
-		expect(describeTrack).toHaveBeenCalledWith("qq", "0039", "lossless");
-		expect(audio.url).toBe("/api/music/audio?source=qq&id=0039&quality=lossless");
+		expect(searchLibrary).toHaveBeenCalledWith("one", "sunny");
+		expect(describeTrack).toHaveBeenCalledWith("one", "0039", "lossless");
+		expect(audio.url).toBe("/api/music/audio?source=one&id=0039&quality=lossless");
 		expect(audio.rate).toBe(44_100);
 		// What the sender needs to recover the file's own integers; see decodedToInt24.
 		expect(audio).toMatchObject({ format: "flac", bits: 24 });
@@ -75,14 +75,14 @@ describe("playing a track", () => {
 
 	it("asks for the highest tier only when it is chosen", async () => {
 		describeTrack.mockResolvedValue({ format: "flac", rate: 192_000, channels: 2, bits: 24, tier: "master" });
-		render(<MusicPanel room={room} libraries={[{ id: "qq", name: "QQ", signedIn: true }]} onClose={vi.fn()} />);
+		render(<MusicPanel room={room} libraries={[{ id: "one", name: "Library one", signedIn: true }]} onClose={vi.fn()} />);
 		fireEvent.click(screen.getByRole("button", { name: "Highest" }));
 		fireEvent.change(screen.getByRole("textbox", { name: "Search songs" }), { target: { value: "sunny" } });
 		fireEvent.click(screen.getByRole("button", { name: "Search" }));
 		fireEvent.click(await screen.findByRole("button", { name: /Sunny Day/ }));
 
 		await waitFor(() => expect(playLibraryTrack).toHaveBeenCalledTimes(1));
-		expect(describeTrack).toHaveBeenCalledWith("qq", "0039", "best");
+		expect(describeTrack).toHaveBeenCalledWith("one", "0039", "best");
 		localStorage.clear();
 	});
 
@@ -97,7 +97,7 @@ describe("playing a track", () => {
 });
 
 it("says a library that is not signed in plays at most 320 kbps", () => {
-	render(<MusicPanel room={room} libraries={[{ id: "ne", name: "NE", signedIn: false }]} onClose={vi.fn()} />);
+	render(<MusicPanel room={room} libraries={[{ id: "two", name: "Library two", signedIn: false }]} onClose={vi.fn()} />);
 	expect(screen.getByText(/at most 320 kbps/)).toBeTruthy();
 });
 
@@ -106,11 +106,11 @@ it("starts on a library that is signed in", async () => {
 		<MusicPanel
 			room={room}
 			libraries={[
-				{ id: "ne", name: "NE", signedIn: false },
-				{ id: "qq", name: "QQ", signedIn: true },
+				{ id: "two", name: "Library two", signedIn: false },
+				{ id: "one", name: "Library one", signedIn: true },
 			]}
 			onClose={vi.fn()}
 		/>,
 	);
-	expect(screen.getByRole("tab", { name: "QQ" }).getAttribute("aria-selected")).toBe("true");
+	expect(screen.getByRole("tab", { name: "Library one" }).getAttribute("aria-selected")).toBe("true");
 });

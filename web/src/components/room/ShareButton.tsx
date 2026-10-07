@@ -52,10 +52,21 @@ export function ShareButton({
 	onStop,
 	onListen,
 	onStopListening,
+	lossless = true,
+	losslessUnavailable,
+	sendingLossless = false,
+	onLossless = () => {},
 }: {
 	sharing: boolean;
 	/** Sound is being shared on its own, without a picture. */
 	listening: boolean;
+	/** Whether sound shared on its own is to be sent losslessly as well. */
+	lossless?: boolean;
+	/** Why it cannot be, where it cannot. */
+	losslessUnavailable?: "encrypted" | "browser";
+	/** Whether the sound being shared now is going out losslessly. */
+	sendingLossless?: boolean;
+	onLossless?: (on: boolean) => void;
 	/** Share one app's or tab's sound and nothing else, to listen together. */
 	onListen: () => void;
 	onStopListening: () => void;
@@ -202,18 +213,54 @@ export function ShareButton({
 				    listening together. */}
 				{!sharing &&
 					(listening ? (
-						<DropdownMenuItem onSelect={onStopListening} className="gap-2">
-							<CircleStop className="size-4" />
-							<span className="text-fg">{t("Stop sharing sound")}</span>
-						</DropdownMenuItem>
-					) : (
-						<DropdownMenuItem onSelect={onListen} className="items-start gap-2">
-							<Music className="mt-0.5 size-4" />
+						<DropdownMenuItem onSelect={onStopListening} className="items-start gap-2">
+							<CircleStop className="mt-0.5 size-4" />
 							<span className="flex flex-col">
-								<span className="text-fg">{t("Share only sound")}</span>
-								<span className="text-fg-muted text-xs">{t("Pick the app or tab that is playing")}</span>
+								<span className="text-fg">{t("Stop sharing sound")}</span>
+								{/* Which of the two is going out, because the switch that
+								    chose it is not shown while it is: it takes effect when
+								    the sharing starts, and a setting shown mid-share would
+								    look as if changing it changed something. */}
+								<span className="text-fg-muted text-xs">
+									{t(sendingLossless ? "Lossless" : "Real time")}
+								</span>
 							</span>
 						</DropdownMenuItem>
+					) : (
+						<>
+							<DropdownMenuItem onSelect={onListen} className="items-start gap-2">
+								<Music className="mt-0.5 size-4" />
+								<span className="flex flex-col">
+									<span className="text-fg">{t("Share only sound")}</span>
+									<span className="text-fg-muted text-xs">{t("Pick the app or tab that is playing")}</span>
+								</span>
+							</DropdownMenuItem>
+
+							{/* Beneath what it qualifies, and decided before the picker
+							    opens rather than after. Off where it cannot work, with
+							    the reason in place of the description, so nobody ticks
+							    a box and gets real time without being told. */}
+							<DropdownMenuCheckboxItem
+								checked={lossless && !losslessUnavailable}
+								disabled={losslessUnavailable !== undefined}
+								onSelect={(event) => {
+									event.preventDefault();
+									onLossless(!lossless);
+								}}
+								className="flex-col items-start gap-0"
+							>
+								<span className="text-fg">{t("Lossless")}</span>
+								<span className="text-fg-muted text-xs">
+									{t(
+										losslessUnavailable === "encrypted"
+											? "Not available in an encrypted call"
+											: losslessUnavailable === "browser"
+												? "Not available in this browser"
+												: "Every sample as it is played, about a second behind",
+									)}
+								</span>
+							</DropdownMenuCheckboxItem>
+						</>
 					))}
 			</DropdownMenuContent>
 		</DropdownMenu>

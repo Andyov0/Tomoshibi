@@ -1,13 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Room } from "livekit-client";
+import { LOSSLESS } from "./lossless";
 import {
 	LISTENING,
-	MUSIC_BITRATE,
+	LISTENING_BITRATE,
 	MUSIC_CAPTURE,
 	NoSound,
 	ORIGINAL_BITRATE,
 	VOICE_BITRATE,
 	listening,
+	sendingLossless,
 	startListening,
 	stopListening,
 	voiceCapture,
@@ -71,7 +73,7 @@ function fakeTrack(kind: "audio" | "video") {
 	};
 }
 
-function fakeRoom() {
+function fakeRoom(options: Record<string, unknown> = {}) {
 	const publications = new Map<string, unknown>();
 	const publishTrack = vi.fn(async (track: unknown, options: { source: string; name: string }) => {
 		const publication = { source: options.source, trackName: options.name, track };
@@ -81,7 +83,13 @@ function fakeRoom() {
 	const unpublishTrack = vi.fn(async () => {
 		publications.clear();
 	});
-	const room = { localParticipant: { trackPublications: publications, publishTrack, unpublishTrack } };
+	const room = {
+		options,
+		localParticipant: { trackPublications: publications, publishTrack, unpublishTrack },
+		remoteParticipants: new Map(),
+		on: vi.fn(),
+		off: vi.fn(),
+	};
 
 	return { room: room as unknown as Room, publishTrack, unpublishTrack };
 }
@@ -118,7 +126,7 @@ describe("sharing sound on its own", () => {
 		expect(asked.audio).toMatchObject({ echoCancellation: false, noiseSuppression: false, channelCount: 2 });
 	});
 
-	it("publishes it as music, marked as sound on its own", async () => {
+	it("publishes it at Opus's ceiling, without the RED that would sink it", async () => {
 		const sound = fakeTrack("audio");
 		getDisplayMedia.mockResolvedValue({
 			getAudioTracks: () => [sound],
@@ -127,7 +135,7 @@ describe("sharing sound on its own", () => {
 		});
 		const { room, publishTrack } = fakeRoom();
 
-		await startListening(room);
+		await startListening(room, false);
 
 		const options = publishTrack.mock.calls[0]?.[1];
 		expect(options).toMatchObject({
@@ -135,10 +143,72 @@ describe("sharing sound on its own", () => {
 			name: LISTENING,
 			forceStereo: true,
 			dtx: false,
-			red: true,
-			audioPreset: { maxBitrate: MUSIC_BITRATE },
+			red: false,
+			audioPreset: { maxBitrate: LISTENING_BITRATE },
 		});
+		expect(LISTENING_BITRATE).toBe(510_000);
 		expect(listening(room)).toBeDefined();
+		expect(sendingLossless(room)).toBe(false);
+	});
+
+	describe("losslessly", () => {
+		// Reads nothing: these tests are about what is offered, not what is sent.
+		class Processor {
+			readable = new ReadableStream({ start() {} });
+		}
+
+		beforeEach(() => {
+			vi.stubGlobal("MediaStreamTrackProcessor", Processor);
+		});
+
+		afterEach(() => {
+			vi.unstubAllGlobals();
+			Object.defineProperty(navigator, "mediaDevices", { value: { getDisplayMedia }, configurable: true });
+		});
+
+		const sharing = () => {
+			const sound = fakeTrack("audio");
+			getDisplayMedia.mockResolvedValue({
+				getAudioTracks: () => [sound],
+				getVideoTracks: () => [],
+				getTracks: () => [sound],
+			});
+		};
+
+		it("offers the lossless stream under its own name, and sends it", async () => {
+			sharing();
+			const { room, publishTrack } = fakeRoom();
+
+			await startListening(room, true);
+
+			expect(publishTrack.mock.calls[0]?.[1]).toMatchObject({ name: LOSSLESS });
+			expect(listening(room)).toBeDefined();
+			expect(sendingLossless(room)).toBe(true);
+
+			await stopListening(room);
+			expect(sendingLossless(room)).toBe(false);
+		});
+
+		it("never offers it in an encrypted call, where it would cross the relay in the clear", async () => {
+			sharing();
+			const { room, publishTrack } = fakeRoom({ e2ee: { keyProvider: {}, worker: {} } });
+
+			await startListening(room, true);
+
+			expect(publishTrack.mock.calls[0]?.[1]).toMatchObject({ name: LISTENING });
+			expect(sendingLossless(room)).toBe(false);
+		});
+
+		it("does not offer it where the browser cannot read samples off a track", async () => {
+			vi.unstubAllGlobals();
+			sharing();
+			const { room, publishTrack } = fakeRoom();
+
+			await startListening(room, true);
+
+			expect(publishTrack.mock.calls[0]?.[1]).toMatchObject({ name: LISTENING });
+			expect(sendingLossless(room)).toBe(false);
+		});
 	});
 
 	it("keeps the picture it had to take, switched off, and stops it with the sound", async () => {
@@ -173,5 +243,46 @@ describe("sharing sound on its own", () => {
 		await expect(startListening(room)).rejects.toBeInstanceOf(NoSound);
 		expect(picture.stop).toHaveBeenCalledTimes(1);
 		expect(publishTrack).not.toHaveBeenCalled();
+	});
+});
+
+describe("sharing sound losslessly, in order", () => {
+	it("is listening for asks before the publication that invites them exists", async () => {
+		const sound = { kind: "audio", enabled: true, stop: vi.fn(), addEventListener: vi.fn() };
+		Object.defineProperty(navigator, "mediaDevices", {
+			value: {
+				getDisplayMedia: vi.fn(async () => ({
+					getAudioTracks: () => [sound],
+					getVideoTracks: () => [],
+					getTracks: () => [sound],
+				})),
+			},
+			configurable: true,
+		});
+		vi.stubGlobal("MediaStreamTrackProcessor", class {
+			readable = new ReadableStream({ start() {} });
+		});
+
+		const order: string[] = [];
+		const room = {
+			options: {},
+			remoteParticipants: new Map(),
+			on: vi.fn((event: string) => order.push(`on:${event}`)),
+			off: vi.fn(),
+			localParticipant: {
+				trackPublications: new Map(),
+				publishTrack: vi.fn(async () => {
+					order.push("publish");
+					return {};
+				}),
+			},
+		} as unknown as Room;
+
+		await startListening(room, true);
+
+		expect(order.indexOf("on:dataReceived")).toBeGreaterThanOrEqual(0);
+		expect(order.indexOf("on:dataReceived")).toBeLessThan(order.indexOf("publish"));
+		await stopListening(room);
+		vi.unstubAllGlobals();
 	});
 });

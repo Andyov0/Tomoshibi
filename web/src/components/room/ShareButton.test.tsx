@@ -226,8 +226,59 @@ describe("sharing sound on its own", () => {
 			/>,
 		);
 		fireEvent.keyDown(screen.getByRole("button", { name: "Sharing sound" }), { key: "Enter" });
-		fireEvent.click(screen.getByRole("menuitem", { name: "Stop sharing sound" }));
+		fireEvent.click(screen.getByRole("menuitem", { name: /Stop sharing sound/ }));
 
 		expect(onStopListening).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("lossless", () => {
+	const menu = (props: Partial<Parameters<typeof ShareButton>[0]> = {}) => {
+		render(
+			<ShareButton
+				sharing={false}
+				listening={false}
+				onStart={vi.fn()}
+				onAdjust={vi.fn()}
+				onStop={vi.fn()}
+				onListen={vi.fn()}
+				onStopListening={vi.fn()}
+				{...props}
+			/>,
+		);
+		const button = screen.getByRole("button", { name: props.listening ? "Sharing sound" : "Share your screen" });
+		fireEvent.keyDown(button, { key: "Enter" });
+	};
+
+	it("is offered beneath sharing sound, ticked, and switches without closing the menu", () => {
+		const onLossless = vi.fn();
+		menu({ lossless: true, onLossless });
+
+		const item = screen.getByRole("menuitemcheckbox", { name: /Lossless/ });
+		expect(item.getAttribute("aria-checked")).toBe("true");
+		expect(item.textContent).toContain("about a second behind");
+
+		fireEvent.click(item);
+		expect(onLossless).toHaveBeenCalledWith(false);
+		expect(screen.getByRole("menuitemcheckbox", { name: /Lossless/ })).toBeTruthy();
+	});
+
+	it("is shown off, with the reason, in an encrypted call", () => {
+		const onLossless = vi.fn();
+		menu({ lossless: true, losslessUnavailable: "encrypted", onLossless });
+
+		const item = screen.getByRole("menuitemcheckbox", { name: /Lossless/ });
+		expect(item.getAttribute("aria-checked")).toBe("false");
+		expect(item.getAttribute("aria-disabled")).toBe("true");
+		expect(item.textContent).toContain("Not available in an encrypted call");
+
+		fireEvent.click(item);
+		expect(onLossless).not.toHaveBeenCalled();
+	});
+
+	it("says which of the two is going out while sound is shared", () => {
+		menu({ listening: true, sendingLossless: true });
+		expect(screen.getByRole("menuitem", { name: /Stop sharing sound/ }).textContent).toContain("Lossless");
+		expect(screen.queryByRole("menuitemcheckbox", { name: /Lossless/ })).toBeNull();
 	});
 });

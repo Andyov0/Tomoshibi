@@ -7,6 +7,8 @@ import {
 	type TrackPublishOptions,
 } from "livekit-client";
 import { keep, recall } from "@/lib/storage";
+import { LOSSLESS } from "./lossless";
+import { LosslessSender, canSendLossless } from "./lossless-sender";
 
 /**
  * How sound is captured and sent: a voice, a voice with nothing done to it, and
@@ -60,8 +62,73 @@ export const ORIGINAL_BITRATE = 96_000;
  */
 export const MUSIC_BITRATE = 160_000;
 
+/**
+ * Sound shared on its own, sent in real time: Opus at its ceiling.
+ *
+ * 510 kbit/s is the most a 20 ms Opus frame can hold, and the point of sharing
+ * sound by itself is to hear it as well as it can be heard live. RED is off
+ * here, not by preference. Measured against this server: at 510 kbit/s with
+ * RED, each packet carries two 1275-byte frames, the media server's 1500-byte
+ * packet buffer drops every one of them, and the listener receives nothing at
+ * all. And from about 250 kbit/s up the browser quietly leaves the redundant
+ * copy out anyway -- 256 and 320 went out at exactly their own rate -- so RED
+ * protects nothing at these rates and only threatens the whole stream.
+ *
+ * What protects this sound against loss is the lossless stream beside it,
+ * which is the default; this track is what plays where that one cannot.
+ */
+export const LISTENING_BITRATE = 510_000;
+
+export const LISTENING_PUBLISH: TrackPublishOptions = {
+	audioPreset: { maxBitrate: LISTENING_BITRATE },
+	forceStereo: true,
+	dtx: false,
+	red: false,
+};
+
 /** The trackName that marks sound shared on its own, without a picture. */
 export const LISTENING = "listening";
+
+/** Whether a publication is sound shared on its own, in either form. */
+export function soundOnly(publication: { source: Track.Source; trackName: string }): boolean {
+	return (
+		publication.source === Track.Source.ScreenShareAudio &&
+		(publication.trackName === LISTENING || publication.trackName === LOSSLESS)
+	);
+}
+
+const LOSSLESS_KEY = "meet-live.lossless";
+
+/** Whether this browser last chose to share sound losslessly. On unless turned off. */
+export function rememberedLossless(): boolean {
+	return recall(LOSSLESS_KEY) !== "off";
+}
+
+export function rememberLossless(on: boolean): void {
+	keep(LOSSLESS_KEY, on ? undefined : "off");
+}
+
+/**
+ * Whether sound can be shared losslessly from here, and if not, why.
+ *
+ * Not in an encrypted call: the stream is data, which the SDK does not encrypt
+ * with the options this project gives it, and it would cross the relay as
+ * plain samples. See lossless-receiver.ts. And not where the browser cannot
+ * read samples off a track, which today means anything but Chromium.
+ */
+export function losslessUnavailable(room: Room): "encrypted" | "browser" | undefined {
+	if (room.options.e2ee !== undefined) return "encrypted";
+	if (!canSendLossless()) return "browser";
+	return undefined;
+}
+
+/** The lossless stream going out of a room, if one is. */
+const senders = new WeakMap<Room, LosslessSender>();
+
+/** Whether the sound being shared from here is going out losslessly. */
+export function sendingLossless(room: Room): boolean {
+	return senders.has(room);
+}
 
 const ORIGINAL_KEY = "meet-live.original-sound";
 
@@ -200,7 +267,11 @@ const pictures = new WeakMap<Room, MediaStreamTrack>();
  * getDisplayMedia from a fixed list of fields, and `windowAudio` is not among
  * them.
  */
-export async function startListening(room: Room): Promise<LocalTrackPublication> {
+export async function startListening(
+	room: Room,
+	lossless = rememberedLossless(),
+	onLosslessGaveUp: () => void = () => {},
+): Promise<LocalTrackPublication> {
 	const stream = await navigator.mediaDevices.getDisplayMedia({
 		video: { width: { max: 640 }, height: { max: 360 }, frameRate: { max: 1 } },
 		audio: MUSIC_CAPTURE,
@@ -225,12 +296,35 @@ export async function startListening(room: Room): Promise<LocalTrackPublication>
 		pictures.set(room, picture);
 	}
 
+	const offered = lossless && losslessUnavailable(room) === undefined;
+
+	// Listening for asks before the track that invites them exists. The other
+	// way round, a listener who saw the publication at once asked before
+	// anything here was listening, and the ask was lost: found in two browsers,
+	// where the first ask arrived in the gap and the listener gave up waiting.
+	if (offered) {
+		senders.set(
+			room,
+			new LosslessSender(room, sound, () => {
+				senders.delete(room);
+				onLosslessGaveUp();
+			}),
+		);
+	}
+
 	const track = new LocalAudioTrack(sound, MUSIC_CAPTURE, true);
-	const publication = await room.localParticipant.publishTrack(track, {
-		...MUSIC_PUBLISH,
-		source: Track.Source.ScreenShareAudio,
-		name: LISTENING,
-	});
+	let publication: LocalTrackPublication;
+	try {
+		publication = await room.localParticipant.publishTrack(track, {
+			...LISTENING_PUBLISH,
+			source: Track.Source.ScreenShareAudio,
+			name: offered ? LOSSLESS : LISTENING,
+		});
+	} catch (err) {
+		senders.get(room)?.stop();
+		senders.delete(room);
+		throw err;
+	}
 
 	// Ended from outside -- the browser's own "stop sharing" bar, or the
 	// application being closed -- is the same as ended from here.
@@ -243,9 +337,7 @@ export async function startListening(room: Room): Promise<LocalTrackPublication>
 /** The sound being shared on its own, if any. */
 export function listening(room: Room): LocalTrackPublication | undefined {
 	for (const publication of room.localParticipant.trackPublications.values()) {
-		if (publication.source === Track.Source.ScreenShareAudio && publication.trackName === LISTENING) {
-			return publication;
-		}
+		if (soundOnly(publication)) return publication;
 	}
 
 	return undefined;
@@ -257,6 +349,8 @@ export async function stopListening(room: Room): Promise<void> {
 	const picture = pictures.get(room);
 	pictures.delete(room);
 	picture?.stop();
+	senders.get(room)?.stop();
+	senders.delete(room);
 
 	if (publication?.track) {
 		await room.localParticipant.unpublishTrack(publication.track, true);

@@ -15,8 +15,16 @@ import { HandButton } from "./HandButton";
 import { ShareButton } from "./ShareButton";
 import { useLocalState } from "@/hooks/useLocalState";
 import { canShareScreen } from "@/live/context";
-import { deviceFailed, noSoundShared } from "@/live/notices";
-import { NoSound, startListening, stopListening } from "@/live/sound";
+import { deviceFailed, losslessGaveUp, noSoundShared } from "@/live/notices";
+import {
+	NoSound,
+	losslessUnavailable,
+	rememberLossless,
+	rememberedLossless,
+	sendingLossless,
+	startListening,
+	stopListening,
+} from "@/live/sound";
 
 /**
  * The call controls.
@@ -67,6 +75,7 @@ export function ControlBar({
 	const t = useT();
 	const local = useLocalState(room);
 	const [busy, setBusy] = useState(false);
+	const [lossless, setLossless] = useState(rememberedLossless);
 
 	// Whether the pointer is on these, or somebody is on them with a keyboard.
 	//
@@ -238,13 +247,20 @@ export function ControlBar({
 				<ShareButton
 					sharing={local.screen}
 					listening={local.listening}
+					lossless={lossless}
+					losslessUnavailable={losslessUnavailable(room)}
+					sendingLossless={local.listening && sendingLossless(room)}
+					onLossless={(on) => {
+						setLossless(on);
+						rememberLossless(on);
+					}}
 					onStart={(frameRate, quality) => void guard(() => share(room, true, frameRate, quality))()}
 					onAdjust={(frameRate, quality) => void retune(room, frameRate, quality)}
 					onStop={() => void guard(() => share(room, false, 30))()}
 					onListen={() =>
 						void guard(async () => {
 							try {
-								await startListening(room);
+								await startListening(room, lossless, losslessGaveUp);
 							} catch (err) {
 								// A picker answered with nothing ticked is not a
 								// cancelled picker: it needs saying, with the way

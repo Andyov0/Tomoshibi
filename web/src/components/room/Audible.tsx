@@ -1,4 +1,5 @@
 import { SOUNDS, SOURCE, settingFor, subscribe } from "@/live/hearing";
+import { holdsBack, receiveLossless } from "@/live/lossless-receiver";
 import { audioBlocked } from "@/live/notices";
 import { RoomAudioRenderer, useAudioPlayback } from "@livekit/components-react";
 import { type Room, RoomEvent } from "livekit-client";
@@ -49,9 +50,15 @@ export function Audible({ room }: { room: Room }) {
 		for (const event of HEARING_EVENTS) room.on(event, put);
 		const stop = subscribe(put);
 
+		// Shared sound offered losslessly is played from its own stream, and
+		// its Opus track held back while it is; whenever which tracks those are
+		// changes, the settings are put back with that taken into account.
+		const unlisten = receiveLossless(room, put);
+
 		return () => {
 			for (const event of HEARING_EVENTS) room.off(event, put);
 			stop();
+			unlisten();
 		};
 	}, [room]);
 
@@ -97,11 +104,16 @@ function apply(room: Room): void {
 
 			const publication = participant.getTrackPublication(source);
 
+			// Held back as well while the same sound is arriving losslessly:
+			// asked of the media server like a block, so it is not downloaded
+			// alongside, and given back the moment the lossless stream ends.
+			const off = setting.blocked || (sound === "screen" && holdsBack(room, participant.identity));
+
 			// Only where it differs, because this one leaves the machine: every
 			// call with a new answer sends the media server a settings update,
 			// and this runs for everybody in the room on every arrival.
-			if (publication && publication.isEnabled === setting.blocked) {
-				publication.setEnabled(!setting.blocked);
+			if (publication && publication.isEnabled === off) {
+				publication.setEnabled(!off);
 			}
 		}
 	}

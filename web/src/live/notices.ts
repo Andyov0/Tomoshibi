@@ -2,7 +2,7 @@ import type { Participant, Room } from "livekit-client";
 import { RoomEvent, Track } from "livekit-client";
 import { toast } from "sonner";
 import { t } from "./i18n";
-import { LISTENING } from "./sound";
+import { soundOnly } from "./sound";
 
 /**
  * What is worth interrupting somebody for.
@@ -65,7 +65,7 @@ export function watch(room: Room): () => void {
 	const onPublished = (publication: { source: Track.Source; trackName: string }, participant: Participant) => {
 		// Sound shared on its own has no picture to announce it, so it is said:
 		// otherwise music simply starts, from nowhere anybody can see.
-		const sound = publication.source === Track.Source.ScreenShareAudio && publication.trackName === LISTENING;
+		const sound = soundOnly(publication);
 		if (publication.source !== Track.Source.ScreenShare && !sound) return;
 		toast(
 			sound
@@ -142,6 +142,22 @@ export function newerVersion(): void {
 export function noSoundShared(): void {
 	toast.error(t("No sound was shared"), {
 		description: t("Tick the sound option in the picker, or pick the browser tab that is playing."),
+		duration: AT_MOST,
+		closeButton: true,
+	});
+}
+
+/**
+ * The lossless stream of shared sound was given up on.
+ *
+ * Said to the person sharing, because it is their upload that could not keep
+ * up and they are the one who might do something about it. Everybody listening
+ * goes on hearing the sound, in real time, with nothing for them to do; the
+ * share itself carries on.
+ */
+export function losslessGaveUp(): void {
+	toast(t("Lossless sound stopped"), {
+		description: t("Your connection could not keep up. Everyone still hears the sound in real time."),
 		duration: AT_MOST,
 		closeButton: true,
 	});

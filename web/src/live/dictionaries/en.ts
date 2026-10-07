@@ -59,6 +59,9 @@ const en = {
 	// Sharing a screen.
 	"Share your screen": "Share your screen",
 	"Stop sharing": "Stop sharing",
+	"A new version is ready": "A new version is ready",
+	"Refresh to use it.": "Refresh to use it.",
+	"Refresh": "Refresh",
 	"Share only sound": "Share only sound",
 	"Pick the app or tab that is playing": "Pick the app or tab that is playing",
 	"Sharing sound": "Sharing sound",

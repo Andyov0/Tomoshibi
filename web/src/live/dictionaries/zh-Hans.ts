@@ -44,6 +44,9 @@ const zhHans: Dictionary = {
 
 	"Share your screen": "共享屏幕",
 	"Stop sharing": "停止共享",
+	"A new version is ready": "有新版本了",
+	"Refresh to use it.": "刷新页面即可使用。",
+	"Refresh": "刷新",
 	"Share only sound": "只共享声音",
 	"Pick the app or tab that is playing": "选择正在播放的 App 或标签页",
 	"Sharing sound": "正在共享声音",

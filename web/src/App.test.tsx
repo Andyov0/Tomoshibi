@@ -46,7 +46,7 @@ vi.mock("@/live/room", () => ({
 
 // Said with sonner, which wants a toaster mounted and has nothing to do with
 // this.
-vi.mock("@/live/notices", () => ({ joinFailed: vi.fn(), watch: () => () => {} }));
+vi.mock("@/live/notices", () => ({ newerVersion: vi.fn(), joinFailed: vi.fn(), watch: () => () => {} }));
 
 beforeEach(() => {
 	localStorage.clear();

@@ -44,6 +44,9 @@ const zhHant: Dictionary = {
 
 	"Share your screen": "分享螢幕",
 	"Stop sharing": "停止分享",
+	"A new version is ready": "有新版本了",
+	"Refresh to use it.": "重新整理頁面即可使用。",
+	"Refresh": "重新整理",
 	"Share only sound": "只分享聲音",
 	"Pick the app or tab that is playing": "選擇正在播放的 App 或分頁",
 	"Sharing sound": "正在分享聲音",

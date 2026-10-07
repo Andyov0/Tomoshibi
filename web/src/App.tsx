@@ -8,7 +8,8 @@ import { connect, create } from "@/live/room";
 import { sharpShares } from "@/live/sharpness";
 import { forgetMeeting, keepMeeting, meetingToken } from "@/live/meeting";
 import { useT } from "@/hooks/useT";
-import { deviceFailed, joinFailed } from "@/live/notices";
+import { deviceFailed, joinFailed, newerVersion } from "@/live/notices";
+import { watchForNewerBuild } from "@/live/freshness";
 import { Lobby, SignIn } from "@/routes/Lobby";
 import { type Choices, PreJoin, remembered, rememberedName } from "@/routes/PreJoin";
 import { Moving } from "@/components/room/Moving";
@@ -86,6 +87,11 @@ export function App() {
 	// And the machine it is actually on, where the two came apart. Undefined for
 	// most calls, which is what makes the panel say one name rather than two.
 	const [carrying, setCarrying] = useState<string>();
+
+	// Whether this page is older than the server, for as long as it is open.
+	// See live/freshness.ts: a page kept open across a deployment went on running
+	// the code from before it, rejoins included.
+	useEffect(() => watchForNewerBuild(newerVersion), []);
 
 	/*
 	 * Where this call is being moved to, while it is being moved.

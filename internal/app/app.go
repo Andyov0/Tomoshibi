@@ -485,6 +485,16 @@ type deployment struct {
 	// be on the web page. It is configurable because a deployment running a
 	// changed copy owes its visitors that copy and not this one.
 	Source string `json:"source"`
+
+	// Build is the commit this server was built from, empty where that is not
+	// known.
+	//
+	// So a page can tell it is older than the server it came from. A client is
+	// loaded once and kept for as long as the tab is open, and a fix to how a
+	// call sounds reached nobody who had the page open already: somebody who
+	// left and rejoined after a deployment rejoined on the code from before it,
+	// which is how a sound fix was first reported as not working.
+	Build string `json:"build,omitempty"`
 }
 
 // manage serves the management document.
@@ -1191,7 +1201,7 @@ func (a *App) binary(w http.ResponseWriter, r *http.Request) {
 // administrator's passphrase — a faster one than the sign-in page, which is
 // rate limited for precisely that reason.
 func (a *App) deployment(w http.ResponseWriter, _ *http.Request) {
-	respond(w, deployment{OpenedBy: a.opening(), JoinedBy: a.joining(), Source: a.conf.Meet.SourceURL})
+	respond(w, deployment{OpenedBy: a.opening(), JoinedBy: a.joining(), Source: a.conf.Meet.SourceURL, Build: buildID})
 }
 
 // opening is who may use a name nobody has used, as this deployment can

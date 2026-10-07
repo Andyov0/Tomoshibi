@@ -72,6 +72,12 @@ export interface Deployment {
 	 * one are on this page.
 	 */
 	source: string;
+
+	/**
+	 * The commit the server was built from, empty where it does not know. See
+	 * live/freshness.ts for what is done with it.
+	 */
+	build: string;
 }
 
 /** What a deployment that will not say anything is taken to be. */
@@ -81,7 +87,7 @@ export interface Deployment {
 // setting existed. A page that cannot ask must not invent a restriction — and
 // must not promise there is none either, which is why nothing is drawn at all
 // until this is reached rather than starting here and correcting itself.
-const PLAIN: Deployment = { openedBy: "anyone", joinedBy: "anyone", source: "" };
+const PLAIN: Deployment = { openedBy: "anyone", joinedBy: "anyone", source: "", build: "" };
 
 /**
  * Ask the server about itself.
@@ -120,6 +126,7 @@ export async function deployment(): Promise<Deployment> {
 			// promise anybody it is open.
 			joinedBy: body.joinedBy === "anyone" || body.joinedBy === "accounts" ? body.joinedBy : "invited",
 			source: typeof body.source === "string" ? body.source : "",
+			build: typeof body.build === "string" ? body.build : "",
 		};
 	} catch {
 		return PLAIN;

@@ -49,7 +49,7 @@ vi.mock("@/live/sharpness", () => ({ sharpShares: () => () => {} }));
 // The call itself is not what is under test, and a real one wants a real room.
 vi.mock("@/routes/Room", () => ({ Room: () => <p>in the call</p> }));
 
-vi.mock("@/live/notices", () => ({ joinFailed: vi.fn(), deviceFailed: vi.fn(), watch: () => () => {} }));
+vi.mock("@/live/notices", () => ({ newerVersion: vi.fn(), joinFailed: vi.fn(), deviceFailed: vi.fn(), watch: () => () => {} }));
 
 beforeEach(() => {
 	localStorage.clear();

@@ -44,6 +44,9 @@ const ja: Dictionary = {
 
 	"Share your screen": "画面を共有",
 	"Stop sharing": "共有を停止",
+	"A new version is ready": "新しいバージョンがあります",
+	"Refresh to use it.": "ページを再読み込みすると使えます。",
+	"Refresh": "再読み込み",
 	"Share only sound": "音声だけを共有",
 	"Pick the app or tab that is playing": "再生中のアプリかタブを選びます",
 	"Sharing sound": "音声を共有中",

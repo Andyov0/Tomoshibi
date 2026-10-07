@@ -116,6 +116,22 @@ export function deviceFailed(kind: "camera" | "microphone", err: unknown): void 
 }
 
 /**
+ * A newer version of the page is available.
+ *
+ * Said rather than done: in a call, reloading is leaving it. The button is the
+ * reload, for whoever wants it now; anybody else gets the new page the next time
+ * they open the link.
+ */
+export function newerVersion(): void {
+	toast(t("A new version is ready"), {
+		description: t("Refresh to use it."),
+		duration: AT_MOST,
+		closeButton: true,
+		action: { label: t("Refresh"), onClick: () => window.location.reload() },
+	});
+}
+
+/**
  * A sound share that came back with no sound.
  *
  * The picker was answered, so nothing failed as far as the browser is concerned;

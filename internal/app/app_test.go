@@ -276,3 +276,33 @@ func TestAnImpossibleNameIsStillJustAnImpossibleName(t *testing.T) {
 		t.Errorf("an invalid name answered %d, want 400", code)
 	}
 }
+
+// A page compares the build it was loaded from with the one the server says it
+// is now, and offers a reload when they differ. So the build has to be said,
+// and it has to be left out where it is not known -- a development server built
+// outside a repository would otherwise tell every open page that it is out of
+// date, every time it restarted.
+func TestTheDeploymentSaysWhichBuildItIs(t *testing.T) {
+	_, mux := mount(t, []config.Admin{administrator()})
+	read := func() map[string]any {
+		var said map[string]any
+		recorder := ask(mux, httptest.NewRequest(http.MethodGet, "/api/deployment", nil))
+		if err := json.Unmarshal(recorder.Body.Bytes(), &said); err != nil {
+			t.Fatalf("the answer was not readable: %v", err)
+		}
+		return said
+	}
+
+	was := buildID
+	t.Cleanup(func() { buildID = was })
+
+	buildID = "4576c38bc551d8bb1a6abee1490b3fe8b61b417f"
+	if got := read()["build"]; got != buildID {
+		t.Errorf("build = %v, want %q", got, buildID)
+	}
+
+	buildID = ""
+	if got, present := read()["build"]; present {
+		t.Errorf("an unknown build was sent as %v rather than left out", got)
+	}
+}

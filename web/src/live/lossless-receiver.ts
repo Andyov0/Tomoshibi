@@ -38,6 +38,20 @@ const CEILING_SECONDS = 3;
 export const STALL_MS = 4000;
 
 /**
+ * Times playout may run dry in one share before the stream is given up on.
+ *
+ * One can be a burst of loss the retransmissions took longer than the buffer to
+ * repair. Two means the path cannot carry the stream in real time: measured
+ * from a machine reaching a mainland relay over the open internet, where loss
+ * runs to tens of per cent, the reliable channel delivered about an eighth of
+ * the stream's rate -- every sample correct, and the sound arriving in pieces
+ * between long gaps. Packets kept coming, so STALL_MS never fired, and the
+ * listener heard that instead of the Opus track, which is built for exactly
+ * such a path.
+ */
+export const MAX_UNDERRUNS = 2;
+
+/**
  * How often to ask until the first packet comes.
  *
  * Far more often than the keep-alive, because an unanswered first ask is the
@@ -160,7 +174,8 @@ export function receiveLossless(room: Room, changed: () => void, makePlayer: Mak
 			// as packets not arriving, and must come back to Opus just as surely:
 			// otherwise the Opus track stays held back and nothing is heard.
 			const stalled = now - Math.max(source.askedAt, source.lastPacket) > STALL_MS;
-			if (want && source.wanted && (stalled || source.player?.broken())) {
+			const starved = (source.player?.counts()?.underruns ?? 0) >= MAX_UNDERRUNS;
+			if (want && source.wanted && (stalled || starved || source.player?.broken())) {
 				giveUp(identity, source);
 				want = false;
 			} else if (want && !source.wanted) {

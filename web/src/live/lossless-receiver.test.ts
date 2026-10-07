@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Room } from "livekit-client";
 import { setBlocked } from "./hearing";
 import { ASK_TOPIC, FRAMES, LOSSLESS, TOPIC, fromInt24, pack } from "./lossless";
-import { type Player, STALL_MS, holdsBack, receiveLossless } from "./lossless-receiver";
+import { MAX_UNDERRUNS, type Player, STALL_MS, holdsBack, receiveLossless } from "./lossless-receiver";
 import { LISTENING } from "./sound";
 
 /*
@@ -75,13 +75,14 @@ function samples(seq: number): Int32Array[] {
 }
 
 function fakePlayers() {
-	const made: (Player & { blocks: Float32Array[][]; closed: boolean; level: number; isBroken: boolean })[] = [];
+	const made: (Player & { blocks: Float32Array[][]; closed: boolean; level: number; isBroken: boolean; underruns: number })[] = [];
 	const make = () => {
 		const player = {
 			blocks: [] as Float32Array[][],
 			closed: false,
 			level: 1,
 			isBroken: false,
+			underruns: 0,
 			push(block: Float32Array[]) {
 				player.blocks.push(block);
 			},
@@ -91,7 +92,7 @@ function fakePlayers() {
 			close() {
 				player.closed = true;
 			},
-			counts: () => undefined,
+			counts: () => ({ underruns: player.underruns, skipped: 0, held: 0, played: 0, playing: true }),
 			broken: () => player.isBroken,
 		};
 		made.push(player);
@@ -213,6 +214,26 @@ describe("giving up, and giving Opus back", () => {
 		send("gfriend-1", 1);
 		vi.advanceTimersByTime(1000);
 
+		expect(holdsBack(room, "gfriend-1")).toBe(false);
+		stop();
+	});
+
+	it("when playout keeps running dry, though packets still come", () => {
+		const { room, share, send } = fakeRoom();
+		const players = fakePlayers();
+		const stop = receiveLossless(room, () => {}, players.make);
+		share("gfriend-1");
+		send("gfriend-1", 0);
+		const player = players.made[0] as { underruns: number };
+
+		player.underruns = MAX_UNDERRUNS - 1;
+		send("gfriend-1", 1);
+		vi.advanceTimersByTime(1000);
+		expect(holdsBack(room, "gfriend-1")).toBe(true);
+
+		player.underruns = MAX_UNDERRUNS;
+		send("gfriend-1", 2);
+		vi.advanceTimersByTime(1000);
 		expect(holdsBack(room, "gfriend-1")).toBe(false);
 		stop();
 	});

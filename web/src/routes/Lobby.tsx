@@ -122,7 +122,11 @@ function Fleet() {
  */
 function Frame({ children, corner }: { children: ReactNode; corner?: ReactNode }) {
 	return (
-		<main className="relative grid min-h-full grid-rows-[auto_1fr] overflow-x-hidden overflow-y-auto">
+		// One column no wider than the window. Left to size itself, the column
+		// took the header's natural width, which on a 320-pixel phone is 348 --
+		// and every card below was laid out to that and clipped by the overflow
+		// rule, nine pixels of each one's right edge simply missing.
+		<main className="relative grid min-h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr] overflow-x-hidden overflow-y-auto">
 			{/*
 			 * One glow, high and behind everything, in the signal colour at a
 			 * fraction of its strength. It is doing the work a photograph would do
@@ -139,8 +143,8 @@ function Frame({ children, corner }: { children: ReactNode; corner?: ReactNode }
 				)}
 			/>
 
-			<header className="z-10 flex items-center justify-between gap-4 p-5 sm:p-6">
-				<div className="flex items-center gap-2">
+			<header className="z-10 flex items-center justify-between gap-2 p-5 sm:gap-4 sm:p-6">
+				<div className="flex min-w-0 items-center gap-2">
 					<img src="/favicon.svg" alt="" className="size-5 rounded-[5px]" />
 					<span className="font-semibold text-[13px] tracking-tight">Tomoshibi</span>
 

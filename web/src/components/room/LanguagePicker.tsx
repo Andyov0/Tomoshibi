@@ -30,7 +30,10 @@ export function LanguagePicker() {
 			<DropdownMenuTrigger asChild>
 				<Button variant="ghost" size="sm" aria-label={t("Language")} className="gap-1.5">
 					<Languages className="size-3.5" />
-					{LOCALE_NAMES[current]}
+					{/* The icon alone on the narrowest phones, where the name of
+					    the language was what pushed the page's header past the
+					    edge. The button keeps its label for anybody not looking. */}
+					<span className="max-[360px]:hidden">{LOCALE_NAMES[current]}</span>
 				</Button>
 			</DropdownMenuTrigger>
 

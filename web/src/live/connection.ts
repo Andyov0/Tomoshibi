@@ -187,6 +187,11 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 			const now = Date.now();
 			const stats = await gather(room);
 
+			// Asked of the relay itself where the candidates could not say;
+			// see addressSeenBy. Once per relay, so every pass after the first
+			// is answered from what the first one learned.
+			const address = stats.ownAddress ?? (stats.askAt ? await addressSeenBy(stats.askAt) : undefined);
+
 			if (!live) return;
 
 			const was = previous.current;
@@ -275,7 +280,7 @@ export function useConnectionQuality(room: Room | undefined): Reading {
 					height: share.height,
 					limited: share.limited === "none" ? undefined : share.limited,
 				},
-				ownAddress: stats.ownAddress,
+				ownAddress: address,
 				lossPercent,
 				upKbps,
 				downKbps,
@@ -330,6 +335,8 @@ interface Gathered {
 	rttMs?: number;
 	jitterMs?: number;
 	ownAddress?: string;
+	/** The relay to ask for this browser's address, where nothing here said. */
+	askAt?: string;
 	share?: {
 		width?: number;
 		height?: number;
@@ -412,7 +419,7 @@ async function gather(room: Room): Promise<Gathered> {
 	// Collected as they are met and resolved afterwards, because the pair that
 	// names a candidate and the candidate itself arrive in whichever order the
 	// report happens to hold them.
-	const locals = new Map<string, { address: string; kind: string }>();
+	const locals = new Map<string, Candidate>();
 	let nominated: string | undefined;
 
 	for (const report of reports) {
@@ -430,6 +437,12 @@ async function gather(room: Room): Promise<Gathered> {
 						locals.set(entry.id, {
 							address: entry.address,
 							kind: typeof entry.candidateType === "string" ? entry.candidateType : "",
+							related: typeof entry.relatedAddress === "string" ? entry.relatedAddress : undefined,
+							url: typeof entry.url === "string" ? entry.url : undefined,
+							relayed:
+								entry.candidateType === "relay" ||
+								typeof entry.relayProtocol === "string" ||
+								(typeof entry.url === "string" && entry.url.startsWith("turn")),
 						});
 					}
 
@@ -486,16 +499,66 @@ async function gather(room: Room): Promise<Gathered> {
 	}
 
 	if (nominated) {
-		const local = locals.get(nominated);
-
-		// The reflexive one is the address the relay sees, which is the one
-		// worth showing. A host candidate is the private address of whatever
-		// network card won, and telling somebody they are 192.168.1.24 answers
-		// no question they had.
-		if (local && local.kind !== "host") out.ownAddress = local.address;
+		out.ownAddress = ownAddress(locals, nominated);
+		if (!out.ownAddress) out.askAt = relayToAsk(locals.get(nominated));
 	}
 
 	return out;
+}
+
+/** A local candidate, as much of it as the address on the panel needs. */
+export interface Candidate {
+	address: string;
+	kind: string;
+	/** The address this one was derived from, where the browser says. */
+	related?: string;
+	/** Whether it reaches the far end through a TURN relay. */
+	relayed: boolean;
+	/** The server it was gathered from, as the browser was given it. */
+	url?: string;
+}
+
+/**
+ * This browser's own public address, from the candidate in use, or nothing.
+ *
+ * Reflexive candidates -- server- or peer- -- are the address the far end sees,
+ * and on a direct path the far end is the machine holding the call, so that is
+ * this browser's address. A host candidate is the private address of whatever
+ * network card won, and telling somebody they are 192.168.1.24 answers no
+ * question they had.
+ *
+ * Through a relay it is neither. The candidate in use is then the relay's own
+ * address, or a peer-reflexive one learned at the far end of the relay's path,
+ * which is wherever that path comes out: for a mainland relay forwarding to a
+ * machine abroad, the exchange the relays cross the border through. That was
+ * shown as somebody's own address, and read, correctly, as a stranger's. What
+ * the relay itself sees is the related address of its relay candidate -- the
+ * address the allocation was made from -- and that is this browser's.
+ *
+ * The browser does not always say. A call forwarded through a relay is told to
+ * use relays only, and in that mode the browser withholds every related
+ * address -- the point of relay-only is that the far end learns nothing else --
+ * so the relay is asked directly instead; see addressSeenBy. Until it answers,
+ * and if it never does, nothing is shown: an empty row is better than somebody
+ * else's address under the words "your address".
+ */
+export function ownAddress(locals: Map<string, Candidate>, nominated: string): string | undefined {
+	const local = locals.get(nominated);
+	if (!local || local.kind === "host") return undefined;
+	if (!local.relayed) return local.address;
+
+	// A peer-reflexive candidate on a relayed path is derived from the relay
+	// candidate it went out through, and names it as its related address.
+	const allocation =
+		local.kind === "relay" ? local : [...locals.values()].find((one) => one.kind === "relay" && one.address === local.related);
+
+	return seen(allocation?.related);
+}
+
+/** An address the browser actually disclosed, rather than its placeholder. */
+function seen(address: string | undefined): string | undefined {
+	if (!address || address === "0.0.0.0" || address === "::") return undefined;
+	return address;
 }
 
 /**
@@ -601,4 +664,72 @@ function limitation(value: unknown): "cpu" | "bandwidth" | "other" | "none" | un
 /** A stats field, where it is a number and not something else. */
 function numeric(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The STUN address of the relay a relayed candidate went through, or nothing.
+ *
+ * Only a plain TURN server over UDP or TCP: a relay answers STUN on the port it
+ * answers TURN on, and over UDP, whichever transport the allocation used. One
+ * reached over TLS is left alone, because STUN to it in the clear would go
+ * somewhere the browser was told not to send anything in the clear.
+ */
+export function relayToAsk(candidate: Candidate | undefined): string | undefined {
+	if (!candidate?.relayed || !candidate.url) return undefined;
+
+	const match = /^turn:([^?]+)/.exec(candidate.url);
+	return match ? `stun:${match[1]}` : undefined;
+}
+
+const askedOf = new Map<string, Promise<string | undefined>>();
+
+/** How long a relay is given to answer before the row stays empty. */
+export const ASK_FOR = 5000;
+
+/**
+ * This browser's public address as the given STUN server sees it.
+ *
+ * For a call that goes through a relay, where the candidates will not say. A
+ * connection of its own, with no peer, gathers one server-reflexive candidate
+ * from the relay -- the same relay, over the same kind of path, as the call --
+ * and that candidate's address is what the relay sees. It is then closed. The
+ * answer is kept for as long as the page is open, failure included, so a relay
+ * that will not answer is asked once rather than on every reading.
+ */
+export function addressSeenBy(stun: string): Promise<string | undefined> {
+	const known = askedOf.get(stun);
+	if (known) return known;
+
+	const asking = new Promise<string | undefined>((resolve) => {
+		let pc: RTCPeerConnection;
+		try {
+			pc = new RTCPeerConnection({ iceServers: [{ urls: stun }] });
+		} catch {
+			resolve(undefined);
+			return;
+		}
+
+		const done = (address?: string) => {
+			clearTimeout(timer);
+			pc.onicecandidate = null;
+			pc.close();
+			resolve(address);
+		};
+		const timer = setTimeout(() => done(undefined), ASK_FOR);
+
+		pc.onicecandidate = (event) => {
+			const candidate = event.candidate;
+			if (!candidate) return done(undefined);
+			if (candidate.type === "srflx" && candidate.address) done(candidate.address);
+		};
+
+		// Something to negotiate, or nothing is gathered.
+		pc.createDataChannel("address");
+		pc.createOffer()
+			.then((offer) => pc.setLocalDescription(offer))
+			.catch(() => done(undefined));
+	});
+
+	askedOf.set(stun, asking);
+	return asking;
 }

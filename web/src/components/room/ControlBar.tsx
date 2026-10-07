@@ -153,6 +153,25 @@ export function ControlBar({
 				// that appears over them: the panel, the notices, the bubbles.
 				"absolute z-20 flex gap-1.5",
 				"rounded-full border border-border bg-surface/90 p-1.5 shadow-2xl backdrop-blur-md",
+				/*
+				 * Narrower on a narrow phone, in two steps, because at full size the
+				 * bar is 368 pixels and a 320-pixel phone could not hold it: both ends
+				 * hung off the screen, the hang-up button with them, and the page
+				 * was pushed wider than the display so the browser zoomed it all out.
+				 * A 375-pixel phone held it with three pixels to spare.
+				 *
+				 * Below 390 only the spacing tightens, which is enough there. Below
+				 * 372, which takes in the common 360-pixel Android width as well as
+				 * 320, the buttons come down to 34 pixels and the divider goes -- a
+				 * smaller target than is comfortable, chosen over a control that is
+				 * not on the screen at all. The sizes are reached from here rather
+				 * than through each button so that every other place those buttons
+				 * appear keeps its size.
+				 */
+				"max-[390px]:gap-1 max-[390px]:p-1",
+				"max-[372px]:[&_.size-10]:size-[34px] max-[372px]:[&_.size-11]:size-[38px]",
+				"max-[372px]:[&_.rounded-r-full]:h-[34px] max-[372px]:[&_.rounded-r-full]:pr-1.5 max-[372px]:[&_.rounded-r-full]:pl-0.5",
+				"max-[372px]:[&>span.w-px]:hidden",
 				side
 					? // Down the right edge, vertically centred. Costs width,
 						// which a wide window has and a tall one does not.

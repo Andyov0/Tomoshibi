@@ -31,7 +31,7 @@ function open() {
 function draw() {
 	const onStart = vi.fn();
 	render(
-		<ShareButton sharing={false} onStart={onStart} onAdjust={vi.fn()} onStop={vi.fn()} />,
+		<ShareButton sharing={false} listening={false} onListen={vi.fn()} onStopListening={vi.fn()} onStart={onStart} onAdjust={vi.fn()} onStop={vi.fn()} />,
 	);
 	open();
 
@@ -124,7 +124,7 @@ describe("ShareButton", () => {
 	it("adjusts a running share in place instead of publishing it again", () => {
 		const onStart = vi.fn();
 		const onAdjust = vi.fn();
-		render(<ShareButton sharing onStart={onStart} onAdjust={onAdjust} onStop={vi.fn()} />);
+		render(<ShareButton sharing listening={false} onListen={vi.fn()} onStopListening={vi.fn()} onStart={onStart} onAdjust={onAdjust} onStop={vi.fn()} />);
 
 		fireEvent.keyDown(screen.getByRole("button", { name: "Screen sharing settings" }), {
 			key: "Enter",
@@ -143,7 +143,7 @@ describe("ShareButton", () => {
 	// offered at 1080p and is not carried onto 4K by a size change mid-share.
 	it("does not carry a fast rate onto a smaller size while sharing", () => {
 		const onAdjust = vi.fn();
-		render(<ShareButton sharing onStart={vi.fn()} onAdjust={onAdjust} onStop={vi.fn()} />);
+		render(<ShareButton sharing listening={false} onListen={vi.fn()} onStopListening={vi.fn()} onStart={vi.fn()} onAdjust={onAdjust} onStop={vi.fn()} />);
 
 		fireEvent.keyDown(screen.getByRole("button", { name: "Screen sharing settings" }), {
 			key: "Enter",
@@ -157,7 +157,7 @@ describe("ShareButton", () => {
 
 	it("still stops, from the menu", () => {
 		const onStop = vi.fn();
-		render(<ShareButton sharing onStart={vi.fn()} onAdjust={vi.fn()} onStop={onStop} />);
+		render(<ShareButton sharing listening={false} onListen={vi.fn()} onStopListening={vi.fn()} onStart={vi.fn()} onAdjust={vi.fn()} onStop={onStop} />);
 
 		fireEvent.keyDown(screen.getByRole("button", { name: "Screen sharing settings" }), {
 			key: "Enter",
@@ -165,5 +165,69 @@ describe("ShareButton", () => {
 		fireEvent.click(screen.getByRole("menuitem", { name: /Stop sharing/ }));
 
 		expect(onStop).toHaveBeenCalled();
+	});
+});
+
+/*
+ * Sound on its own, to listen to something together.
+ *
+ * Offered from the same menu as the screen, and not while the screen is being
+ * shared -- a share already sends its sound, and offering a second copy of it
+ * would put the same song in the room twice, a beat apart.
+ */
+describe("sharing sound on its own", () => {
+	it("is offered beside the screen, and starts when chosen", () => {
+		const onListen = vi.fn();
+		render(
+			<ShareButton
+				sharing={false}
+				listening={false}
+				onStart={vi.fn()}
+				onAdjust={vi.fn()}
+				onStop={vi.fn()}
+				onListen={onListen}
+				onStopListening={vi.fn()}
+			/>,
+		);
+		open();
+		fireEvent.click(screen.getByRole("menuitem", { name: /Share only sound/ }));
+
+		expect(onListen).toHaveBeenCalledTimes(1);
+	});
+
+	it("is not offered while the screen is shared", () => {
+		render(
+			<ShareButton
+				sharing
+				listening={false}
+				onStart={vi.fn()}
+				onAdjust={vi.fn()}
+				onStop={vi.fn()}
+				onListen={vi.fn()}
+				onStopListening={vi.fn()}
+			/>,
+		);
+		fireEvent.keyDown(screen.getByRole("button", { name: "Screen sharing settings" }), { key: "Enter" });
+
+		expect(screen.queryByRole("menuitem", { name: /Share only sound/ })).toBeNull();
+	});
+
+	it("says it is sharing sound, and stops from the menu", () => {
+		const onStopListening = vi.fn();
+		render(
+			<ShareButton
+				sharing={false}
+				listening
+				onStart={vi.fn()}
+				onAdjust={vi.fn()}
+				onStop={vi.fn()}
+				onListen={vi.fn()}
+				onStopListening={onStopListening}
+			/>,
+		);
+		fireEvent.keyDown(screen.getByRole("button", { name: "Sharing sound" }), { key: "Enter" });
+		fireEvent.click(screen.getByRole("menuitem", { name: "Stop sharing sound" }));
+
+		expect(onStopListening).toHaveBeenCalledTimes(1);
 	});
 });

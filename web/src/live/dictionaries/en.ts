@@ -59,6 +59,15 @@ const en = {
 	// Sharing a screen.
 	"Share your screen": "Share your screen",
 	"Stop sharing": "Stop sharing",
+	"Share only sound": "Share only sound",
+	"Pick the app or tab that is playing": "Pick the app or tab that is playing",
+	"Sharing sound": "Sharing sound",
+	"Stop sharing sound": "Stop sharing sound",
+	"{name} is sharing sound": "{name} is sharing sound",
+	"No sound was shared": "No sound was shared",
+	"Tick the sound option in the picker, or pick the browser tab that is playing.": "Tick the sound option in the picker, or pick the browser tab that is playing.",
+	"Original sound": "Original sound",
+	"No noise suppression or automatic volume. For headphones and music.": "No noise suppression or automatic volume. For headphones and music.",
 	"{name} is sharing": "{name} is sharing",
 	"Watch": "Watch",
 

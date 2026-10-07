@@ -44,6 +44,15 @@ const ja: Dictionary = {
 
 	"Share your screen": "画面を共有",
 	"Stop sharing": "共有を停止",
+	"Share only sound": "音声だけを共有",
+	"Pick the app or tab that is playing": "再生中のアプリかタブを選びます",
+	"Sharing sound": "音声を共有中",
+	"Stop sharing sound": "音声の共有を停止",
+	"{name} is sharing sound": "{name} が音声を共有しています",
+	"No sound was shared": "音声が共有されませんでした",
+	"Tick the sound option in the picker, or pick the browser tab that is playing.": "選択画面で音声の共有にチェックを入れるか、再生中のブラウザのタブを選んでください。",
+	"Original sound": "オリジナルサウンド",
+	"No noise suppression or automatic volume. For headphones and music.": "ノイズ抑制と自動音量調整をオフにします。ヘッドホンや音楽向けです。",
 	"{name} is sharing": "{name} が共有しています",
 	"Watch": "見る",
 

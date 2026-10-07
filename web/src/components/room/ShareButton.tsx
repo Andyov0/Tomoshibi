@@ -21,7 +21,7 @@ import {
 	rememberedFrameRate,
 	rememberedQuality,
 } from "@/live/room";
-import { MonitorOff, MonitorUp } from "lucide-react";
+import { AudioLines, CircleStop, MonitorOff, MonitorUp, Music } from "lucide-react";
 import { useState } from "react";
 
 /**
@@ -46,11 +46,19 @@ import { useState } from "react";
  */
 export function ShareButton({
 	sharing,
+	listening,
 	onStart,
 	onAdjust,
 	onStop,
+	onListen,
+	onStopListening,
 }: {
 	sharing: boolean;
+	/** Sound is being shared on its own, without a picture. */
+	listening: boolean;
+	/** Share one app's or tab's sound and nothing else, to listen together. */
+	onListen: () => void;
+	onStopListening: () => void;
 	/** Begin, in the manner chosen. */
 	onStart: (frameRate: ShareFrameRate, quality: ShareQuality) => void;
 	/**
@@ -98,13 +106,15 @@ export function ShareButton({
 				    fixed without stopping, reopening the picker, and choosing the
 				    window again in front of everybody. */}
 				<Button
-					variant={sharing ? "default" : "secondary"}
+					variant={sharing || listening ? "default" : "secondary"}
 					size="round"
-					aria-label={sharing ? t("Screen sharing settings") : t("Share your screen")}
-					aria-pressed={sharing}
-					className={sharing ? undefined : "text-fg-muted"}
+					aria-label={
+						sharing ? t("Screen sharing settings") : listening ? t("Sharing sound") : t("Share your screen")
+					}
+					aria-pressed={sharing || listening}
+					className={sharing || listening ? undefined : "text-fg-muted"}
 				>
-					{sharing ? <MonitorOff /> : <MonitorUp />}
+					{sharing ? <MonitorOff /> : listening ? <AudioLines /> : <MonitorUp />}
 				</Button>
 			</DropdownMenuTrigger>
 
@@ -183,6 +193,28 @@ export function ShareButton({
 						<span className="text-fg">{t("Share your screen")}</span>
 					</DropdownMenuItem>
 				)}
+
+				{/* Sound on its own, to listen to something together. In this menu
+				    because it is the same picker and the same kind of decision --
+				    what of this machine everybody else gets -- and not offered while
+				    the screen is shared, because a share already sends its sound
+				    and two copies of one song a beat apart is nobody's idea of
+				    listening together. */}
+				{!sharing &&
+					(listening ? (
+						<DropdownMenuItem onSelect={onStopListening} className="gap-2">
+							<CircleStop className="size-4" />
+							<span className="text-fg">{t("Stop sharing sound")}</span>
+						</DropdownMenuItem>
+					) : (
+						<DropdownMenuItem onSelect={onListen} className="items-start gap-2">
+							<Music className="mt-0.5 size-4" />
+							<span className="flex flex-col">
+								<span className="text-fg">{t("Share only sound")}</span>
+								<span className="text-fg-muted text-xs">{t("Pick the app or tab that is playing")}</span>
+							</span>
+						</DropdownMenuItem>
+					))}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

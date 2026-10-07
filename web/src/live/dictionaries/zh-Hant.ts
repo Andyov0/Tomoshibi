@@ -44,6 +44,15 @@ const zhHant: Dictionary = {
 
 	"Share your screen": "分享螢幕",
 	"Stop sharing": "停止分享",
+	"Share only sound": "只分享聲音",
+	"Pick the app or tab that is playing": "選擇正在播放的 App 或分頁",
+	"Sharing sound": "正在分享聲音",
+	"Stop sharing sound": "停止分享聲音",
+	"{name} is sharing sound": "{name} 正在分享聲音",
+	"No sound was shared": "沒有分享到聲音",
+	"Tick the sound option in the picker, or pick the browser tab that is playing.": "在選擇視窗裡勾選分享音訊,或者選擇正在播放的瀏覽器分頁。",
+	"Original sound": "原聲",
+	"No noise suppression or automatic volume. For headphones and music.": "不降噪,不自動調整音量。適合戴耳機或演奏音樂。",
 	"{name} is sharing": "{name} 正在分享",
 	"Watch": "查看",
 

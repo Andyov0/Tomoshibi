@@ -22,7 +22,7 @@ import { SHARE_FRAME_RATES, type ShareFrameRate,
 /** A stub of the one call `share` makes, which reports how it was made. */
 function watchShare() {
 	const setScreenShareEnabled = vi.fn().mockResolvedValue(undefined);
-	const room = { localParticipant: { setScreenShareEnabled } } as unknown as Room;
+	const room = { localParticipant: { setScreenShareEnabled, trackPublications: new Map() } } as unknown as Room;
 
 	return {
 		room,

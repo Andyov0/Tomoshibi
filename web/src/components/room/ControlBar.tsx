@@ -15,7 +15,8 @@ import { HandButton } from "./HandButton";
 import { ShareButton } from "./ShareButton";
 import { useLocalState } from "@/hooks/useLocalState";
 import { canShareScreen } from "@/live/context";
-import { deviceFailed } from "@/live/notices";
+import { deviceFailed, noSoundShared } from "@/live/notices";
+import { NoSound, startListening, stopListening } from "@/live/sound";
 
 /**
  * The call controls.
@@ -217,9 +218,25 @@ export function ControlBar({
 			{canShareScreen() && (
 				<ShareButton
 					sharing={local.screen}
+					listening={local.listening}
 					onStart={(frameRate, quality) => void guard(() => share(room, true, frameRate, quality))()}
 					onAdjust={(frameRate, quality) => void retune(room, frameRate, quality)}
 					onStop={() => void guard(() => share(room, false, 30))()}
+					onListen={() =>
+						void guard(async () => {
+							try {
+								await startListening(room);
+							} catch (err) {
+								// A picker answered with nothing ticked is not a
+								// cancelled picker: it needs saying, with the way
+								// out. A cancelled one goes on to the guard, which
+								// says nothing, as for a screen.
+								if (err instanceof NoSound) noSoundShared();
+								else throw err;
+							}
+						})()
+					}
+					onStopListening={() => void guard(() => stopListening(room))()}
 				/>
 			)}
 

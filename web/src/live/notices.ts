@@ -2,6 +2,7 @@ import type { Participant, Room } from "livekit-client";
 import { RoomEvent, Track } from "livekit-client";
 import { toast } from "sonner";
 import { t } from "./i18n";
+import { LISTENING } from "./sound";
 
 /**
  * What is worth interrupting somebody for.
@@ -61,12 +62,17 @@ export function watch(room: Room): () => void {
 		toast(t("{name} left", { name: named(participant) }), { duration: BRIEFLY });
 	};
 
-	const onPublished = (publication: { source: Track.Source }, participant: Participant) => {
-		if (publication.source !== Track.Source.ScreenShare) return;
-		toast(t("{name} started sharing", { name: named(participant) }), {
-			duration: A_MOMENT,
-			className: "is-signal",
-		});
+	const onPublished = (publication: { source: Track.Source; trackName: string }, participant: Participant) => {
+		// Sound shared on its own has no picture to announce it, so it is said:
+		// otherwise music simply starts, from nowhere anybody can see.
+		const sound = publication.source === Track.Source.ScreenShareAudio && publication.trackName === LISTENING;
+		if (publication.source !== Track.Source.ScreenShare && !sound) return;
+		toast(
+			sound
+				? t("{name} is sharing sound", { name: named(participant) })
+				: t("{name} started sharing", { name: named(participant) }),
+			{ duration: A_MOMENT, className: "is-signal" },
+		);
 	};
 
 	room.on(RoomEvent.ParticipantConnected, onJoin);
@@ -104,6 +110,22 @@ export function deviceFailed(kind: "camera" | "microphone", err: unknown): void 
 		description: refused
 			? t("Allow access from the icon in the address bar.")
 			: t("Something else may be using it."),
+		duration: AT_MOST,
+		closeButton: true,
+	});
+}
+
+/**
+ * A sound share that came back with no sound.
+ *
+ * The picker was answered, so nothing failed as far as the browser is concerned;
+ * whether a window's sound can be shared depends on the browser, its version and
+ * the system, and the checkbox that shares it is easy to leave unticked. Said,
+ * with the choice that always works, rather than left as music nobody hears.
+ */
+export function noSoundShared(): void {
+	toast.error(t("No sound was shared"), {
+		description: t("Tick the sound option in the picker, or pick the browser tab that is playing."),
 		duration: AT_MOST,
 		closeButton: true,
 	});

@@ -1,4 +1,5 @@
 import type { Room } from "livekit-client";
+import { listening } from "@/live/sound";
 import { RoomEvent } from "livekit-client";
 import { useCallback, useSyncExternalStore } from "react";
 
@@ -7,6 +8,8 @@ export interface LocalState {
 	microphone: boolean;
 	camera: boolean;
 	screen: boolean;
+	/** Sound shared on its own, to listen to together. */
+	listening: boolean;
 }
 
 const EVENTS = [
@@ -41,7 +44,7 @@ export function useLocalState(room: Room | undefined): LocalState {
 	return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 
-const OFF: LocalState = { microphone: false, camera: false, screen: false };
+const OFF: LocalState = { microphone: false, camera: false, screen: false, listening: false };
 
 // Cached per room, because useSyncExternalStore compares snapshots by identity.
 const snapshots = new WeakMap<Room, LocalState>();
@@ -52,6 +55,7 @@ function cached(room: Room): LocalState {
 		microphone: local.isMicrophoneEnabled,
 		camera: local.isCameraEnabled,
 		screen: local.isScreenShareEnabled,
+		listening: listening(room) !== undefined,
 	};
 
 	const held = snapshots.get(room);
@@ -59,7 +63,8 @@ function cached(room: Room): LocalState {
 		held &&
 		held.microphone === next.microphone &&
 		held.camera === next.camera &&
-		held.screen === next.screen
+		held.screen === next.screen &&
+		held.listening === next.listening
 	) {
 		return held;
 	}

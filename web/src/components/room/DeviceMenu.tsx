@@ -12,6 +12,7 @@ import { warm } from "@/live/blur";
 import type { Placement } from "@/live/controls";
 import { useT } from "@/hooks/useT";
 import { deviceFailed } from "@/live/notices";
+import { applyOriginalSound, rememberedOriginal } from "@/live/sound";
 import { type Room, supportsAudioOutputSelection } from "livekit-client";
 import { ChevronUp, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -38,6 +39,7 @@ export function DeviceMenu({
 }: { room: Room; where: Placement; onPlace: (where: Placement) => void }) {
 	const t = useT();
 	const background = useBlur(room);
+	const original = useOriginalSound(room);
 
 	return (
 		<DropdownMenu
@@ -57,6 +59,23 @@ export function DeviceMenu({
 			<DropdownMenuContent align="center" side="top">
 				<DropdownMenuLabel>{t("Microphone")}</DropdownMenuLabel>
 				<Devices room={room} kind="audioinput" />
+				{/* Under the microphone because it is a property of the voice,
+				    the way blur is a property of the picture. Kept open on a
+				    press so the person can hear the difference before deciding;
+				    the change is applied to the live microphone, not the next
+				    one. */}
+				<DropdownMenuCheckboxItem
+					checked={original.on}
+					disabled={original.busy}
+					onSelect={(event) => event.preventDefault()}
+					onCheckedChange={() => void original.toggle()}
+					className="flex-col items-start gap-0"
+				>
+					<span className="text-fg">{t("Original sound")}</span>
+					<span className="max-w-64 whitespace-normal text-fg-muted text-xs">
+						{t("No noise suppression or automatic volume. For headphones and music.")}
+					</span>
+				</DropdownMenuCheckboxItem>
 
 				{supportsAudioOutputSelection() && (
 					<>
@@ -192,4 +211,33 @@ function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
 			))}
 		</>
 	);
+}
+
+/**
+ * Whether the voice is sent as it is, and the switch for it.
+ *
+ * Busy while the microphone restarts with the new constraints, so a second press
+ * cannot start a second restart halfway through the first. A restart that fails
+ * leaves the choice where it was and says so the way any device failure does.
+ */
+function useOriginalSound(room: Room) {
+	const [on, setOn] = useState(rememberedOriginal);
+	const [busy, setBusy] = useState(false);
+
+	const toggle = async () => {
+		if (busy) return;
+		setBusy(true);
+		const next = !on;
+
+		try {
+			await applyOriginalSound(room, next);
+			setOn(next);
+		} catch (err) {
+			deviceFailed("microphone", err);
+		} finally {
+			setBusy(false);
+		}
+	};
+
+	return { on, busy, toggle };
 }

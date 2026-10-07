@@ -218,6 +218,8 @@ describe("the small copy that goes with a share", () => {
 
 		const room = {
 			localParticipant: {
+				// Nothing published yet, so no sound is being shared on its own.
+				trackPublications: new Map(),
 				setScreenShareEnabled: async (_on: boolean, capture: unknown, publish: unknown) => {
 					asked.capture = capture;
 					asked.publish = publish;
@@ -314,6 +316,8 @@ describe("what the browser is actually asked to capture", () => {
 
 		const room = {
 			localParticipant: {
+				// Nothing published yet, so no sound is being shared on its own.
+				trackPublications: new Map(),
 				setScreenShareEnabled: async (_on: boolean, asked: unknown) => {
 					capture = asked;
 
@@ -412,6 +416,8 @@ describe("the ceiling after the capture", () => {
 
 		const room = {
 			localParticipant: {
+				// Nothing published yet, so no sound is being shared on its own.
+				trackPublications: new Map(),
 				setScreenShareEnabled: async () => publication,
 			},
 		} as unknown as Room;
@@ -493,6 +499,8 @@ describe("the ceiling follows the picture, not the request", () => {
 
 		const room = {
 			localParticipant: {
+				// Nothing published yet, so no sound is being shared on its own.
+				trackPublications: new Map(),
 				setScreenShareEnabled: async () => ({ videoTrack: track }),
 				getTrackPublication: () => ({ videoTrack: track }),
 			},

@@ -8,6 +8,14 @@ import {
 	VideoPreset,
 	VideoPresets,
 } from "livekit-client";
+import {
+	MUSIC_CAPTURE,
+	MUSIC_PUBLISH,
+	listening,
+	rememberedOriginal,
+	voiceCapture,
+	voicePublish,
+} from "./sound";
 import type { Join } from "./api";
 import { installNoValidate } from "./novalidate";
 import { seal, sealing } from "./secrecy";
@@ -432,7 +440,13 @@ export function create(secret: string): Room {
 			 * paying for it out of somebody else's upload rather than their own.
 			 */
 			backupCodec: false,
+
+			// How a microphone is sent. The SDK's own defaults were what every
+			// call ran on until this was set; see live/sound.ts for what they
+			// were and what each of these replaces.
+			...voicePublish(rememberedOriginal()),
 		},
+		audioCaptureDefaults: voiceCapture(rememberedOriginal()),
 		// Speaking is worked out by the media server and pushed to everybody, so
 		// no client has to run an analyser of its own.
 		disconnectOnPageLeave: true,
@@ -574,10 +588,18 @@ export async function share(
 ): Promise<LocalTrackPublication | undefined> {
 	const profile = settingsFor(frameRate, quality);
 
+	// A share's sound goes alongside a picture unless sound is already being
+	// shared on its own, which carries on and is not doubled.
+	const alongside = wanted && listening(room) === undefined;
+
 	const published = await room.localParticipant.setScreenShareEnabled(
 		wanted,
 		{
-			audio: true,
+			// Captured and sent as music rather than as a voice: stereo, with none
+			// of the processing that helps a voice and damages everything else.
+			// Left to the defaults, a shared video's soundtrack was folded to mono,
+			// gated by DTX and run through noise suppression.
+			audio: alongside ? MUSIC_CAPTURE : false,
 			/*
 			 * The capture, in the one shape the SDK will pass on.
 			 *
@@ -667,6 +689,9 @@ export async function share(
 			// prompted them and for why the SDK's own default layer is neither.
 			simulcast: true,
 			screenShareSimulcastLayers: BENEATH,
+
+			// For the sound that comes with the picture; the picture ignores these.
+			...MUSIC_PUBLISH,
 		},
 	);
 

@@ -1,0 +1,527 @@
+import { type RemoteParticipant, type Room, RoomEvent } from "livekit-client";
+import type { Library, LibraryTrack, Quality, TrackAudio } from "./music";
+import type { Decoded, LibraryAudio, NowPlaying } from "./sound";
+
+/**
+ * The song desk: a queue the whole call can add to, played into the call by
+ * one person's browser.
+ *
+ * Somebody who can reach the music library runs it -- holds the queue, fetches
+ * and plays each track, losslessly, through the same output a single track
+ * plays through -- and everybody else sees what is playing and what is next,
+ * and adds to it: a track they found, a keyword the desk searches for them, a
+ * playlist or song link as it was shared. A song ends and the next one plays on
+ * the same stream where it can; anybody may vote to skip, and a majority of the
+ * others listening skips it. The model is the Chinese "song request desk" the
+ * open-source Jusic made familiar, kept to what a call needs.
+ *
+ * Everything travels as data, so in an encrypted call -- where this project's
+ * SDK options do not encrypt data -- the desk runs for its holder alone and says
+ * nothing to the room: what is being listened to is not something the relay is
+ * told in a call whose promise is that it hears nothing.
+ */
+
+export const TOPIC = "jukebox";
+
+/** One song in the queue, and who asked for it. */
+export interface Entry {
+	/** Distinct per addition, so the same song twice is two entries. */
+	key: string;
+	source: string;
+	id: string;
+	title: string;
+	artists: string[];
+	album: string;
+	cover: string;
+	duration: number;
+	/** The display name of whoever added it. */
+	by: string;
+}
+
+export interface DeskState {
+	holder: string;
+	holderName: string;
+	now?: Entry;
+	queue: Entry[];
+	/** Who has voted to skip what is playing. */
+	votes: string[];
+	/** How many votes skip it. */
+	needed: number;
+	/** The next song is being fetched. */
+	loading: boolean;
+	/** What is playing actually is: "FLAC · 24-bit · 44.1 kHz". */
+	quality?: string;
+}
+
+type Song = Omit<Entry, "key" | "by">;
+
+type Message =
+	| { t: "state"; state: DeskState }
+	| { t: "add"; songs: Song[] }
+	| { t: "request"; query: string }
+	| { t: "link"; text: string }
+	| { t: "vote" }
+	| { t: "hello" };
+
+/** What the desk needs from the library and the player; a seam for the tests. */
+export interface DeskDeps {
+	libraries: () => Library[];
+	search: (source: string, query: string) => Promise<LibraryTrack[]>;
+	readLink: (text: string) => Promise<{ source: string; tracks: LibraryTrack[] } | undefined>;
+	describe: (source: string, id: string, quality: Quality) => Promise<TrackAudio | "unavailable">;
+	audioUrl: (source: string, id: string, quality: Quality) => string;
+	fetchTrack: (audio: LibraryAudio, signal: AbortSignal, onProgress: (fraction: number) => void) => Promise<Decoded>;
+	play: (decoded: Decoded, onEnded: () => void) => Promise<void>;
+	stop: () => Promise<void>;
+	describeAudio: (audio: TrackAudio) => string;
+	quality: () => Quality;
+	/** A track was skipped because it could not be played. */
+	onSkipped: (entry: Entry) => void;
+	/** How far the track about to play has arrived. */
+	onProgress: (fraction: number) => void;
+}
+
+let counter = 0;
+const newKey = () => `${Date.now().toString(36)}-${(counter++).toString(36)}`;
+
+function song(track: LibraryTrack, source: string): Song {
+	return {
+		source,
+		id: track.id,
+		title: track.title,
+		artists: track.artists,
+		album: track.album,
+		cover: track.cover,
+		duration: track.duration,
+	};
+}
+
+/** The desk, as run by its holder. */
+export class Desk {
+	private queue: Entry[] = [];
+	private now?: Entry;
+	private quality?: string;
+	private votes = new Set<string>();
+	private ahead?: { key: string; abort: AbortController; result: Promise<Decoded | "unavailable"> };
+	private starting = false;
+	private closed = false;
+	private listeners = new Set<() => void>();
+	private timer?: ReturnType<typeof setInterval>;
+	/** The state as last built, kept until something changes: the same object each time it is asked for. */
+	private cached?: DeskState;
+
+	constructor(
+		private readonly room: Room,
+		private readonly deps: DeskDeps,
+		/** Whether to tell the room; false in an encrypted call. */
+		private readonly broadcast: boolean,
+	) {
+		if (broadcast) {
+			room.on(RoomEvent.DataReceived, this.onData);
+			room.on(RoomEvent.ParticipantConnected, this.announce);
+			room.on(RoomEvent.ParticipantDisconnected, this.onLeft);
+			// Again now and then, for anybody whose copy went stale.
+			this.timer = setInterval(this.announce, 15_000);
+		}
+		this.announce();
+	}
+
+	subscribe(listener: () => void): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
+
+	state(): DeskState {
+		this.cached ??= {
+			holder: this.room.localParticipant.identity,
+			holderName: this.room.localParticipant.name || "",
+			now: this.now,
+			queue: [...this.queue],
+			votes: [...this.votes],
+			needed: this.needed(),
+			loading: this.starting,
+			quality: this.now ? this.quality : undefined,
+		};
+		return this.cached;
+	}
+
+	/** Add songs, by whoever is named; playing starts if nothing is. */
+	add(songs: Song[], by: string): void {
+		if (this.closed || songs.length === 0) return;
+		for (const one of songs.slice(0, 500)) this.queue.push({ ...one, key: newKey(), by });
+		this.changed();
+		if (!this.now && !this.starting) void this.next();
+		else this.prefetch();
+	}
+
+	/** The top result for a keyword, from the first library signed in. */
+	async request(query: string, by: string): Promise<boolean> {
+		const library = this.deps.libraries().find((one) => one.signedIn) ?? this.deps.libraries()[0];
+		const asked = query.trim().slice(0, 100);
+		if (!library || !asked) return false;
+		const [top] = await this.deps.search(library.id, asked);
+		if (!top) return false;
+		this.add([song(top, library.id)], by);
+		return true;
+	}
+
+	/** Every song a shared playlist or song link names. */
+	async link(text: string, by: string): Promise<number> {
+		const found = await this.deps.readLink(text.slice(0, 2000));
+		if (!found) return 0;
+		this.add(
+			found.tracks.map((track) => song(track, found.source)),
+			by,
+		);
+		return found.tracks.length;
+	}
+
+	vote(identity: string): void {
+		if (!this.now) return;
+		this.votes.add(identity);
+		if (this.votes.size >= this.needed()) void this.next();
+		else this.changed();
+	}
+
+	skip(): void {
+		void this.next();
+	}
+
+	remove(key: string): void {
+		this.queue = this.queue.filter((one) => one.key !== key);
+		if (this.ahead?.key === key) this.dropAhead();
+		this.changed();
+		this.prefetch();
+	}
+
+	toTop(key: string): void {
+		const found = this.queue.find((one) => one.key === key);
+		if (!found) return;
+		this.queue = [found, ...this.queue.filter((one) => one.key !== key)];
+		this.changed();
+		this.prefetch();
+	}
+
+	async close(): Promise<void> {
+		if (this.closed) return;
+		this.closed = true;
+		this.dropAhead();
+		this.queue = [];
+		this.now = undefined;
+		if (this.timer) clearInterval(this.timer);
+		this.room.off(RoomEvent.DataReceived, this.onData);
+		this.room.off(RoomEvent.ParticipantConnected, this.announce);
+		this.room.off(RoomEvent.ParticipantDisconnected, this.onLeft);
+		this.say({ t: "closed" });
+		await this.deps.stop();
+		this.changed();
+	}
+
+	/** A majority of everybody else listening. */
+	private needed(): number {
+		return Math.max(1, Math.ceil(this.room.remoteParticipants.size / 2));
+	}
+
+	private async next(): Promise<void> {
+		// One at a time: a skip voted through while the next song is still
+		// loading would otherwise take two songs off the queue and play one.
+		if (this.closed || this.starting) return;
+		this.starting = true;
+		this.votes.clear();
+		this.changed();
+
+		try {
+			for (;;) {
+				const entry = this.queue.shift();
+				if (!entry) {
+					this.now = undefined;
+					this.changed();
+					await this.deps.stop();
+					return;
+				}
+
+				const decoded = await this.decode(entry, true);
+				if (this.closed) return;
+				if (decoded === "unavailable") {
+					this.deps.onSkipped(entry);
+					continue;
+				}
+
+				this.now = entry;
+				this.quality = decoded.now?.quality;
+				await this.deps.play(decoded, () => void this.next());
+				this.changed();
+				this.prefetch();
+				return;
+			}
+		} finally {
+			this.starting = false;
+			this.changed();
+		}
+	}
+
+	/** The next song in the queue, fetched and decoded while this one plays. */
+	private prefetch(): void {
+		const following = this.queue[0];
+		if (!following || this.ahead?.key === following.key || this.closed) return;
+		this.dropAhead();
+		const abort = new AbortController();
+		this.ahead = { key: following.key, abort, result: this.load(following, abort.signal, () => {}) };
+		// Settled here so an unwatched failure is not reported as unhandled.
+		this.ahead.result.catch(() => {});
+	}
+
+	private dropAhead(): void {
+		this.ahead?.abort.abort();
+		this.ahead = undefined;
+	}
+
+	private async decode(entry: Entry, now: boolean): Promise<Decoded | "unavailable"> {
+		if (this.ahead?.key === entry.key) {
+			const { result } = this.ahead;
+			this.ahead = undefined;
+			try {
+				return await result;
+			} catch {
+				// Fetched ahead and failed; try once more now.
+			}
+		}
+		const abort = new AbortController();
+		try {
+			return await this.load(entry, abort.signal, now ? this.deps.onProgress : () => {});
+		} catch {
+			return "unavailable";
+		}
+	}
+
+	private async load(entry: Entry, signal: AbortSignal, onProgress: (fraction: number) => void): Promise<Decoded | "unavailable"> {
+		const quality = this.deps.quality();
+		const audio = await this.deps.describe(entry.source, entry.id, quality);
+		if (audio === "unavailable") return "unavailable";
+
+		const now: NowPlaying = { title: entry.title, artists: entry.artists.join(" / "), quality: this.deps.describeAudio(audio) };
+		return this.deps.fetchTrack(
+			{ url: this.deps.audioUrl(entry.source, entry.id, quality), rate: audio.rate, format: audio.format, bits: audio.bits, now },
+			signal,
+			onProgress,
+		);
+	}
+
+	private changed(): void {
+		this.cached = undefined;
+		this.announce();
+		for (const listener of this.listeners) listener();
+	}
+
+	private readonly announce = (): void => {
+		// Nothing after the word that it closed: a state sent behind it -- the
+		// listeners are told the desk changed as it closes -- would have
+		// everybody believe in it again until it went stale.
+		if (this.closed) return;
+		this.say({ t: "state", state: this.state() });
+	};
+
+	private say(message: Message | { t: "closed" }): void {
+		if (!this.broadcast) return;
+		void this.room.localParticipant
+			.publishData(new TextEncoder().encode(JSON.stringify(message)), { reliable: true, topic: TOPIC })
+			.catch(() => {});
+	}
+
+	private readonly onLeft = (participant: RemoteParticipant): void => {
+		// The majority is of whoever is still here.
+		this.votes.delete(participant.identity);
+		this.changed();
+	};
+
+	private readonly onData = (payload: Uint8Array, participant?: RemoteParticipant, _kind?: unknown, topic?: string) => {
+		if (topic !== TOPIC || !participant || this.closed) return;
+		const message = parse(payload);
+		if (!message) return;
+		const by = participant.name || participant.identity;
+
+		switch (message.t) {
+			case "add":
+				this.add(message.songs.filter(validSong).slice(0, 500), by);
+				return;
+			case "request":
+				void this.request(String(message.query), by);
+				return;
+			case "link":
+				void this.link(String(message.text), by);
+				return;
+			case "vote":
+				this.vote(participant.identity);
+				return;
+			case "hello":
+				this.announce();
+				return;
+		}
+	};
+}
+
+function parse(payload: Uint8Array): Message | { t: "closed" } | undefined {
+	try {
+		const value = JSON.parse(new TextDecoder().decode(payload)) as { t?: unknown };
+		return typeof value?.t === "string" ? (value as Message) : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function validSong(value: unknown): value is Song {
+	const one = value as Record<string, unknown>;
+	return (
+		typeof one?.source === "string" &&
+		typeof one.id === "string" &&
+		typeof one.title === "string" &&
+		one.id.length > 0 &&
+		one.id.length < 64 &&
+		Array.isArray(one.artists)
+	);
+}
+
+/*
+ * Everybody else: the desk as heard from its holder.
+ */
+
+/** How long a desk that has said nothing is believed to still exist. */
+const STALE_MS = 45_000;
+
+interface Heard {
+	state: DeskState;
+	at: number;
+}
+
+const desks = new WeakMap<Room, Desk>();
+const heard = new WeakMap<Room, Heard>();
+const watchers = new Set<() => void>();
+
+function notify(): void {
+	for (const watcher of watchers) watcher();
+}
+
+/** The desk this browser runs in a room, if it runs one. */
+export function myDesk(room: Room): Desk | undefined {
+	return desks.get(room);
+}
+
+/** The desk in a room, as far as this browser knows: its own, or one it heard. */
+export function deskState(room: Room): DeskState | undefined {
+	const mine = desks.get(room);
+	if (mine) return mine.state();
+
+	const last = heard.get(room);
+	if (!last) return undefined;
+	if (Date.now() - last.at > STALE_MS || !room.remoteParticipants.has(last.state.holder)) return undefined;
+	return last.state;
+}
+
+export function subscribeDesk(listener: () => void): () => void {
+	watchers.add(listener);
+	return () => watchers.delete(listener);
+}
+
+/** Start running the desk here. Refused while another is heard. */
+export function startDesk(room: Room, deps: DeskDeps, broadcast: boolean): Desk | undefined {
+	const existing = desks.get(room);
+	if (existing) return existing;
+	if (deskState(room)) return undefined;
+
+	const desk = new Desk(room, deps, broadcast);
+	desks.set(room, desk);
+	desk.subscribe(notify);
+	notify();
+	return desk;
+}
+
+export async function closeDesk(room: Room): Promise<void> {
+	const desk = desks.get(room);
+	if (!desk) return;
+	desks.delete(room);
+	await desk.close();
+	notify();
+}
+
+/** Send something to whoever holds the desk. */
+function tell(room: Room, message: Message): boolean {
+	const state = deskState(room);
+	if (!state || desks.has(room)) return false;
+	void room.localParticipant
+		.publishData(new TextEncoder().encode(JSON.stringify(message)), {
+			reliable: true,
+			topic: TOPIC,
+			destinationIdentities: [state.holder],
+		})
+		.catch(() => {});
+	return true;
+}
+
+/** Add songs to the room's desk: this browser's own, or the one heard. */
+export function addToDesk(room: Room, songs: Song[], by: string): boolean {
+	const mine = desks.get(room);
+	if (mine) {
+		mine.add(songs, by);
+		return true;
+	}
+	return tell(room, { t: "add", songs });
+}
+
+export function requestSong(room: Room, query: string): boolean {
+	return tell(room, { t: "request", query: query.slice(0, 100) });
+}
+
+export function sendLink(room: Room, text: string): boolean {
+	return tell(room, { t: "link", text: text.slice(0, 2000) });
+}
+
+export function voteToSkip(room: Room): boolean {
+	const mine = desks.get(room);
+	if (mine) {
+		mine.skip();
+		return true;
+	}
+	return tell(room, { t: "vote" });
+}
+
+/**
+ * Listen for a desk run elsewhere in a room. Returns the function that stops.
+ *
+ * Asks once on arrival, so somebody joining a call with music already playing
+ * sees the queue without waiting for the desk's next announcement.
+ */
+export function hearDesks(room: Room, broadcast: boolean): () => void {
+	if (!broadcast) return () => {};
+
+	const onData = (payload: Uint8Array, participant?: RemoteParticipant, _kind?: unknown, topic?: string) => {
+		if (topic !== TOPIC || !participant || desks.has(room)) return;
+		const message = parse(payload);
+		if (message?.t === "state" && message.state?.holder === participant.identity) {
+			heard.set(room, { state: { ...message.state, holderName: participant.name || message.state.holderName }, at: Date.now() });
+			notify();
+		} else if (message?.t === "closed" && heard.get(room)?.state.holder === participant.identity) {
+			heard.delete(room);
+			notify();
+		}
+	};
+
+	const onLeft = (participant: RemoteParticipant) => {
+		if (heard.get(room)?.state.holder === participant.identity) {
+			heard.delete(room);
+			notify();
+		}
+	};
+
+	room.on(RoomEvent.DataReceived, onData);
+	room.on(RoomEvent.ParticipantDisconnected, onLeft);
+	void room.localParticipant
+		.publishData(new TextEncoder().encode(JSON.stringify({ t: "hello" })), { reliable: true, topic: TOPIC })
+		.catch(() => {});
+
+	return () => {
+		room.off(RoomEvent.DataReceived, onData);
+		room.off(RoomEvent.ParticipantDisconnected, onLeft);
+	};
+}
+
+export { song as songFrom };

@@ -2,11 +2,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useIdle } from "@/hooks/useIdle";
 import { useRoomForSide } from "@/hooks/useRoomFor";
+import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
 import type { Placement } from "@/live/controls";
 import { retune, share } from "@/live/room";
 import type { Room } from "livekit-client";
-import { MessageSquare, Mic, MicOff, Video, VideoOff, Volume2 } from "lucide-react";
+import { ListMusic, MessageSquare, Mic, MicOff, Video, VideoOff, Volume2 } from "lucide-react";
 import { Leaving } from "./Leaving";
 import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
@@ -44,6 +45,7 @@ export function ControlBar({
 	hidden,
 	onChat,
 	onListen,
+	music,
 	onMusic,
 	onLeave,
 	host,
@@ -66,7 +68,8 @@ export function ControlBar({
 	hidden?: boolean;
 	onChat: () => void;
 	onListen: () => void;
-	/** Open the music library; absent where this deployment has none for this person. */
+	/** Whether the music panel is open, has anything in it, and music is playing. */
+	music?: { open: boolean; available: boolean; playing: boolean };
 	onMusic?: () => void;
 	onLeave: () => void;
 	/** Whether this person may end the meeting rather than only leave it. */
@@ -76,6 +79,9 @@ export function ControlBar({
 	onPlace: (where: Placement) => void;
 }) {
 	const t = useT();
+	// The music button comes and goes with the music, so it arrives and
+	// leaves rather than appearing in the bar between one frame and the next.
+	const musicButton = useLingering(music?.available === true, 180);
 	const local = useLocalState(room);
 	const [busy, setBusy] = useState(false);
 	const [lossless, setLossless] = useState(rememberedLossless);
@@ -184,6 +190,25 @@ export function ControlBar({
 				"max-[372px]:[&_.size-10]:size-[34px] max-[372px]:[&_.size-11]:size-[38px]",
 				"max-[372px]:[&_.rounded-r-full]:h-[34px] max-[372px]:[&_.rounded-r-full]:pr-1.5 max-[372px]:[&_.rounded-r-full]:pl-0.5",
 				"max-[372px]:[&>span.w-px]:hidden",
+				/*
+				 * The music button is one more, 46 pixels, and the same two steps
+				 * come a width sooner while it is there: the bar is then 414 pixels
+				 * on a phone, which a 414-pixel phone held with nothing to spare
+				 * and a 390-pixel one could not. Below 340 the buttons come down
+				 * once more, to 32, and the gaps nearly close, which leaves a
+				 * 320-pixel phone the same margin it has without music; at 34 the
+				 * bar fitted there with three pixels either side. Measured on a
+				 * phone's set of buttons, without the screen share no phone
+				 * browser offers. Without music nothing here changes, so a call
+				 * with none keeps the larger buttons it had.
+				 */
+				"has-[[data-control=music]]:max-[430px]:gap-1 has-[[data-control=music]]:max-[430px]:p-1",
+				"has-[[data-control=music]]:max-[405px]:[&_.size-10]:size-[34px] has-[[data-control=music]]:max-[405px]:[&_.size-11]:size-[38px]",
+				"has-[[data-control=music]]:max-[405px]:[&_.rounded-r-full]:h-[34px] has-[[data-control=music]]:max-[405px]:[&_.rounded-r-full]:pr-1.5 has-[[data-control=music]]:max-[405px]:[&_.rounded-r-full]:pl-0.5",
+				"has-[[data-control=music]]:max-[405px]:[&>span.w-px]:hidden",
+				"has-[[data-control=music]]:max-[340px]:gap-0.5",
+				"has-[[data-control=music]]:max-[340px]:[&_.size-10]:size-8 has-[[data-control=music]]:max-[340px]:[&_.size-11]:size-9",
+				"has-[[data-control=music]]:max-[340px]:[&_.rounded-r-full]:h-8",
 				side
 					? // Down the right edge, vertically centred. Costs width,
 						// which a wide window has and a tall one does not.
@@ -275,7 +300,6 @@ export function ControlBar({
 						})()
 					}
 					onStopListening={() => void guard(() => stopListening(room))()}
-					onMusic={onMusic}
 				/>
 			)}
 
@@ -305,6 +329,25 @@ export function ControlBar({
 			>
 				<Volume2 />
 			</Toggle>
+
+			{/* Music, beside the sound it is part of: what is playing, the song
+			    desk, and each listener's own volume for it. Shown once there is
+			    something to show, so a call without music has no extra button. */}
+			{musicButton.mounted && onMusic && (
+				<Toggle
+					on={music?.open === true}
+					onLabel={t("Hide music")}
+					offLabel={t("Show music")}
+					onClick={onMusic}
+					control="music"
+					className={musicButton.leaving ? "animate-depart" : "animate-arrive"}
+				>
+					<ListMusic />
+					{music?.playing && !music.open && (
+						<span className="absolute top-0.5 right-0.5 size-2 animate-pulse rounded-full border-2 border-surface bg-tally" />
+					)}
+				</Toggle>
+			)}
 
 			<DeviceMenu room={room} where={where} onPlace={onPlace} />
 
@@ -340,6 +383,8 @@ function Toggle({
 	onClick,
 	children,
 	signal,
+	control,
+	className,
 }: {
 	on: boolean;
 	onLabel: string;
@@ -347,6 +392,9 @@ function Toggle({
 	onClick: () => void;
 	children: React.ReactNode;
 	signal?: boolean;
+	/** Named for the bar's own layout rules, which make room for some buttons. */
+	control?: string;
+	className?: string;
 }) {
 	return (
 		<Button
@@ -355,7 +403,8 @@ function Toggle({
 			aria-label={on ? onLabel : offLabel}
 			aria-pressed={on}
 			onClick={onClick}
-			className={cn("relative", !on && "text-fg-muted")}
+			data-control={control}
+			className={cn("relative", !on && "text-fg-muted", className)}
 		>
 			{children}
 		</Button>

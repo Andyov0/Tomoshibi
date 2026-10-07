@@ -109,6 +109,47 @@ export async function describeTrack(source: string, id: string, quality: Quality
 	};
 }
 
+/** What a pasted link names: a playlist or a song, and its tracks. */
+export interface Linked {
+	source: string;
+	kind: "playlist" | "song";
+	title: string;
+	tracks: LibraryTrack[];
+}
+
+/**
+ * Read a playlist or song link, pasted as somebody shared it -- a bare address
+ * or the sentence a music app wraps around one. Undefined for anything that is
+ * not one.
+ */
+export async function readLink(pasted: string): Promise<Linked | undefined> {
+	const params = new URLSearchParams({ text: pasted.slice(0, 2000) });
+	const response = await fetch(`/api/music/link?${params}`, { credentials: "same-origin" });
+	if (response.status === 404) return undefined;
+	if (!response.ok) throw new LibraryFailed(response.status);
+
+	const body = (await response.json()) as Record<string, unknown>;
+	const tracks = Array.isArray(body.tracks)
+		? body.tracks
+				.map((one: Record<string, unknown>) => ({
+					id: text(one.id),
+					title: text(one.title),
+					artists: Array.isArray(one.artists) ? one.artists.map(text).filter(Boolean) : [],
+					album: text(one.album),
+					cover: text(one.cover),
+					duration: count(one.duration),
+				}))
+				.filter((one) => one.id && one.title)
+		: [];
+
+	return {
+		source: text(body.source),
+		kind: body.kind === "song" ? "song" : "playlist",
+		title: text(body.title),
+		tracks,
+	};
+}
+
 /** Where the audio of a track is played from. Same origin, so the page may read it. */
 export function audioUrl(source: string, id: string, quality: Quality = "best"): string {
 	return `/api/music/audio?${new URLSearchParams({ source, id, quality })}`;

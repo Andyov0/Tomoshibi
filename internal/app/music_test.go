@@ -131,6 +131,18 @@ func TestAudioIsStreamedWithItsRange(t *testing.T) {
 	}
 }
 
+func TestALinkIsPassedOnForTheGatewayToRead(t *testing.T) {
+	var query string
+	mux, cookie := musicApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.Query().Get("text")
+		_, _ = io.WriteString(w, `{"tracks":[]}`)
+	}))
+
+	if got := musicGet(mux, "/api/music/link?text=a+shared+link", cookie).Code; got != http.StatusOK || query != "a shared link" {
+		t.Fatalf("a pasted link came back %d and reached the gateway as %q", got, query)
+	}
+}
+
 func TestOnlyTheLibrarysOwnPathsArePassedOn(t *testing.T) {
 	reached := false
 	mux, cookie := musicApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -16,6 +16,8 @@ import { SoundPanel } from "@/components/room/SoundPanel";
 import { MusicPanel } from "@/components/room/MusicPanel";
 import { useLingering } from "@/hooks/useLingering";
 import { type Library, libraries as askLibraries } from "@/live/music";
+import { closeDesk, deskState, hearDesks, subscribeDesk } from "@/live/jukebox";
+import { soundOnly } from "@/live/sound";
 import { SaidInCorner } from "@/components/room/Said";
 import { StageControls } from "@/components/room/StageControls";
 import { SurfaceTile } from "@/components/room/SurfaceTile";
@@ -46,7 +48,7 @@ import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useRoomForSide } from "@/hooks/useRoomFor";
 import { placement, remember as rememberPlacement } from "@/live/controls";
 import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 export interface RoomProps {
 	room: LiveRoom;
@@ -97,6 +99,15 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 			live = false;
 		};
 	}, []);
+
+	// The song desk: heard from whoever runs one, and closed with the call by
+	// whoever runs it here. In an encrypted call it is nobody's to hear; see
+	// live/jukebox.ts.
+	useEffect(() => hearDesks(room, room.options.e2ee === undefined), [room]);
+	useEffect(() => () => void closeDesk(room), [room]);
+	const desk = useSyncExternalStore(subscribeDesk, () => deskState(room));
+	const roster = useRoster(room);
+	const sharingSound = roster.some((one) => [...one.trackPublications.values()].some((publication) => soundOnly(publication)));
 
 	// Where the controls sit. Held here rather than read where they are drawn,
 	// because what is drawn around them depends on it: a card that clears the
@@ -195,7 +206,17 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				hidden={screen.active}
 				onChat={() => (chatting ? setPanel(undefined) : openChat())}
 				onListen={() => setPanel(listening ? undefined : "sound")}
-				onMusic={library ? () => setPanel("music") : undefined}
+				music={{
+					open: panel === "music",
+					// Everybody has a reason to open it once there is music --
+					// to turn it down, or ask for a song -- and somebody who can
+					// reach the library has one before there is.
+					// And while the panel is open, so the button that opened it
+					// is there to close it after the music has stopped.
+					available: library !== undefined || desk !== undefined || sharingSound || panel === "music",
+					playing: desk?.now !== undefined || sharingSound,
+				}}
+				onMusic={() => setPanel(panel === "music" ? undefined : "music")}
 				onLeave={onLeave}
 				host={standing.yours}
 				where={where}
@@ -539,7 +560,7 @@ function Stage({
 
 			{listening && <SoundPanel room={room} onClose={onClosePanel} />}
 
-			{library && musicPanel.mounted && (
+			{musicPanel.mounted && (
 				<MusicPanel room={room} libraries={library} leaving={musicPanel.leaving} onClose={onClosePanel} />
 			)}
 

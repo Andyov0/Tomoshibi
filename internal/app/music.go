@@ -18,12 +18,13 @@ lossless, along the path the "share only sound" stream already takes. This file
 is the door to the library. It admits signed-in accounts and passes their
 requests on to the gateway with the token only this server holds; what the
 gateway is and what it reaches is the deployment's business, and the client is
-shown four paths and no address.
+shown five paths and no address.
 
 	sources   which libraries there are, and whether each is signed in
 	search    tracks in one of them
 	track     what a track's audio is: format, rate, bits, channels
 	audio     the audio itself, streamed through, with Range
+	link      a playlist or song link as somebody shared it, and its tracks
 
 Signed in, because a library is somebody's subscription, and a path that let
 anybody holding the address play from it would be giving that away. Not limited
@@ -34,7 +35,7 @@ source or a quality is, and it refuses what it does not; reading the parameters
 here as well would be two lists of the same thing kept in step by hand.
 */
 
-var musicPaths = map[string]bool{"sources": true, "search": true, "track": true, "audio": true}
+var musicPaths = map[string]bool{"sources": true, "search": true, "track": true, "audio": true, "link": true}
 
 // The headers that describe a response, and the only ones passed back. Anything
 // else the gateway says is between it and this server.

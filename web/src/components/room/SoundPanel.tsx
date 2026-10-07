@@ -89,7 +89,7 @@ function Person({ participant }: { participant: Participant }) {
 
 	return (
 		<>
-			<Row
+			<SoundRow
 				identity={participant.identity}
 				sound="voice"
 				name={name}
@@ -100,7 +100,7 @@ function Person({ participant }: { participant: Participant }) {
 			/>
 
 			{sharing && (
-				<Row
+				<SoundRow
 					identity={participant.identity}
 					sound="screen"
 					name={t("{name} (screen)", { name })}
@@ -110,7 +110,8 @@ function Person({ participant }: { participant: Participant }) {
 	);
 }
 
-function Row({
+/** One sound's mute and volume: a voice, a shared screen's sound, the music. */
+export function SoundRow({
 	identity,
 	sound,
 	name,

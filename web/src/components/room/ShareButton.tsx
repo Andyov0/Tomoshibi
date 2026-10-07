@@ -21,7 +21,7 @@ import {
 	rememberedFrameRate,
 	rememberedQuality,
 } from "@/live/room";
-import { AudioLines, CircleStop, ListMusic, MonitorOff, MonitorUp, Music } from "lucide-react";
+import { AudioLines, CircleStop, MonitorOff, MonitorUp, Music } from "lucide-react";
 import { useState } from "react";
 
 /**
@@ -56,7 +56,6 @@ export function ShareButton({
 	losslessUnavailable,
 	sendingLossless = false,
 	onLossless = () => {},
-	onMusic,
 }: {
 	sharing: boolean;
 	/** Sound is being shared on its own, without a picture. */
@@ -68,8 +67,6 @@ export function ShareButton({
 	/** Whether the sound being shared now is going out losslessly. */
 	sendingLossless?: boolean;
 	onLossless?: (on: boolean) => void;
-	/** Open the music library, where this deployment has one. */
-	onMusic?: () => void;
 	/** Share one app's or tab's sound and nothing else, to listen together. */
 	onListen: () => void;
 	onStopListening: () => void;
@@ -231,18 +228,6 @@ export function ShareButton({
 						</DropdownMenuItem>
 					) : (
 						<>
-							{/* A track from the library, published as the sound above
-							    would be. Only where there is a library to play from. */}
-							{onMusic && (
-								<DropdownMenuItem onSelect={onMusic} className="items-start gap-2">
-									<ListMusic className="mt-0.5 size-4" />
-									<span className="flex flex-col">
-										<span className="text-fg">{t("Play music")}</span>
-										<span className="text-fg-muted text-xs">{t("Search a song and play it to everybody")}</span>
-									</span>
-								</DropdownMenuItem>
-							)}
-
 							<DropdownMenuItem onSelect={onListen} className="items-start gap-2">
 								<Music className="mt-0.5 size-4" />
 								<span className="flex flex-col">

@@ -9,8 +9,10 @@ import {
 	ORIGINAL_BITRATE,
 	VOICE_BITRATE,
 	listening,
+	monitorVolume,
 	nowPlaying,
 	playLibraryTrack,
+	setMonitorVolume,
 	sendingLossless,
 	startListening,
 	subscribePlaying,
@@ -292,31 +294,33 @@ describe("sharing sound losslessly, in order", () => {
 
 describe("playing a track from the library", () => {
 	function stubAudio() {
-		const contexts: { options: AudioContextOptions; closed: boolean }[] = [];
-		const nodes: { started: boolean; stopped: boolean; listeners: Record<string, () => void> }[] = [];
+		const contexts: { options: AudioContextOptions; closed: boolean; monitor: { value: number } }[] = [];
+		const nodes: { started: boolean; stopped: boolean; connected: unknown[]; listeners: Record<string, () => void> }[] = [];
+		const decodedAt: number[] = [];
 		const fetched: string[] = [];
 		const destinationTrack = fakeTrack("audio");
 
 		class FakeContext {
-			record: { options: AudioContextOptions; closed: boolean };
-			destination = {};
+			record: { options: AudioContextOptions; closed: boolean; monitor: { value: number } };
+			destination = { name: "speakers" };
+			out = { name: "out", stream: { getAudioTracks: () => [destinationTrack] }, channelCount: 0, channelCountMode: "" };
 			constructor(options: AudioContextOptions) {
-				this.record = { options, closed: false };
+				this.record = { options, closed: false, monitor: { value: 1 } };
 				contexts.push(this.record);
 			}
 			async resume() {}
 			async close() {
 				this.record.closed = true;
 			}
-			async decodeAudioData(data: ArrayBuffer) {
-				return { decodedFrom: data.byteLength };
+			createGain() {
+				return { name: "monitor", gain: this.record.monitor, connect: vi.fn() };
 			}
 			createBufferSource() {
-				const record = { started: false, stopped: false, listeners: {} as Record<string, () => void> };
+				const record = { started: false, stopped: false, connected: [] as unknown[], listeners: {} as Record<string, () => void> };
 				nodes.push(record);
 				return {
 					buffer: null,
-					connect: vi.fn(),
+					connect: (target: unknown) => record.connected.push(target),
 					start: () => {
 						record.started = true;
 					},
@@ -329,11 +333,24 @@ describe("playing a track from the library", () => {
 				};
 			}
 			createMediaStreamDestination() {
-				return { stream: { getAudioTracks: () => [destinationTrack] }, channelCount: 0, channelCountMode: "" };
+				return this.out;
+			}
+		}
+
+		class FakeOffline {
+			constructor(
+				_channels: number,
+				_length: number,
+				public sampleRate: number,
+			) {}
+			async decodeAudioData() {
+				decodedAt.push(this.sampleRate);
+				return { sampleRate: this.sampleRate };
 			}
 		}
 
 		vi.stubGlobal("AudioContext", FakeContext);
+		vi.stubGlobal("OfflineAudioContext", FakeOffline);
 		vi.stubGlobal(
 			"fetch",
 			vi.fn(async (url: string) => {
@@ -345,26 +362,28 @@ describe("playing a track from the library", () => {
 			readable = new ReadableStream({ start() {} });
 		});
 
-		return { contexts, nodes, fetched, destinationTrack };
+		return { contexts, nodes, decodedAt, fetched, destinationTrack };
 	}
 
 	afterEach(() => {
 		vi.unstubAllGlobals();
+		localStorage.clear();
 	});
 
 	it("decodes at the track's own rate, so nothing resamples it, and shares it losslessly", async () => {
-		const { contexts, nodes, fetched, destinationTrack } = stubAudio();
+		const { contexts, nodes, decodedAt, fetched, destinationTrack } = stubAudio();
 		const { room, publishTrack } = fakeRoom();
 		const progress = vi.fn();
 
 		await playLibraryTrack(
 			room,
-			{ url: "/api/music/audio?x", rate: 44_100, now: { title: "t", artists: "a", quality: "q" } },
+			{ url: "/api/music/audio?x", rate: 44_100, format: "flac", bits: 16, now: { title: "t", artists: "a", quality: "q" } },
 			true,
 			() => {},
 			progress,
 		);
 
+		expect(decodedAt).toEqual([44_100]);
 		expect(contexts[0]?.options.sampleRate).toBe(44_100);
 		expect(fetched).toEqual(["/api/music/audio?x"]);
 		expect(progress).toHaveBeenLastCalledWith(1);
@@ -373,6 +392,67 @@ describe("playing a track from the library", () => {
 		expect((publishTrack.mock.calls[0]?.[0] as { mediaStreamTrack: unknown }).mediaStreamTrack).toBe(destinationTrack);
 		expect(nowPlaying(room)?.title).toBe("t");
 		expect(sendingLossless(room)).toBe(true);
+	});
+
+	it("plays on through the same output when the next track has its rate and depth", async () => {
+		const { contexts, nodes } = stubAudio();
+		const { room, publishTrack } = fakeRoom();
+
+		await playLibraryTrack(room, { url: "/1", rate: 44_100, format: "flac", bits: 16 }, true, () => {}, () => {}, () => {});
+		await playLibraryTrack(room, { url: "/2", rate: 44_100, format: "flac", bits: 16 }, true, () => {}, () => {}, () => {});
+
+		expect(contexts).toHaveLength(1);
+		expect(publishTrack).toHaveBeenCalledTimes(1);
+		expect(nodes[0]?.stopped).toBe(true);
+		expect(nodes[1]?.started).toBe(true);
+	});
+
+	it("opens a new output for a track at another rate, rather than resample it", async () => {
+		const { contexts } = stubAudio();
+		const { room, publishTrack } = fakeRoom();
+
+		await playLibraryTrack(room, { url: "/1", rate: 44_100, format: "flac", bits: 16 }, true, () => {}, () => {}, () => {});
+		await playLibraryTrack(room, { url: "/2", rate: 48_000, format: "flac", bits: 16 }, true, () => {}, () => {}, () => {});
+
+		expect(contexts.map((one) => one.options.sampleRate)).toEqual([44_100, 48_000]);
+		expect(contexts[0]?.closed).toBe(true);
+		expect(publishTrack).toHaveBeenCalledTimes(2);
+	});
+
+	it("opens a new output for a track of another depth, whose samples are recovered differently", async () => {
+		const { contexts } = stubAudio();
+		const { room, publishTrack } = fakeRoom();
+
+		await playLibraryTrack(room, { url: "/1", rate: 44_100, format: "flac", bits: 16 }, true, () => {}, () => {}, () => {});
+		await playLibraryTrack(room, { url: "/2", rate: 44_100, format: "flac", bits: 24 }, true, () => {}, () => {}, () => {});
+
+		expect(contexts).toHaveLength(2);
+		expect(publishTrack).toHaveBeenCalledTimes(2);
+	});
+
+	it("tells whoever is waiting when the track ends, rather than stopping", async () => {
+		const { nodes } = stubAudio();
+		const { room, unpublishTrack } = fakeRoom();
+		const ended = vi.fn();
+
+		await playLibraryTrack(room, { url: "/u", rate: 44_100 }, false, () => {}, () => {}, ended);
+		nodes[0]?.listeners.ended?.();
+
+		expect(ended).toHaveBeenCalledTimes(1);
+		expect(unpublishTrack).not.toHaveBeenCalled();
+	});
+
+	it("turns down only this machine's speakers, never what is sent", async () => {
+		const { contexts, nodes } = stubAudio();
+		const { room } = fakeRoom();
+
+		await playLibraryTrack(room, { url: "/u", rate: 44_100 }, true);
+		setMonitorVolume(room, 0.25);
+
+		expect(contexts[0]?.monitor.value).toBe(0.25);
+		// The published track takes the node straight; only the monitor is turned down.
+		expect(nodes[0]?.connected.map((target) => (target as { name: string }).name)).toEqual(["out", "monitor"]);
+		expect(monitorVolume()).toBe(0.25);
 	});
 
 	it("stops playing, lets the context go and says nothing is playing when stopped", async () => {
@@ -392,7 +472,7 @@ describe("playing a track from the library", () => {
 		unsubscribe();
 	});
 
-	it("stops by itself when the track ends", async () => {
+	it("stops by itself when the track ends and nobody is waiting", async () => {
 		const { nodes } = stubAudio();
 		const { room, unpublishTrack } = fakeRoom();
 

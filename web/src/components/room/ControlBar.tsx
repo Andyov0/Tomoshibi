@@ -7,7 +7,7 @@ import { useT } from "@/hooks/useT";
 import type { Placement } from "@/live/controls";
 import { retune, share } from "@/live/room";
 import type { Room } from "livekit-client";
-import { ListMusic, MessageSquare, Mic, MicOff, Video, VideoOff, Volume2 } from "lucide-react";
+import { Clapperboard, ListMusic, MessageSquare, Mic, MicOff, Video, VideoOff, Volume2 } from "lucide-react";
 import { Leaving } from "./Leaving";
 import { useState } from "react";
 import { DeviceMenu } from "./DeviceMenu";
@@ -48,6 +48,8 @@ export function ControlBar({
 	music,
 	onMusic,
 	onWatch,
+	watch,
+	onWatchPanel,
 	onLeave,
 	host,
 	where,
@@ -74,6 +76,9 @@ export function ControlBar({
 	onMusic?: () => void;
 	/** Start watching a video together; absent where this person cannot. */
 	onWatch?: () => void;
+	/** Whether the watch-together panel is open, has anything in it, and a video is playing. */
+	watch?: { open: boolean; available: boolean; playing: boolean };
+	onWatchPanel?: () => void;
 	onLeave: () => void;
 	/** Whether this person may end the meeting rather than only leave it. */
 	host: boolean;
@@ -85,6 +90,7 @@ export function ControlBar({
 	// The music button comes and goes with the music, so it arrives and
 	// leaves rather than appearing in the bar between one frame and the next.
 	const musicButton = useLingering(music?.available === true, 180);
+	const watchButton = useLingering(watch?.available === true, 180);
 	const local = useLocalState(room);
 	const [busy, setBusy] = useState(false);
 	const [lossless, setLossless] = useState(rememberedLossless);
@@ -194,7 +200,8 @@ export function ControlBar({
 				"max-[372px]:[&_.rounded-r-full]:h-[34px] max-[372px]:[&_.rounded-r-full]:pr-1.5 max-[372px]:[&_.rounded-r-full]:pl-0.5",
 				"max-[372px]:[&>span.w-px]:hidden",
 				/*
-				 * The music button is one more, 46 pixels, and the same two steps
+				 * The music button is one more, 46 pixels -- as is the watch button,
+				 * and these rules are for either -- and the same two steps
 				 * come a width sooner while it is there: the bar is then 414 pixels
 				 * on a phone, which a 414-pixel phone held with nothing to spare
 				 * and a 390-pixel one could not. Below 340 the buttons come down
@@ -205,13 +212,27 @@ export function ControlBar({
 				 * browser offers. Without music nothing here changes, so a call
 				 * with none keeps the larger buttons it had.
 				 */
-				"has-[[data-control=music]]:max-[430px]:gap-1 has-[[data-control=music]]:max-[430px]:p-1",
-				"has-[[data-control=music]]:max-[405px]:[&_.size-10]:size-[34px] has-[[data-control=music]]:max-[405px]:[&_.size-11]:size-[38px]",
-				"has-[[data-control=music]]:max-[405px]:[&_.rounded-r-full]:h-[34px] has-[[data-control=music]]:max-[405px]:[&_.rounded-r-full]:pr-1.5 has-[[data-control=music]]:max-[405px]:[&_.rounded-r-full]:pl-0.5",
-				"has-[[data-control=music]]:max-[405px]:[&>span.w-px]:hidden",
-				"has-[[data-control=music]]:max-[340px]:gap-0.5",
-				"has-[[data-control=music]]:max-[340px]:[&_.size-10]:size-8 has-[[data-control=music]]:max-[340px]:[&_.size-11]:size-9",
-				"has-[[data-control=music]]:max-[340px]:[&_.rounded-r-full]:h-8",
+				"has-[[data-control]]:max-[430px]:gap-1 has-[[data-control]]:max-[430px]:p-1",
+				"has-[[data-control]]:max-[405px]:[&_.size-10]:size-[34px] has-[[data-control]]:max-[405px]:[&_.size-11]:size-[38px]",
+				"has-[[data-control]]:max-[405px]:[&_.rounded-r-full]:h-[34px] has-[[data-control]]:max-[405px]:[&_.rounded-r-full]:pr-1.5 has-[[data-control]]:max-[405px]:[&_.rounded-r-full]:pl-0.5",
+				"has-[[data-control]]:max-[405px]:[&>span.w-px]:hidden",
+				"has-[[data-control]]:max-[340px]:gap-0.5",
+				"has-[[data-control]]:max-[340px]:[&_.size-10]:size-8 has-[[data-control]]:max-[340px]:[&_.size-11]:size-9",
+				"has-[[data-control]]:max-[340px]:[&_.rounded-r-full]:h-8",
+				/*
+				 * Both, music and watching together: 460 pixels at full size on a
+				 * phone, which no phone held. The same steps again, sooner, and a
+				 * last one below 350 that brings the buttons to 28 pixels -- small,
+				 * and still on the screen, which a 32-pixel row on a 320-pixel
+				 * phone was not. Measured as before, on a phone's set of buttons.
+				 */
+				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[476px]:gap-1 has-[[data-control=music]]:has-[[data-control=watch]]:max-[476px]:p-1",
+				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[454px]:[&_.size-10]:size-[34px] has-[[data-control=music]]:has-[[data-control=watch]]:max-[454px]:[&_.size-11]:size-[38px]",
+				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[454px]:[&_.rounded-r-full]:h-[34px] has-[[data-control=music]]:has-[[data-control=watch]]:max-[454px]:[&>span.w-px]:hidden",
+				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[384px]:gap-0.5 has-[[data-control=music]]:has-[[data-control=watch]]:max-[384px]:[&_.size-10]:size-8 has-[[data-control=music]]:has-[[data-control=watch]]:max-[384px]:[&_.size-11]:size-9",
+				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[384px]:[&_.rounded-r-full]:h-8",
+				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[350px]:p-0.5 has-[[data-control=music]]:has-[[data-control=watch]]:max-[350px]:[&_.size-10]:size-7 has-[[data-control=music]]:has-[[data-control=watch]]:max-[350px]:[&_.size-11]:size-8",
+				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[350px]:[&_.rounded-r-full]:h-7",
 				side
 					? // Down the right edge, vertically centred. Costs width,
 						// which a wide window has and a tall one does not.
@@ -340,14 +361,32 @@ export function ControlBar({
 			{musicButton.mounted && onMusic && (
 				<Toggle
 					on={music?.open === true}
-					onLabel={t("Hide music and video")}
-					offLabel={t("Show music and video")}
+					onLabel={t("Hide music")}
+					offLabel={t("Show music")}
 					onClick={onMusic}
 					control="music"
 					className={musicButton.leaving ? "animate-depart" : "animate-arrive"}
 				>
 					<ListMusic />
 					{music?.playing && !music.open && (
+						<span className="absolute top-0.5 right-0.5 size-2 animate-pulse rounded-full border-2 border-surface bg-tally" />
+					)}
+				</Toggle>
+			)}
+
+			{/* Watching together, beside the music and apart from it: the one
+			    puts a picture on the stage, the other plays into the sound. */}
+			{watchButton.mounted && onWatchPanel && (
+				<Toggle
+					on={watch?.open === true}
+					onLabel={t("Hide watch together")}
+					offLabel={t("Show watch together")}
+					onClick={onWatchPanel}
+					control="watch"
+					className={watchButton.leaving ? "animate-depart" : "animate-arrive"}
+				>
+					<Clapperboard />
+					{watch?.playing && !watch.open && (
 						<span className="absolute top-0.5 right-0.5 size-2 animate-pulse rounded-full border-2 border-surface bg-tally" />
 					)}
 				</Toggle>

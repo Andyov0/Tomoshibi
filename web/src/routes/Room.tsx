@@ -13,7 +13,8 @@ import { Signal } from "@/components/room/Signal";
 import { useConnectionQuality } from "@/live/connection";
 import { ShareCard } from "@/components/room/ShareCard";
 import { SoundPanel } from "@/components/room/SoundPanel";
-import { MusicPanel, showMedia } from "@/components/room/MusicPanel";
+import { MusicPanel } from "@/components/room/MusicPanel";
+import { WatchPanel } from "@/components/room/WatchPanel";
 import { Tile } from "@/components/room/Tile";
 import { WatchScreen } from "@/components/room/WatchScreen";
 import { refusal } from "@/components/room/WatchTab";
@@ -91,7 +92,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 
 	// One at a time, because both float over the same corner and the second
 	// would simply be drawn on top of the first.
-	const [panel, setPanel] = useState<"messages" | "sound" | "music">();
+	const [panel, setPanel] = useState<"messages" | "sound" | "music" | "watch">();
 
 	// Whether this deployment has a music library this person may play from:
 	// asked once, and absent -- no menu item, no panel -- wherever the answer
@@ -133,10 +134,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	useEffect(() => hearShows(room, (why) => actionFailed(say(refusal(why)))), [room]);
 	useEffect(() => () => closeTheatre(room), [room]);
 	const show = useSyncExternalStore(subscribeShow, () => seenShow(room));
-	const openWatch = () => {
-		showMedia(room, "watch");
-		setPanel("music");
-	};
+	const openWatch = () => setPanel("watch");
 	// Music somebody is playing whose desk this page has not heard of yet --
 	// an encrypted call, where desks say nothing -- still wants a volume.
 	const playingMusic = roster.some((one) => [...one.trackPublications.values()].some((publication) => isMusic(publication)));
@@ -224,6 +222,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				onClosePanel={() => setPanel(undefined)}
 				onOpenSound={() => setPanel("sound")}
 				music={panel === "music"}
+				watchPanel={panel === "watch"}
 				library={library}
 				watchReady={canWatch}
 				watching={show?.show.holder}
@@ -248,17 +247,20 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 					// reach the library has one before there is.
 					// And while the panel is open, so the button that opened it
 					// is there to close it after the music has stopped.
-					available:
-						library !== undefined ||
-						desk !== undefined ||
-						playingMusic ||
-						canWatch ||
-						show !== undefined ||
-						panel === "music",
-					playing: desk?.now !== undefined || playingMusic || show?.show.playing === true,
+					available: library !== undefined || desk !== undefined || playingMusic || panel === "music",
+					playing: desk?.now !== undefined || playingMusic,
 				}}
 				onMusic={() => setPanel(panel === "music" ? undefined : "music")}
 				onWatch={canWatch ? openWatch : undefined}
+				watch={{
+					open: panel === "watch",
+					// Offered to whoever can start a show, and to everybody once
+					// there is one -- to see what is on and add to it -- and while
+					// its panel is open, so the button is there to close it.
+					available: canWatch || show !== undefined || panel === "watch",
+					playing: show?.show.playing === true,
+				}}
+				onWatchPanel={() => setPanel(panel === "watch" ? undefined : "watch")}
 				onLeave={onLeave}
 				host={standing.yours}
 				where={where}
@@ -289,6 +291,7 @@ function Stage({
 	onClosePanel,
 	onOpenSound,
 	music,
+	watchPanel,
 	library,
 	watchReady,
 	watching,
@@ -313,6 +316,8 @@ function Stage({
 	onOpenSound: () => void;
 	/** The music panel is open. */
 	music: boolean;
+	/** The watch-together panel is open. */
+	watchPanel: boolean;
 	library?: Library[];
 	/** Whether this person can start watching a video together. */
 	watchReady: boolean;
@@ -325,6 +330,7 @@ function Stage({
 	const participants = useRoster(room);
 	// Kept on screen for its exit, rather than gone the frame it is closed.
 	const musicPanel = useLingering(music, 160);
+	const watchingPanel = useLingering(watchPanel, 160);
 	const state = useConnection(room);
 
 	// Measured in the browser rather than reported by the server, because the
@@ -647,13 +653,11 @@ function Stage({
 			{listening && <SoundPanel room={room} onClose={onClosePanel} />}
 
 			{musicPanel.mounted && (
-				<MusicPanel
-					room={room}
-					libraries={library}
-					watchReady={watchReady}
-					leaving={musicPanel.leaving}
-					onClose={onClosePanel}
-				/>
+				<MusicPanel room={room} libraries={library} leaving={musicPanel.leaving} onClose={onClosePanel} />
+			)}
+
+			{watchingPanel.mounted && (
+				<WatchPanel room={room} ready={watchReady} leaving={watchingPanel.leaving} onClose={onClosePanel} />
 			)}
 
 			{/* Everything said, for everybody. Not only for somebody with no tile

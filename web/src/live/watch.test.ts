@@ -79,6 +79,7 @@ const resolved = (title: string, duration = 100): Resolved => ({
 	cover: "",
 	link: `https://example.invalid/${title}`,
 	live: false,
+	relay: false,
 	play: { kind: "file", url: `https://example.invalid/${title}.mp4` },
 	proxy: { kind: "file", url: "/api/watch/media?t=x.y" },
 });

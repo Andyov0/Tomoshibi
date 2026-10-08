@@ -31,6 +31,13 @@ export interface Resolved {
 	/** The link as it was understood, for anybody who wants to open it themselves. */
 	link: string;
 	live: boolean;
+	/**
+	 * Played through the relay from the start, and from where it is only if the
+	 * relay fails: for a video whose better qualities come only that way -- a
+	 * site that hands them only to its own pages -- the relayed copy is the one
+	 * worth watching, and the one from where it is a lower quality to fall back on.
+	 */
+	relay: boolean;
 	/** Played from where it is, by whoever can reach it. */
 	play: Playable;
 	/** The same, relayed by the deployment, for whoever cannot. Same origin. */
@@ -74,6 +81,7 @@ export function readResolved(body: Record<string, unknown>): Resolved | undefine
 		cover: /^https:\/\//.test(text(body.cover)) ? text(body.cover) : "",
 		link: text(body.link),
 		live: body.live === true,
+		relay: body.relay === true,
 		play: kind === "youtube" ? { kind, id: text(play.id) } : { kind, url: text(play.url) },
 		proxy: { kind: proxyKind, url: `/api/watch/media?t=${ticket}` },
 	};

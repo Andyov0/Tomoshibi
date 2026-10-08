@@ -164,8 +164,10 @@ function Player({
 	onOpenPanel: () => void;
 }) {
 	const t = useT();
-	const [relayed, setRelayed] = useState(false);
+	const [relayed, setRelayed] = useState(info.relay);
 	const [blocked, setBlocked] = useState(false);
+	/** For a video that starts on the relay: whether the copy from where it is has been tried. */
+	const triedDirect = useRef(false);
 	const [volume, setVolumeState] = useState(rememberedVolume);
 	const [muted, setMuted] = useState(false);
 	const [now, setNow] = useState(0);
@@ -197,9 +199,17 @@ function Player({
 		// before: any seek more than twelve seconds in moved a working direct
 		// source onto the relay for good.
 		const failed = (why: string) => {
-			if (relayed || stopped || played.current) return;
-			console.warn("watch: playing from where the video is failed, relaying", why, element.error?.code);
-			setRelayed(true);
+			if (stopped || played.current) return;
+			if (!relayed) {
+				console.warn("watch: playing from where the video is failed, relaying", why, element.error?.code);
+				setRelayed(true);
+			} else if (info.relay && !triedDirect.current) {
+				// The relay was the first choice and failed: the lower quality
+				// from where the video is, rather than nothing.
+				console.warn("watch: the relay failed, playing from where the video is", why, element.error?.code);
+				triedDirect.current = true;
+				setRelayed(false);
+			}
 		};
 		const errored = () => failed("error");
 		const began = () => {
@@ -229,10 +239,13 @@ function Player({
 					else failed("no HLS");
 					return;
 				}
-				// Held to the size it is shown at: a relayed film at four times
-				// the pixels the tile has is the deployment's bandwidth spent on
-				// nothing anybody sees.
-				const hls = new Hls({ capLevelToPlayerSize: true, maxBufferLength: 30 });
+				// Held to the size it is shown at, for a relay this page fell back
+				// to: a film at four times the pixels the tile has is the
+				// deployment's bandwidth spent on nothing anybody sees. Not for
+				// one that starts on the relay because its better qualities come
+				// no other way: there the deployment chose the quality, and the
+				// connection alone decides how much of it -- 4K where it is.
+				const hls = new Hls({ capLevelToPlayerSize: !info.relay, maxBufferLength: 30 });
 				hls.on(Hls.Events.ERROR, (_event, data) => {
 					// Said, without the address: what failed and how is what
 					// anybody looking into a video that would not play needs.
@@ -276,7 +289,7 @@ function Player({
 
 		const started = Date.now();
 		const stall = setInterval(() => {
-			if (relayed || stopped || played.current) return;
+			if (stopped || played.current || (relayed && !info.relay) || (relayed && triedDirect.current)) return;
 			if (latest.current.show.playing && element.readyState < 3 && Date.now() - started > STALL_MS) failed("stalled");
 		}, 1000);
 
@@ -292,7 +305,7 @@ function Player({
 			element.load();
 			handle.current = undefined;
 		};
-	}, [playsAsYoutube, source.kind, source.url, relayed, room, video.key]);
+	}, [playsAsYoutube, source.kind, source.url, relayed, room, video.key, info.relay]);
 
 	// YouTube's own player, where YouTube can be reached; the relay where it cannot.
 	useEffect(() => {

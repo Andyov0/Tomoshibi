@@ -21,6 +21,7 @@ const good = {
 	cover: "https://i.example.invalid/c.jpg",
 	link: "https://example.invalid/v",
 	live: false,
+	relay: false,
 	play: { kind: "file", url: "https://cdn.example.invalid/v.mp4" },
 	proxy: { kind: "file", url: "media?t=Abc_def-1234567890xyz" },
 };
@@ -28,6 +29,13 @@ const good = {
 describe("a resolved video", () => {
 	it("is read with its relay made a path on this server", () => {
 		expect(readResolved(good)).toEqual({ ...good, proxy: { kind: "file", url: "/api/watch/media?t=Abc_def-1234567890xyz" } });
+	});
+
+	it("starts on the relay only when the gateway says so, and never because a field is missing", () => {
+		expect(readResolved({ ...good, relay: true })?.relay).toBe(true);
+		const { relay: _, ...without } = good;
+		expect(readResolved(without)?.relay).toBe(false);
+		expect(readResolved({ ...good, relay: "yes" })?.relay).toBe(false);
 	});
 
 	it("plays YouTube by id alone", () => {

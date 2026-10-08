@@ -38,3 +38,23 @@ func TestAHalfSetUpLibraryIsRefused(t *testing.T) {
 		}
 	}
 }
+
+func TestAHalfSetUpWatchGatewayIsRefusedAsALibraryIs(t *testing.T) {
+	long := "a-token-long-enough-to-trust"
+
+	if err := checkWatch(Watch{}); err != nil {
+		t.Fatalf("a deployment without watching was refused: %v", err)
+	}
+	if err := checkWatch(Watch{URL: "http://127.0.0.1:18400", Token: long}); err != nil {
+		t.Fatalf("a complete watch gateway was refused: %v", err)
+	}
+	for name, watch := range map[string]Watch{
+		"a token with no address":       {Token: long},
+		"an address with no token":      {URL: "http://127.0.0.1:18400"},
+		"a token short enough to guess": {URL: "http://127.0.0.1:18400", Token: "short"},
+	} {
+		if err := checkWatch(watch); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}

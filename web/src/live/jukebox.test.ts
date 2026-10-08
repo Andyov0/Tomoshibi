@@ -69,6 +69,9 @@ function fakeDeps(unavailable: string[] = []) {
 	/** Songs held on their way until released, as a slow library holds them. */
 	const held = new Map<string, () => void>();
 	const slowed = new Set<string>();
+	/** A play held at publishing until the music is stopped, which then refuses it as stopped. */
+	let publishing: { title: string; refuse: () => void } | undefined;
+	const slowPublish = new Set<string>();
 
 	const deps: DeskDeps = {
 		libraries: () => [
@@ -96,11 +99,19 @@ function fakeDeps(unavailable: string[] = []) {
 			return { buffer: {} as AudioBuffer, rate: 44_100, bits: 16, now: audio.now } as Decoded;
 		}),
 		play: vi.fn(async (decoded: Decoded, onEnded: () => void) => {
-			played.push(decoded.now?.title ?? "");
+			const title = decoded.now?.title ?? "";
+			if (slowPublish.has(title)) {
+				await new Promise<void>((_, reject) => {
+					publishing = { title, refuse: () => reject(new DOMException("stopped", "AbortError")) };
+				});
+			}
+			played.push(title);
 			ends.push(onEnded);
 		}),
 		stop: vi.fn(async () => {
 			stopped++;
+			publishing?.refuse();
+			publishing = undefined;
 		}),
 		pause: vi.fn(),
 		describeAudio: () => "FLAC",
@@ -117,6 +128,7 @@ function fakeDeps(unavailable: string[] = []) {
 		aborted,
 		stopped: () => stopped,
 		slow: (id: string) => slowed.add(id),
+		slowToPublish: (title: string) => slowPublish.add(title),
 		release: (id: string) => {
 			slowed.delete(id);
 			held.get(id)?.();
@@ -311,6 +323,45 @@ describe("skipping", () => {
 		await settle();
 
 		expect(aborted).toContain("b");
+		expect(played).toEqual(["Song a", "Song c"]);
+		expect(deps.onSkipped).not.toHaveBeenCalled();
+	});
+
+	it("lets a song that ends by itself while the next is loading leave the next alone", async () => {
+		const { room } = fakeRoom();
+		const { deps, played, ends, slow, release, aborted } = fakeDeps();
+		const desk = new Desk(room, deps, true);
+		slow("b");
+		desk.add([song("a"), song("b"), song("c")], "Holder");
+		await settle();
+
+		desk.skip();
+		await settle();
+		ends[0]?.();
+		await settle();
+		release("b");
+		await settle();
+
+		expect(aborted).not.toContain("b");
+		expect(played).toEqual(["Song a", "Song b"]);
+	});
+
+	it("abandons a song taken out while it is being published, and plays the next", async () => {
+		const { room } = fakeRoom();
+		const { deps, played, ends, slowToPublish } = fakeDeps();
+		const desk = new Desk(room, deps, true);
+		slowToPublish("Song b");
+		desk.add([song("a"), song("b"), song("c")], "Holder");
+		await settle();
+
+		ends.at(-1)?.();
+		await settle();
+		const loading = desk.state().next;
+		expect(loading?.id).toBe("b");
+		desk.remove(loading?.key ?? "");
+		await settle();
+
+		expect(deps.stop).toHaveBeenCalled();
 		expect(played).toEqual(["Song a", "Song c"]);
 		expect(deps.onSkipped).not.toHaveBeenCalled();
 	});

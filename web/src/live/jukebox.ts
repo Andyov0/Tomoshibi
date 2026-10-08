@@ -281,18 +281,34 @@ export class Desk {
 				this.changed();
 
 				const decoded = await this.decode(entry, abort.signal);
-				this.fetching = undefined;
 				if (this.closed) return;
-				if (abort.signal.aborted) continue;
-				if (decoded === "unavailable") {
-					this.deps.onSkipped(entry);
+				if (abort.signal.aborted || decoded === "unavailable") {
+					this.fetching = undefined;
+					if (decoded === "unavailable" && !abort.signal.aborted) this.deps.onSkipped(entry);
 					continue;
 				}
+
+				// Still the song on its way while it is published, which waits on
+				// the media server, and still to be abandoned there: taken out,
+				// skipped or the desk put away, the music is stopped, and the play
+				// that was setting up finds it so and undoes itself.
+				const stopping = () => void this.deps.stop();
+				abort.signal.addEventListener("abort", stopping);
+				try {
+					await this.deps.play(decoded, () => this.advance(entry.key));
+				} catch {
+					if (this.closed) return;
+					if (!abort.signal.aborted) this.deps.onSkipped(entry);
+					continue;
+				} finally {
+					abort.signal.removeEventListener("abort", stopping);
+					this.fetching = undefined;
+				}
+				if (this.closed) return;
 
 				this.now = entry;
 				this.paused = false;
 				this.quality = decoded.now?.quality;
-				await this.deps.play(decoded, () => void this.next());
 				this.changed();
 				this.prefetch();
 				return;
@@ -301,6 +317,17 @@ export class Desk {
 			this.starting = false;
 			this.changed();
 		}
+	}
+
+	/**
+	 * The song playing ended by itself: on to the next, unless one is on its way
+	 * already. Not next(), which takes being asked while a song loads as a
+	 * second press and skips that one too: a song that ended while somebody's
+	 * skip was loading the next took the next with it.
+	 */
+	private advance(key: string): void {
+		if (this.starting || this.now?.key !== key) return;
+		void this.next();
 	}
 
 	/** The next song in the queue, fetched and decoded while this one plays. */

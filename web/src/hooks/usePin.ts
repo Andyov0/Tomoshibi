@@ -37,7 +37,8 @@ export function usePin(surfaces: Surface[]): Pin {
 	}, []);
 
 	useEffect(() => {
-		const shares = surfaces.filter((surface) => surface.kind === "screen");
+		// A video watched together takes the stage as a share does.
+		const shares = surfaces.filter((surface) => surface.kind !== "camera");
 		const auto = autoRef.current;
 
 		if (auto === undefined) {

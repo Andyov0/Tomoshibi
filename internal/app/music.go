@@ -1,12 +1,7 @@
 package app
 
 import (
-	"context"
-	"io"
-	"log/slog"
 	"net/http"
-	"strings"
-	"time"
 )
 
 /*
@@ -37,23 +32,6 @@ here as well would be two lists of the same thing kept in step by hand.
 
 var musicPaths = map[string]bool{"sources": true, "search": true, "track": true, "audio": true, "link": true}
 
-// The headers that describe a response, and the only ones passed back. Anything
-// else the gateway says is between it and this server.
-var musicHeaders = []string{"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"}
-
-// musicClient has no overall timeout because an audio response is as long as
-// the track: a four-minute song arrives over four minutes when the listener's
-// browser reads it at the pace it plays. Only the wait for the gateway to begin
-// answering is bounded.
-var musicClient = &http.Client{
-	Transport: &http.Transport{
-		Proxy:                 nil,
-		ResponseHeaderTimeout: 30 * time.Second,
-		IdleConnTimeout:       90 * time.Second,
-		MaxIdleConnsPerHost:   8,
-	},
-}
-
 func (a *App) music(w http.ResponseWriter, r *http.Request) {
 	conf := a.conf.Meet.Music
 	what := r.PathValue("what")
@@ -70,59 +48,11 @@ func (a *App) music(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	target := strings.TrimRight(conf.URL, "/") + "/" + what
-	if r.URL.RawQuery != "" {
-		target += "?" + r.URL.RawQuery
-	}
-
-	ctx := r.Context()
-	if what != "audio" {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
-	}
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
-	if err != nil {
-		fail(w, http.StatusInternalServerError, reasonServerError)
-		return
-	}
-
-	request.Header.Set("X-Music-Token", conf.Token)
-	if what == "audio" {
-		if span := r.Header.Get("Range"); span != "" {
-			request.Header.Set("Range", span)
-		}
-	}
-
-	response, err := musicClient.Do(request)
-	if err != nil {
-		if ctx.Err() == nil {
-			slog.Warn("the music gateway did not answer", "path", what, "error", err)
-		}
-		fail(w, http.StatusBadGateway, reasonServerError)
-		return
-	}
-	defer response.Body.Close()
-
-	// The gateway refusing this server is a configuration that does not match,
-	// not a thing the person pressing play did or can do anything about.
-	if response.StatusCode == http.StatusForbidden {
-		slog.Error("the music gateway refused this server's token: meet.music.token does not " +
-			"match the gateway's")
-		fail(w, http.StatusBadGateway, reasonServerError)
-		return
-	}
-
-	for _, name := range musicHeaders {
-		if value := response.Header.Get(name); value != "" {
-			w.Header().Set(name, value)
-		}
-	}
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(response.StatusCode)
-
-	// Copied as it arrives rather than read whole: an audio response is tens of
-	// megabytes, and the browser plays it while it comes.
-	_, _ = io.Copy(w, response.Body)
+	passOn(w, r, gateway{
+		name:   "music",
+		url:    conf.URL,
+		header: "X-Music-Token",
+		token:  conf.Token,
+		key:    "meet.music.token",
+	}, what, what == "audio")
 }

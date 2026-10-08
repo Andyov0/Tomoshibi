@@ -496,6 +496,16 @@ describe("playing a track from the library", () => {
 		expect(unpublishTrack).not.toHaveBeenCalled();
 	});
 
+	it("plays at full volume in this machine's speakers until told otherwise", () => {
+		localStorage.clear();
+		expect(monitorVolume()).toBe(1);
+		localStorage.setItem("meet-live.music-monitor", "0");
+		expect(monitorVolume()).toBe(0);
+		localStorage.setItem("meet-live.music-monitor", "loud");
+		expect(monitorVolume()).toBe(1);
+		localStorage.clear();
+	});
+
 	it("turns down only this machine's speakers, never what is sent", async () => {
 		const { contexts, nodes } = stubAudio();
 		const { room } = fakeRoom();
@@ -567,6 +577,26 @@ describe("playing a track from the library", () => {
 
 		nodes[1]?.listeners.ended?.();
 		expect(ended).toHaveBeenCalledTimes(1);
+	});
+
+	it("takes back a track it was still publishing when the music was stopped", async () => {
+		stubAudio();
+		const { room, publishTrack, unpublishTrack } = fakeRoom();
+		let finish: (() => void) | undefined;
+		const published = { source: "unknown", trackName: MUSIC.lossless, track: { name: "late" } };
+		publishTrack.mockImplementationOnce(() => new Promise((resolve) => {
+			finish = () => resolve(published as never);
+		}));
+
+		const playing = playLibraryTrack(room, { url: "/u", rate: 44_100 }, true, () => {}, () => {}, () => {});
+		for (let i = 0; i < 20 && !finish; i++) await Promise.resolve();
+		await stopMusic(room);
+		finish?.();
+
+		await expect(playing).rejects.toMatchObject({ name: "AbortError" });
+		expect(unpublishTrack).toHaveBeenCalledWith(published.track, true);
+		expect(nowPlaying(room)).toBeUndefined();
+		expect(sendingLossless(room, MUSIC)).toBe(false);
 	});
 
 	it("stops playing, lets the context go and says nothing is playing when stopped", async () => {

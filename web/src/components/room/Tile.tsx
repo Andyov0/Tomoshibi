@@ -30,6 +30,7 @@ export function Tile({
 	onSelect,
 	onExpand,
 	selected,
+	unlabelled = false,
 }: {
 	label: string;
 	/** The mark this person carries, and whether they earned it. */
@@ -48,6 +49,8 @@ export function Tile({
 	onSelect?: () => void;
 	/** A double click, which fills the screen with it. */
 	onExpand?: () => void;
+	/** Draws no name: for a picture that names itself, as the video watched together does on the stage. */
+	unlabelled?: boolean;
 	/** Already on the stage, so a click sends it back to the grid. */
 	selected?: boolean;
 }) {
@@ -108,7 +111,12 @@ export function Tile({
 			{/* A pill rather than a gradient scrim. A scrim darkens the bottom
 			    third of every picture to make a few words legible, which is a
 			    lot of picture to spend on a name. */}
-			<div className="pointer-events-none absolute bottom-1.5 left-1.5 flex max-w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md bg-black/55 px-1.5 py-0.5 backdrop-blur-sm">
+			<div
+				className={cn(
+					"pointer-events-none absolute bottom-1.5 left-1.5 flex max-w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md bg-black/55 px-1.5 py-0.5 backdrop-blur-sm",
+					unlabelled && "hidden",
+				)}
+			>
 				<span
 					className={cn(
 						"truncate font-medium text-[11.5px] leading-5",

@@ -13,7 +13,14 @@ import { Signal } from "@/components/room/Signal";
 import { useConnectionQuality } from "@/live/connection";
 import { ShareCard } from "@/components/room/ShareCard";
 import { SoundPanel } from "@/components/room/SoundPanel";
-import { MusicPanel } from "@/components/room/MusicPanel";
+import { MusicPanel, showMedia } from "@/components/room/MusicPanel";
+import { Tile } from "@/components/room/Tile";
+import { WatchScreen } from "@/components/room/WatchScreen";
+import { refusal } from "@/components/room/WatchTab";
+import { t as say } from "@/live/i18n";
+import { actionFailed } from "@/live/notices";
+import { closeTheatre, hearShows, seenShow, subscribeShow } from "@/live/watch";
+import { watchReady } from "@/live/watch-api";
 import { useLingering } from "@/hooks/useLingering";
 import { type Library, libraries as askLibraries } from "@/live/music";
 import { closeDesk, deskState, hearDesks, subscribeDesk } from "@/live/jukebox";
@@ -41,7 +48,7 @@ import {
 	stripCapacity,
 } from "@/live/plan";
 import { silenced, soundOf } from "@/live/hearing";
-import { type Surface, owner, surfaces } from "@/live/surface";
+import { type Surface, label, owner, surfaces } from "@/live/surface";
 import { type Standing, useStanding } from "@/live/host";
 import { useWatchers, useWatching } from "@/live/watching";
 import { ConnectionState, type Room as LiveRoom } from "livekit-client";
@@ -107,6 +114,29 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	useEffect(() => () => void closeDesk(room), [room]);
 	const desk = useSyncExternalStore(subscribeDesk, () => deskState(room));
 	const roster = useRoster(room);
+
+	// Watching together: asked once whether this person can start it, heard
+	// from whoever runs it, and closed with the call by whoever runs it here.
+	const [canWatch, setCanWatch] = useState(false);
+	useEffect(() => {
+		let live = true;
+		// Not in an encrypted call, where the show says and hears nothing: an
+		// offer there led to a panel that could only say so.
+		if (room.options.e2ee !== undefined) return;
+		void watchReady().then((ready) => {
+			if (live) setCanWatch(ready);
+		});
+		return () => {
+			live = false;
+		};
+	}, []);
+	useEffect(() => hearShows(room, (why) => actionFailed(say(refusal(why)))), [room]);
+	useEffect(() => () => closeTheatre(room), [room]);
+	const show = useSyncExternalStore(subscribeShow, () => seenShow(room));
+	const openWatch = () => {
+		showMedia(room, "watch");
+		setPanel("music");
+	};
 	// Music somebody is playing whose desk this page has not heard of yet --
 	// an encrypted call, where desks say nothing -- still wants a volume.
 	const playingMusic = roster.some((one) => [...one.trackPublications.values()].some((publication) => isMusic(publication)));
@@ -195,6 +225,9 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				onOpenSound={() => setPanel("sound")}
 				music={panel === "music"}
 				library={library}
+				watchReady={canWatch}
+				watching={show?.show.holder}
+				onOpenWatch={openWatch}
 				aside={aside}
 			/>
 			<ControlBar
@@ -215,10 +248,17 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 					// reach the library has one before there is.
 					// And while the panel is open, so the button that opened it
 					// is there to close it after the music has stopped.
-					available: library !== undefined || desk !== undefined || playingMusic || panel === "music",
-					playing: desk?.now !== undefined || playingMusic,
+					available:
+						library !== undefined ||
+						desk !== undefined ||
+						playingMusic ||
+						canWatch ||
+						show !== undefined ||
+						panel === "music",
+					playing: desk?.now !== undefined || playingMusic || show?.show.playing === true,
 				}}
 				onMusic={() => setPanel(panel === "music" ? undefined : "music")}
+				onWatch={canWatch ? openWatch : undefined}
 				onLeave={onLeave}
 				host={standing.yours}
 				where={where}
@@ -250,6 +290,9 @@ function Stage({
 	onOpenSound,
 	music,
 	library,
+	watchReady,
+	watching,
+	onOpenWatch,
 }: {
 	room: LiveRoom;
 	/* Passed in rather than read again here. A reaction is an event held in a
@@ -271,6 +314,11 @@ function Stage({
 	/** The music panel is open. */
 	music: boolean;
 	library?: Library[];
+	/** Whether this person can start watching a video together. */
+	watchReady: boolean;
+	/** Who runs the show being watched together, if one is. */
+	watching?: string;
+	onOpenWatch: () => void;
 }) {
 	const t = useT();
 	const heard = useHearing();
@@ -291,7 +339,7 @@ function Stage({
 	const crowded = participants.length > TILES_PER_PAGE;
 	const ordered = useSpeakingOrder(participants, crowded);
 
-	const all = surfaces(ordered, room.localParticipant.identity);
+	const all = surfaces(ordered, room.localParticipant.identity, watching);
 	const { pinned, toggle, pin } = usePin(all);
 
 	// Taking the last picture off the stage leaves nothing to fill the screen
@@ -344,9 +392,13 @@ function Stage({
 	// Somebody sharing their screen is two pictures. Whichever is not on the
 	// stage is what the switch on the stage offers, and finding it here is the
 	// only place that knows both the pin and the whole roster.
-	const counterpart = pinned
+	const counterpart =
+		pinned && pinned.kind !== "watch"
 		? all.find(
-				(surface) => surface.id !== pinned.id && owner(surface).identity === owner(pinned).identity,
+				// Not the video watched together, which belongs to whoever runs
+				// it but is not another picture of them.
+				(surface) =>
+					surface.id !== pinned.id && surface.kind !== "watch" && owner(surface).identity === owner(pinned).identity,
 			)
 		: undefined;
 
@@ -382,6 +434,35 @@ function Stage({
 
 		// Our own pictures are never marked: nobody hears themselves, so there
 		// is no setting behind the mark and it would be a symbol with no cause.
+		// The video watched together is played here, not heard from anybody:
+		// its volume is the player's own.
+		if (surface.kind === "watch") {
+			return (
+				<Tile
+					label={label(surface)}
+					// On the stage its controls carry the title, and the name
+					// sat on top of the play button.
+					unlabelled={onStage}
+					selected={onStage}
+					onSelect={() => toggle(surface)}
+					onExpand={onStage ? screen.toggle : undefined}
+					overlay={
+						onStage && (
+							<StageControls
+								other={undefined}
+								onSwitch={pin}
+								fullscreen={screen.active}
+								onFullscreen={screen.toggle}
+								fullscreenSupported={screen.supported}
+							/>
+						)
+					}
+				>
+					<WatchScreen room={room} onStage={onStage} onOpenPanel={onOpenWatch} />
+				</Tile>
+			);
+		}
+
 		const quiet =
 			!surface.local && silenced(heard(owner(surface).identity, soundOf(surface.kind)));
 
@@ -479,7 +560,10 @@ function Stage({
 					onPrevious={paged.previous}
 					tiles={all.map((surface) => ({
 						id: surface.id,
-						node: (
+						node:
+							surface.kind === "watch" ? (
+								<div className="size-full animate-arrive">{tile(surface)}</div>
+							) : (
 							<PictureMenu
 								surface={surface}
 								onStage={surface.id === pinned?.id}
@@ -491,7 +575,7 @@ function Stage({
 							>
 								<div className="size-full animate-arrive">{tile(surface)}</div>
 							</PictureMenu>
-						),
+							),
 					}))}
 					/>
 				</div>
@@ -563,7 +647,13 @@ function Stage({
 			{listening && <SoundPanel room={room} onClose={onClosePanel} />}
 
 			{musicPanel.mounted && (
-				<MusicPanel room={room} libraries={library} leaving={musicPanel.leaving} onClose={onClosePanel} />
+				<MusicPanel
+					room={room}
+					libraries={library}
+					watchReady={watchReady}
+					leaving={musicPanel.leaving}
+					onClose={onClosePanel}
+				/>
 			)}
 
 			{/* Everything said, for everybody. Not only for somebody with no tile

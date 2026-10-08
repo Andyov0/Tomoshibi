@@ -20,7 +20,8 @@ export interface Surface {
 	id: string;
 	/** What the renderer needs, in the shape it expects. */
 	track: TrackReferenceOrPlaceholder;
-	kind: "camera" | "screen";
+	/** A camera, a shared screen, or the video everybody is watching together. */
+	kind: "camera" | "screen" | "watch";
 	/** True for our own pictures, which need mirroring and no audio. */
 	local: boolean;
 }
@@ -35,6 +36,7 @@ export function label(surface: Surface): string {
 	const participant = owner(surface);
 	const name = participant.name || participant.identity;
 
+	if (surface.kind === "watch") return t("Watching together");
 	return surface.kind === "screen" ? t("{name} (screen)", { name }) : name;
 }
 
@@ -57,8 +59,20 @@ export function signature(surface: Surface): Signature | undefined {
  * fully muted still belongs in the grid. A screen surface exists only while
  * something is being shared.
  */
-export function surfaces(participants: Participant[], localIdentity: string): Surface[] {
+export function surfaces(participants: Participant[], localIdentity: string, watching?: string): Surface[] {
 	const found: Surface[] = [];
+
+	// The video everybody is watching is a picture in the room like a screen
+	// is, belonging to whoever runs the show, and listed first.
+	const holder = watching === undefined ? undefined : participants.find((one) => one.identity === watching);
+	if (holder) {
+		found.push({
+			id: "watch",
+			kind: "watch",
+			local: holder.identity === localIdentity,
+			track: { participant: holder, source: Track.Source.Unknown },
+		});
+	}
 
 	for (const participant of participants) {
 		const local = participant.identity === localIdentity;

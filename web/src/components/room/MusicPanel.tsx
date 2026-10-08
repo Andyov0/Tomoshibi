@@ -1,4 +1,5 @@
 import { SoundRow } from "@/components/room/SoundPanel";
+import { WatchTab } from "@/components/room/WatchTab";
 import { Button } from "@/components/ui/button";
 import { useRoster } from "@/hooks/useRoomState";
 import { rememberedDucking, setDucking, subscribeDuck } from "@/live/duck";
@@ -95,6 +96,28 @@ type Tab = "desk" | "search" | "playlist";
  */
 const remembered = new WeakMap<Room, Map<string, unknown>>();
 
+type Media = "music" | "watch";
+
+/*
+ * Which of the two the panel shows, as a store rather than as the panel's own
+ * state: asked for from the share menu or the player while the panel is
+ * already open, a choice kept only in the panel's state was a press that did
+ * nothing at all.
+ */
+const media = new WeakMap<Room, Media>();
+const mediaListeners = new Set<() => void>();
+
+/** Show music or watching together in the panel, open or next opened. */
+export function showMedia(room: Room, which: Media): void {
+	media.set(room, which);
+	for (const listener of mediaListeners) listener();
+}
+
+function subscribeMedia(listener: () => void): () => void {
+	mediaListeners.add(listener);
+	return () => mediaListeners.delete(listener);
+}
+
 function useRemembered<T>(room: Room, key: string, initial: T | (() => T)): [T, (next: SetStateAction<T>) => void] {
 	let book = remembered.get(room);
 	if (!book) {
@@ -126,18 +149,23 @@ const LINK = /https?:\/\//i;
 export function MusicPanel({
 	room,
 	libraries,
+	watchReady = false,
 	leaving = false,
 	onClose,
 }: {
 	room: Room;
 	/** The libraries this person can reach; absent for somebody who can only ask. */
 	libraries?: Library[];
+	/** Whether this person can start watching a video together. */
+	watchReady?: boolean;
 	/** Playing its way out, for the exit animation. */
 	leaving?: boolean;
 	onClose: () => void;
 }) {
 	const t = useT();
 	const [tab, setTab] = useRemembered<Tab>(room, "tab", "desk");
+	const shown = useSyncExternalStore(subscribeMedia, () => media.get(room) ?? "music");
+	const setMedia = (which: Media) => showMedia(room, which);
 	const desk = useSyncExternalStore(subscribeDesk, () => deskState(room));
 	const mine = desk !== undefined && desk.holder === room.localParticipant.identity;
 	const me = room.localParticipant.name || room.localParticipant.identity;
@@ -191,14 +219,39 @@ export function MusicPanel({
 				"sm:inset-x-auto sm:right-3 sm:bottom-3 sm:h-[min(34rem,calc(100%-5.5rem))] sm:w-80 sm:rounded-xl",
 			)}
 		>
-			<header className="flex items-center justify-between border-border border-b px-3 py-2">
-				<strong className="font-semibold text-[12.5px]">{t("Music")}</strong>
+			<header className="flex items-center justify-between gap-2 border-border border-b px-2 py-1.5">
+				{/* Music and watching together, side by side: both are something the
+				    whole call has playing, and both are turned down and driven here. */}
+				<div role="tablist" className="flex gap-1">
+					{(
+						[
+							["music", t("Music")],
+							["watch", t("Watch together")],
+						] as const
+					).map(([key, label]) => (
+						<button
+							key={key}
+							type="button"
+							role="tab"
+							aria-selected={shown === key}
+							onClick={() => setMedia(key)}
+							className={cn(
+								"rounded-md px-2.5 py-1 font-semibold text-[12.5px] transition-colors",
+								shown === key ? "bg-surface-hi text-fg" : "text-fg-muted hover:text-fg",
+							)}
+						>
+							{label}
+						</button>
+					))}
+				</div>
 				<Button variant="ghost" size="icon" className="size-6" aria-label={t("Close music")} onClick={onClose}>
 					<X className="size-3.5" />
 				</Button>
 			</header>
 
-			{tabs.length > 1 && (
+			{shown === "watch" && <WatchTab room={room} ready={watchReady} />}
+
+			{shown === "music" && tabs.length > 1 && (
 				<div role="tablist" className="flex gap-1 border-border border-b p-1.5">
 					{tabs.map(([key, label]) => (
 						<button
@@ -218,9 +271,9 @@ export function MusicPanel({
 				</div>
 			)}
 
-			{tab === "desk" && <DeskTab room={room} desk={desk} mine={mine} me={me} deps={deps} broadcast={broadcast} />}
-			{tab === "search" && libraries && <SearchTab room={room} libraries={libraries} onAdd={add} />}
-			{tab === "playlist" && libraries && <PlaylistTab room={room} onAdd={add} />}
+			{shown === "music" && tab === "desk" && <DeskTab room={room} desk={desk} mine={mine} me={me} deps={deps} broadcast={broadcast} />}
+			{shown === "music" && tab === "search" && libraries && <SearchTab room={room} libraries={libraries} onAdd={add} />}
+			{shown === "music" && tab === "playlist" && libraries && <PlaylistTab room={room} onAdd={add} />}
 		</aside>
 	);
 }

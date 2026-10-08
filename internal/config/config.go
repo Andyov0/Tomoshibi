@@ -280,6 +280,9 @@ type Meet struct {
 
 	// Music is a library somebody signed in may play into a call. See Music.
 	Music Music `yaml:"music"`
+
+	// Watch is a gateway for watching a video together. See Watch.
+	Watch Watch `yaml:"watch"`
 }
 
 // Music is a gateway to a music library, run by this deployment somewhere else.
@@ -302,6 +305,18 @@ type Music struct {
 // MinMusicToken is the shortest token accepted: a guessable one would let
 // anything on the gateway's network play from somebody's subscription.
 const MinMusicToken = 24
+
+// Watch is a gateway that reads a video link -- what it plays, and how long it
+// is -- and relays its media for viewers who cannot fetch it themselves.
+//
+// Somebody signed in pastes a link and everybody in the call watches it
+// together, each playing it in their own browser; see internal/app/watch.go.
+// Shaped as Music is, for the same reasons. Unset, there is no watching
+// together on this deployment and the client offers none.
+type Watch struct {
+	URL   string `yaml:"url"`
+	Token string `yaml:"token"`
+}
 
 // Enrol is what a machine running the install script is told.
 //
@@ -623,7 +638,18 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
+	if err := checkWatch(meet.Watch); err != nil {
+		return nil, err
+	}
+
 	return &Config{Meet: meet, LiveKit: lk, Key: key, Secret: secret}, nil
+}
+
+// checkWatch refuses a watch gateway half set up, as checkMusic refuses a
+// library: the same four mistakes, and the same reasons to find them at startup.
+func checkWatch(watch Watch) error {
+	return checkGateway("meet.watch", watch.URL, watch.Token,
+		"the gateway relays media for whoever holds it")
 }
 
 // checkMusic refuses a library half set up: an address with no token, a token
@@ -631,23 +657,30 @@ func Load(path string) (*Config, error) {
 // Each would otherwise be a library that answers nothing, discovered by
 // somebody pressing play.
 func checkMusic(music Music) error {
-	if music.URL == "" && music.Token == "" {
+	return checkGateway("meet.music", music.URL, music.Token,
+		"the gateway trusts whoever holds it with somebody's subscription")
+}
+
+// checkGateway is the check both gateways share. `why` is what a short token
+// would give away, said in the refusal.
+func checkGateway(key, address, token, why string) error {
+	if address == "" && token == "" {
 		return nil
 	}
 
-	if music.URL == "" {
-		return fmt.Errorf("meet.music.token is set and meet.music.url is not; the token is " +
-			"for a gateway, so name it or remove both")
+	if address == "" {
+		return fmt.Errorf("%s.token is set and %s.url is not; the token is "+
+			"for a gateway, so name it or remove both", key, key)
 	}
 
-	parsed, err := url.Parse(music.URL)
+	parsed, err := url.Parse(address)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-		return fmt.Errorf("meet.music.url: %q is not an http or https address", music.URL)
+		return fmt.Errorf("%s.url: %q is not an http or https address", key, address)
 	}
 
-	if len(music.Token) < MinMusicToken {
-		return fmt.Errorf("meet.music.token is %d characters and needs at least %d: the gateway "+
-			"trusts whoever holds it with somebody's subscription", len(music.Token), MinMusicToken)
+	if len(token) < MinMusicToken {
+		return fmt.Errorf("%s.token is %d characters and needs at least %d: %s",
+			key, len(token), MinMusicToken, why)
 	}
 
 	return nil

@@ -52,7 +52,7 @@ export function PictureMenu({
 	const participant = owner(surface);
 	const named = label(surface);
 	const mark = signature(surface);
-	const sound = soundOf(surface.kind);
+	const sound = soundOf(surface.kind === "watch" ? "screen" : surface.kind);
 	const setting = heard(participant.identity, sound);
 
 	return (

@@ -31,8 +31,16 @@ func musicApp(t *testing.T, gateway http.Handler) (http.Handler, *http.Cookie) {
 	upstream := httptest.NewServer(gateway)
 	t.Cleanup(upstream.Close)
 
-	mux, st, app := controlWithStore(t, config.PickProbe)
+	mux, app, cookie := signedInApp(t)
 	app.conf.Meet.Music = config.Music{URL: upstream.URL, Token: musicToken}
+	return mux, cookie
+}
+
+// signedInApp is a control node with one account signed in, and its cookie.
+func signedInApp(t *testing.T) (http.Handler, *App, *http.Cookie) {
+	t.Helper()
+
+	mux, st, app := controlWithStore(t, config.PickProbe)
 
 	account := store.Account{Name: "listener", Trip: "eeeeefffff"}
 	if err := st.AddAccount(account); err != nil {
@@ -46,7 +54,7 @@ func musicApp(t *testing.T, gateway http.Handler) (http.Handler, *http.Cookie) {
 		t.Fatal(err)
 	}
 
-	return mux, &http.Cookie{Name: "meet-live.account", Value: "a-music-session"}
+	return mux, app, &http.Cookie{Name: "meet-live.account", Value: "a-music-session"}
 }
 
 func musicGet(mux http.Handler, path string, cookie *http.Cookie, header ...string) *httptest.ResponseRecorder {

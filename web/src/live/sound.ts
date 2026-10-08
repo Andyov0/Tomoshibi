@@ -443,8 +443,12 @@ const MONITOR_KEY = "meet-live.music-monitor";
  * stays the file.
  */
 export function monitorVolume(): number {
-	const kept = Number(recall(MONITOR_KEY));
-	return Number.isFinite(kept) && kept >= 0 && kept <= 1 && recall(MONITOR_KEY) !== undefined ? kept : 1;
+	// Nothing kept reads as null, not undefined, and Number(null) is nought:
+	// tested for undefined, a browser that had never set this played the
+	// music to everybody but its own speakers.
+	const raw = recall(MONITOR_KEY);
+	const kept = Number(raw);
+	return raw != null && raw !== "" && Number.isFinite(kept) && kept >= 0 && kept <= 1 ? kept : 1;
 }
 
 export function setMonitorVolume(room: Room, volume: number): void {
@@ -507,6 +511,20 @@ export async function fetchLibraryTrack(
  * `onEnded` is told when the track finishes, for whatever plays next; without
  * one, the share stops with the track.
  */
+/**
+ * Bumped by every stopMusic. Opening an output waits twice -- for the context
+ * and for the publication -- and a stop that arrives in between used to be
+ * outrun: the desk put away, and the song it had been publishing went out
+ * anyway, and stayed. Each wait now ends by checking nothing stopped it.
+ */
+const generations = new WeakMap<Room, number>();
+const generation = (room: Room) => generations.get(room) ?? 0;
+
+/** Thrown by playDecoded when the music was stopped while it was setting up. */
+export function stopped(): DOMException {
+	return new DOMException("the music was stopped", "AbortError");
+}
+
 export async function playDecoded(
 	room: Room,
 	decoded: Decoded,
@@ -518,6 +536,7 @@ export async function playDecoded(
 
 	if (!output || output.rate !== decoded.rate || output.bits !== decoded.bits) {
 		await stopMusic(room);
+		const mine = generation(room);
 
 		const context = new AudioContext({ sampleRate: decoded.rate, latencyHint: "playback" });
 		const out = context.createMediaStreamDestination();
@@ -553,6 +572,7 @@ export async function playDecoded(
 		};
 		try {
 			await context.resume();
+			if (generation(room) !== mine) throw stopped();
 			const sound = out.stream.getAudioTracks()[0];
 			if (!sound) throw new NoSound();
 
@@ -567,10 +587,15 @@ export async function playDecoded(
 				decodedToInt24(decoded.bits),
 				MUSIC,
 			);
+			if (generation(room) !== mine) throw stopped();
 		} catch (err) {
 			if (outputs.get(room) === output) outputs.delete(room);
 			output.unduck?.();
 			musicLeft(LOCAL);
+			if (output.publication?.track) {
+				dropSender(room, MUSIC);
+				void room.localParticipant.unpublishTrack(output.publication.track, true).catch(() => {});
+			}
 			void context.close().catch(() => {});
 			changed();
 			throw err;
@@ -741,6 +766,7 @@ export async function stopListening(room: Room): Promise<void> {
 
 /** Stop the music playing from the library. Safe to call when none is. */
 export async function stopMusic(room: Room): Promise<void> {
+	generations.set(room, generation(room) + 1);
 	loading.get(room)?.abort();
 	loading.delete(room);
 	dropSender(room, MUSIC);

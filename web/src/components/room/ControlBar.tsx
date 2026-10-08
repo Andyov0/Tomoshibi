@@ -47,6 +47,7 @@ export function ControlBar({
 	onListen,
 	music,
 	onMusic,
+	onWatch,
 	onLeave,
 	host,
 	where,
@@ -71,6 +72,8 @@ export function ControlBar({
 	/** Whether the music panel is open, has anything in it, and music is playing. */
 	music?: { open: boolean; available: boolean; playing: boolean };
 	onMusic?: () => void;
+	/** Start watching a video together; absent where this person cannot. */
+	onWatch?: () => void;
 	onLeave: () => void;
 	/** Whether this person may end the meeting rather than only leave it. */
 	host: boolean;
@@ -300,6 +303,7 @@ export function ControlBar({
 						})()
 					}
 					onStopListening={() => void guard(() => stopListening(room))()}
+					onWatch={onWatch}
 				/>
 			)}
 
@@ -336,8 +340,8 @@ export function ControlBar({
 			{musicButton.mounted && onMusic && (
 				<Toggle
 					on={music?.open === true}
-					onLabel={t("Hide music")}
-					offLabel={t("Show music")}
+					onLabel={t("Hide music and video")}
+					offLabel={t("Show music and video")}
 					onClick={onMusic}
 					control="music"
 					className={musicButton.leaving ? "animate-depart" : "animate-arrive"}

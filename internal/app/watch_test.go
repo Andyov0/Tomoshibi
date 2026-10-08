@@ -106,16 +106,26 @@ func TestOnlyTheWatchGatewaysOwnPathsArePassedOn(t *testing.T) {
 	}
 }
 
-func TestARefusedTokenIsTheViewersOnARelayAndTheServersOtherwise(t *testing.T) {
+func TestAnOldTicketIsTheViewersAndARefusedServerIsTheDeployments(t *testing.T) {
+	status := http.StatusGone
 	mux, cookie := watchApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden)
+		w.WriteHeader(status)
 	}))
 
-	if got := musicGet(mux, "/api/watch/media?t=expired", nil).Code; got != http.StatusForbidden {
-		t.Errorf("an expired relay token came back %d; the viewer's player needs to know it was refused", got)
+	for _, path := range []string{"/api/watch/media?t=old", "/api/watch/info?t=old"} {
+		if got := musicGet(mux, path, nil).Code; got != http.StatusGone {
+			t.Errorf("%s with a ticket gone came back %d; the viewer needs to know it is gone", path, got)
+		}
+	}
+
+	status = http.StatusForbidden
+	for _, path := range []string{"/api/watch/media?t=x", "/api/watch/info?t=x"} {
+		if got := musicGet(mux, path, nil).Code; got != http.StatusBadGateway {
+			t.Errorf("%s with the gateway refusing this server came back %d; it is this deployment's to fix", path, got)
+		}
 	}
 	if got := musicGet(mux, "/api/watch/resolve?url=x", cookie).Code; got != http.StatusBadGateway {
-		t.Errorf("the gateway refusing this server came back %d; it is this deployment's to fix", got)
+		t.Errorf("resolve with the gateway refusing this server came back %d", got)
 	}
 }
 

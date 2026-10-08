@@ -98,9 +98,11 @@ func passOn(w http.ResponseWriter, r *http.Request, g gateway, what string, stre
 
 	// The gateway refusing this server is a configuration that does not match,
 	// not a thing the person pressing play did or can do anything about. A
-	// relayed path is different: there a refusal is the gateway's verdict on
-	// the token in the query, which is the viewer's, and is theirs to hear.
-	if response.StatusCode == http.StatusForbidden && !(streamed && g.name == "watch") {
+	// ticket that has run out is the gateway's 410, which passes through: it
+	// is the viewer's to hear. One status for both, keyed on the path asked,
+	// reported a stale ticket in somebody's queue as this deployment's
+	// misconfiguration, at error level.
+	if response.StatusCode == http.StatusForbidden {
 		slog.Error("a gateway refused this server's token: " + g.key + " does not match the gateway's")
 		fail(w, http.StatusBadGateway, reasonServerError)
 		return

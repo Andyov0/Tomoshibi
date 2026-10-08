@@ -160,3 +160,23 @@ func TestAGuestMayReadWhatATicketPlays(t *testing.T) {
 		t.Fatalf("info with no ticket answered %d", got)
 	}
 }
+
+func TestOnlySomebodySignedInMayBrowseTheLibrary(t *testing.T) {
+	reached := false
+	mux, cookie := watchApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached = true
+		w.Header().Set("Content-Type", "image/svg+xml")
+		_, _ = io.WriteString(w, "<svg/>")
+	}))
+
+	if got := musicGet(mux, "/api/watch/library?op=servers", nil).Code; got != http.StatusUnauthorized || reached {
+		t.Fatalf("a guest browsing the library got %d and reached the gateway: %v", got, reached)
+	}
+	got := musicGet(mux, "/api/watch/library?op=image&server=a&id=1", cookie)
+	if got.Code != http.StatusOK {
+		t.Fatalf("somebody signed in got %d", got.Code)
+	}
+	if kind := got.Header().Get("Content-Type"); kind != "application/octet-stream" {
+		t.Errorf("an SVG poster came back as %q; it is a document that can carry script", kind)
+	}
+}

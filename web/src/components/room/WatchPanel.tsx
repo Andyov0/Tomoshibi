@@ -1,9 +1,12 @@
-import { WatchTab } from "@/components/room/WatchTab";
+import { MediaBrowser } from "@/components/room/MediaBrowser";
+import { WatchTab, addVideo } from "@/components/room/WatchTab";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
 import type { Room } from "livekit-client";
+import { type MediaServer, mediaServers } from "@/live/watch-api";
 import { X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 /**
  * Watching a video together: a link to paste, and what is playing and coming up.
@@ -27,6 +30,21 @@ export function WatchPanel({
 	onClose: () => void;
 }) {
 	const t = useT();
+	const [tab, setTab] = useState<"queue" | "media">("queue");
+	// Asked once the panel opens, and only of somebody who could start a show:
+	// browsing is for choosing, and choosing is theirs.
+	const [servers, setServers] = useState<MediaServer[]>([]);
+	useEffect(() => {
+		if (!ready || room.options.e2ee !== undefined) return;
+		let live = true;
+		void mediaServers().then((found) => {
+			if (live) setServers(found);
+		});
+		return () => {
+			live = false;
+		};
+	}, [ready, room]);
+
 	return (
 		<aside
 			className={cn(
@@ -44,7 +62,40 @@ export function WatchPanel({
 					<X className="size-3.5" />
 				</Button>
 			</header>
-			<WatchTab room={room} ready={ready} />
+			{servers.length > 0 && (
+				<div role="tablist" className="flex gap-1 border-border border-b p-1.5">
+					{(
+						[
+							["queue", t("Queue")],
+							["media", t("Media servers")],
+						] as const
+					).map(([key, label]) => (
+						<button
+							key={key}
+							type="button"
+							role="tab"
+							aria-selected={tab === key}
+							onClick={() => setTab(key)}
+							className={cn(
+								"flex-1 rounded-md px-2 py-1 text-[12px] transition-colors",
+								tab === key ? "bg-surface-hi text-fg" : "text-fg-muted hover:text-fg",
+							)}
+						>
+							{label}
+						</button>
+					))}
+				</div>
+			)}
+			{tab === "media" && servers.length > 0 ? (
+				<MediaBrowser
+					servers={servers}
+					onChoose={async (link) => {
+						if (await addVideo(room, link, ready, t)) setTab("queue");
+					}}
+				/>
+			) : (
+				<WatchTab room={room} ready={ready} />
+			)}
 		</aside>
 	);
 }

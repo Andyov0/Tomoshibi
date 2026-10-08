@@ -27,6 +27,24 @@ export function refusal(why: Refusal): "That link is not a video that can be pla
 }
 
 /**
+ * Add what a link plays to the show: started here when nobody runs one and
+ * this person may, and otherwise asked of whoever runs it. True if it was
+ * added, or sent to be.
+ */
+export async function addVideo(room: Room, text: string, ready: boolean, t: ReturnType<typeof useT>): Promise<boolean> {
+	const show = seenShow(room)?.show;
+	if (!show && ready) {
+		const deps: TheatreDeps = {
+			resolve: resolveVideo,
+			onRefused: (why) => actionFailed(t(refusal(why))),
+		};
+		const theatre = startTheatre(room, deps);
+		return theatre !== undefined && (await theatre.add(text, room.localParticipant.name || room.localParticipant.identity));
+	}
+	return command(room, { t: "add", text });
+}
+
+/**
  * Watching together, in the media panel: a link to paste, and what is playing
  * and coming up.
  *
@@ -40,18 +58,12 @@ export function WatchTab({ room, ready }: { room: Room; ready: boolean }) {
 	const seen = useSyncExternalStore(subscribeShow, () => seenShow(room));
 	const show = seen?.show;
 	const mine = show !== undefined && show.holder === room.localParticipant.identity;
-	const me = room.localParticipant.name || room.localParticipant.identity;
 	const [pasted, setPasted] = useState("");
 	const [busy, setBusy] = useState(false);
 
 	if (room.options.e2ee !== undefined) {
 		return <p className="px-4 py-8 text-center text-fg-muted text-xs">{t("Not available in an encrypted call")}</p>;
 	}
-
-	const deps: TheatreDeps = {
-		resolve: resolveVideo,
-		onRefused: (why) => actionFailed(t(refusal(why))),
-	};
 
 	const canAdd = show !== undefined || ready;
 
@@ -61,12 +73,7 @@ export function WatchTab({ room, ready }: { room: Room; ready: boolean }) {
 		if (!text || busy) return;
 		setBusy(true);
 		try {
-			if (!show && ready) {
-				const theatre = startTheatre(room, deps);
-				if (theatre && (await theatre.add(text, me))) setPasted("");
-			} else if (command(room, { t: "add", text })) {
-				setPasted("");
-			}
+			if (await addVideo(room, text, ready, t)) setPasted("");
 		} finally {
 			setBusy(false);
 		}

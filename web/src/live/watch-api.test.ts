@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readResolved, resolveVideo, watchReady } from "./watch-api";
+import { browseMedia, mediaLink, mediaServers, readResolved, resolveVideo, searchMedia, watchReady } from "./watch-api";
 
 /*
 The watch gateway's answers, read defensively.
@@ -88,3 +88,53 @@ describe("asking the gateway", () => {
 		expect(await watchReady()).toBe(true);
 	});
 });
+
+describe("a video only the relay can play", () => {
+	it("is read with no address of its own, and its poster from the relay", () => {
+		const found = readResolved({ ...good, relay: true, play: { kind: "relay", url: "https://media.example.invalid/x?api_key=secret" }, cover: "media?t=Poster_ticket_12345678" });
+		expect(found?.play).toEqual({ kind: "relay" });
+		expect(found?.cover).toBe("/api/watch/media?t=Poster_ticket_12345678");
+	});
+
+	it("takes no poster from anywhere but the relay or the open web", () => {
+		for (const cover of ["library?op=image&server=a&id=1", "../media?t=x", "javascript:x", "//evil.invalid/c.jpg", "media?t=x&y=z"]) {
+			expect(readResolved({ ...good, cover })?.cover).toBe("");
+		}
+	});
+});
+
+describe("the media servers", () => {
+	const answer = (body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
+
+	it("are listed by key, and a key that is not one is dropped", async () => {
+		vi.stubGlobal("fetch", answer({ servers: [{ key: "home", name: "Home" }, { key: "../x", name: "Bad" }] }));
+		expect(await mediaServers()).toEqual([{ key: "home", name: "Home" }]);
+	});
+
+	it("are none where there is no gateway or nobody signed in", async () => {
+		vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 401 })));
+		expect(await mediaServers()).toEqual([]);
+	});
+
+	it("give items whose ids and posters are what the gateway makes, and nothing else", async () => {
+		vi.stubGlobal("fetch", answer({ items: [
+			{ id: "1a2b", name: "Film", type: "Movie", folder: false, playable: true, year: 2020, duration: 5400, image: "library?op=image&server=home&id=1a2b&tag=abc" },
+			{ id: "3c", name: "Odd poster", image: "https://evil.invalid/p.jpg" },
+			{ id: "not-hex!", name: "Bad id" },
+		] }));
+		const found = await browseMedia("home");
+		expect(found?.map((one) => one.id)).toEqual(["1a2b", "3c"]);
+		expect(found?.[0]?.image).toBe("/api/watch/library?op=image&server=home&id=1a2b&tag=abc");
+		expect(found?.[1]?.image).toBe("");
+	});
+
+	it("is undefined, not empty, when the server did not answer", async () => {
+		vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 502 })));
+		expect(await searchMedia("home", "x")).toBeUndefined();
+	});
+
+	it("names an item to play the way the gateway reads it", () => {
+		expect(mediaLink("home", "1a2b")).toBe("library:home/1a2b");
+	});
+});
+

@@ -184,7 +184,12 @@ function Player({
 	const youtubeHost = useRef<HTMLDivElement>(null);
 
 	const playsAsYoutube = info.play.kind === "youtube" && !relayed;
-	const source = relayed || info.play.kind === "youtube" ? info.proxy : (info.play as { kind: "file" | "hls"; url: string });
+	// The relay, unless this is playing from where the video is: a relay-only
+	// source has nowhere else to play from.
+	const source =
+		relayed || info.play.kind === "youtube" || info.play.kind === "relay"
+			? info.proxy
+			: (info.play as { kind: "file" | "hls"; url: string });
 
 	// A video element, for a file or an HLS playlist, from where it is or relayed.
 	useEffect(() => {
@@ -203,7 +208,7 @@ function Player({
 			if (!relayed) {
 				console.warn("watch: playing from where the video is failed, relaying", why, element.error?.code);
 				setRelayed(true);
-			} else if (info.relay && !triedDirect.current) {
+			} else if (info.relay && info.play.kind !== "relay" && !triedDirect.current) {
 				// The relay was the first choice and failed: the lower quality
 				// from where the video is, rather than nothing.
 				console.warn("watch: the relay failed, playing from where the video is", why, element.error?.code);

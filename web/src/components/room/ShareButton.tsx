@@ -21,7 +21,7 @@ import {
 	rememberedFrameRate,
 	rememberedQuality,
 } from "@/live/room";
-import { AudioLines, CircleStop, Clapperboard, MonitorOff, MonitorUp, Music } from "lucide-react";
+import { AudioLines, CircleStop, MonitorOff, MonitorUp, Music } from "lucide-react";
 import { useState } from "react";
 
 /**
@@ -56,7 +56,6 @@ export function ShareButton({
 	losslessUnavailable,
 	sendingLossless = false,
 	onLossless = () => {},
-	onWatch,
 }: {
 	sharing: boolean;
 	/** Sound is being shared on its own, without a picture. */
@@ -68,8 +67,6 @@ export function ShareButton({
 	/** Whether the sound being shared now is going out losslessly. */
 	sendingLossless?: boolean;
 	onLossless?: (on: boolean) => void;
-	/** Start watching a video together, where this person can. */
-	onWatch?: () => void;
 	/** Share one app's or tab's sound and nothing else, to listen together. */
 	onListen: () => void;
 	onStopListening: () => void;
@@ -265,19 +262,6 @@ export function ShareButton({
 							</DropdownMenuCheckboxItem>
 						</>
 					))}
-
-				{/* A video everybody plays for themselves, in step: nothing of this
-				    screen is sent, so it sits beside sharing rather than in it, and
-				    is offered while a screen is shared as well. */}
-				{onWatch && (
-					<DropdownMenuItem onSelect={onWatch} className="items-start gap-2">
-						<Clapperboard className="mt-0.5 size-4" />
-						<span className="flex flex-col">
-							<span className="text-fg">{t("Watch together")}</span>
-							<span className="text-fg-muted text-xs">{t("Paste a video link everybody plays in step")}</span>
-						</span>
-					</DropdownMenuItem>
-				)}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

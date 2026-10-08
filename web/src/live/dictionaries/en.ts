@@ -99,7 +99,6 @@ const en = {
 	"Next video": "Next video",
 	"Nothing is playing. Paste a video link to watch together.": "Nothing is playing. Paste a video link to watch together.",
 	"Paste a link and everybody watches it together, in step.": "Paste a link and everybody watches it together, in step.",
-	"Paste a video link everybody plays in step": "Paste a video link everybody plays in step",
 	"Pause for everybody": "Pause for everybody",
 	"Play for everybody": "Play for everybody",
 	"Playing": "Playing",

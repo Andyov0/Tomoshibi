@@ -84,7 +84,6 @@ const zhHans: Dictionary = {
 	"Next video": "下一个视频",
 	"Nothing is playing. Paste a video link to watch together.": "现在没在放。贴一个视频链接,大家一起看。",
 	"Paste a link and everybody watches it together, in step.": "贴一个链接,所有人同步一起看。",
-	"Paste a video link everybody plays in step": "贴视频链接,所有人同步播放",
 	"Pause for everybody": "全员暂停",
 	"Play for everybody": "全员播放",
 	"Playing": "正在播放",

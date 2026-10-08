@@ -251,7 +251,6 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 					playing: desk?.now !== undefined || playingMusic,
 				}}
 				onMusic={() => setPanel(panel === "music" ? undefined : "music")}
-				onWatch={canWatch ? openWatch : undefined}
 				watch={{
 					open: panel === "watch",
 					// Offered to whoever can start a show, and to everybody once

@@ -47,7 +47,6 @@ export function ControlBar({
 	onListen,
 	music,
 	onMusic,
-	onWatch,
 	watch,
 	onWatchPanel,
 	onLeave,
@@ -74,8 +73,6 @@ export function ControlBar({
 	/** Whether the music panel is open, has anything in it, and music is playing. */
 	music?: { open: boolean; available: boolean; playing: boolean };
 	onMusic?: () => void;
-	/** Start watching a video together; absent where this person cannot. */
-	onWatch?: () => void;
 	/** Whether the watch-together panel is open, has anything in it, and a video is playing. */
 	watch?: { open: boolean; available: boolean; playing: boolean };
 	onWatchPanel?: () => void;
@@ -324,7 +321,6 @@ export function ControlBar({
 						})()
 					}
 					onStopListening={() => void guard(() => stopListening(room))()}
-					onWatch={onWatch}
 				/>
 			)}
 

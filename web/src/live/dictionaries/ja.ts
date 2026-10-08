@@ -84,7 +84,6 @@ const ja: Dictionary = {
 	"Next video": "次の動画",
 	"Nothing is playing. Paste a video link to watch together.": "何も再生していません。動画のリンクを貼ると一緒に見られます。",
 	"Paste a link and everybody watches it together, in step.": "リンクを貼ると、全員が同じところを同時に見られます。",
-	"Paste a video link everybody plays in step": "動画のリンクを貼って全員で同時再生",
 	"Pause for everybody": "全員で一時停止",
 	"Play for everybody": "全員で再生",
 	"Playing": "再生中",

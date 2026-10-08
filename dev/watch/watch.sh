@@ -268,6 +268,39 @@ still_without_media() {
 
 NOMEDIA=$(still_without_media)
 
+# ---------- the watch gateway's own checks ----------
+#
+# Things only that gateway can see -- a sign-in it uses that has run out, a
+# source it reads that has stopped answering it -- said in its own words: it
+# answers /health with each check, whether it holds (true, false, or null where
+# it could not tell), and what to say when it breaks and when it is back. This
+# script knows none of them by name, so the gateway can add one without this
+# file changing, and none of it is here for a public repository to publish.
+#
+# Null is not false: a check the gateway could not run says nothing, and the
+# count for it is left as it was rather than started or cleared.
+WATCH_GATEWAY=${WATCH_GATEWAY:-http://127.0.0.1:18400}
+WATCH_ENV=${WATCH_ENV:-/opt/watch/watch.env}
+gateway_checks() {
+    [ -r "$WATCH_ENV" ] || return 0
+    local token
+    token=$(grep -m1 '^WATCH_TOKEN=' "$WATCH_ENV" | cut -d= -f2-)
+    [ -n "$token" ] || return 0
+    curl -s --max-time 30 -H "X-Watch-Token: $token" "$WATCH_GATEWAY/health" |
+        python3 -c '
+import json, sys
+try:
+    checks = json.load(sys.stdin)["checks"]
+except (ValueError, KeyError, TypeError):
+    sys.exit(0)
+for kind, check in checks.items():
+    state = {True: "ok", False: "bad"}.get(check.get("ok"), "unknown")
+    say = check.get("bad" if state == "bad" else "good", "").replace("\t", " ").replace("\n", " ")
+    print(f"{kind}\t{state}\t{say}")
+' 2>/dev/null
+}
+GATEWAY_CHECKS=$(gateway_checks)
+
 # ---------- deciding ----------
 trouble=0
 lines=""
@@ -310,6 +343,20 @@ if [ "${NOCOPY:-0}" -gt 0 ]; then
 else
     worth_saying backup 0
 fi
+
+while IFS=$'\t' read -r kind state text; do
+    [ -n "$kind" ] || continue
+    case "$state" in
+        bad)
+            worth_saying "gateway-$kind" 1 && add "$text"
+            log "watch gateway: $kind is failing"
+            ;;
+        ok)
+            worth_saying "gateway-$kind" 0
+            [ $? -eq 2 ] && say "$text"
+            ;;
+    esac
+done <<< "$GATEWAY_CHECKS"
 
 if [ "$trouble" -eq 0 ]; then
     log "well"

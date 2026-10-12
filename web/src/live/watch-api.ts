@@ -44,9 +44,16 @@ export interface Resolved {
 	relay: boolean;
 	/** Played from where it is, by whoever can reach it. */
 	play: Playable;
-	/** The same, relayed by the deployment, for whoever cannot. Same origin. */
-	proxy: { kind: "file" | "hls"; url: string };
+	/**
+	 * The same, relayed by the deployment, for whoever cannot. Same origin.
+	 * None on a deployment that relays nothing: there, a viewer who cannot
+	 * reach the video does not see it.
+	 */
+	proxy?: { kind: "file" | "hls"; url: string };
 }
+
+/** What a deployment that relays nothing says on every answer; see internal/app/watch.go. */
+const relaysNothing = (response: Response) => response.headers.get("X-Watch-Relay") === "off";
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -61,8 +68,13 @@ export async function watchReady(): Promise<boolean> {
 	}
 }
 
-/** Read a resolved video defensively: it came from a gateway the client never sees. */
-export function readResolved(body: Record<string, unknown>): Resolved | undefined {
+/**
+ * Read a resolved video defensively: it came from a gateway the client never
+ * sees. Without `relays`, what the deployment would have relayed is left out --
+ * the relayed copy, and a poster that comes only through the relay -- and a
+ * source that plays only through it is nothing at all.
+ */
+export function readResolved(body: Record<string, unknown>, relays = true): Resolved | undefined {
 	const play = (body.play ?? {}) as Record<string, unknown>;
 	const proxy = (body.proxy ?? {}) as Record<string, unknown>;
 	const kind = text(play.kind);
@@ -77,10 +89,11 @@ export function readResolved(body: Record<string, unknown>): Resolved | undefine
 	if (text(proxy.url) !== `media?t=${ticket}`) return undefined;
 	if (kind === "youtube" && !/^[\w-]{11}$/.test(text(play.id))) return undefined;
 	if ((kind === "file" || kind === "hls") && !/^https?:\/\//.test(text(play.url))) return undefined;
+	if (kind === "relay" && !relays) return undefined;
 	// A picture from the relay -- a media server's poster, fetched with the
 	// deployment's account -- or one on the open web; nothing else.
 	const cover = text(body.cover);
-	const relayedCover = RELAYED.test(cover) ? `/api/watch/${cover}` : "";
+	const relayedCover = relays && RELAYED.test(cover) ? `/api/watch/${cover}` : "";
 
 	return {
 		ticket,
@@ -89,9 +102,9 @@ export function readResolved(body: Record<string, unknown>): Resolved | undefine
 		cover: relayedCover || (/^https:\/\//.test(cover) ? cover : ""),
 		link: text(body.link),
 		live: body.live === true,
-		relay: body.relay === true,
+		relay: relays && body.relay === true,
 		play: kind === "youtube" ? { kind, id: text(play.id) } : kind === "relay" ? { kind } : { kind, url: text(play.url) },
-		proxy: { kind: proxyKind, url: `/api/watch/media?t=${ticket}` },
+		proxy: relays ? { kind: proxyKind, url: `/api/watch/media?t=${ticket}` } : undefined,
 	};
 }
 
@@ -205,7 +218,9 @@ export function videoInfo(ticket: string): Resolved | "failed" | undefined {
 	asking.add(ticket);
 	void fetch(`/api/watch/info?${new URLSearchParams({ t: ticket })}`, { credentials: "same-origin" })
 		.then(async (response) => {
-			const read = response.ok ? readResolved((await response.json()) as Record<string, unknown>) : undefined;
+			const read = response.ok
+				? readResolved((await response.json()) as Record<string, unknown>, !relaysNothing(response))
+				: undefined;
 			// Only the ticket asked about: an answer naming another is not this one.
 			infos.set(ticket, read && read.ticket === ticket ? read : "failed");
 		})
@@ -236,7 +251,11 @@ export async function resolveVideo(pasted: string): Promise<Resolved | "not_a_vi
 		if (response.status === 404) return "not_a_video";
 		if (response.status === 422) return "unavailable";
 		if (!response.ok) return "failed";
-		return readResolved((await response.json()) as Record<string, unknown>) ?? "failed";
+		const body = (await response.json()) as Record<string, unknown>;
+		const read = readResolved(body, !relaysNothing(response));
+		// Read, and playable only through a relay this deployment does not run.
+		if (!read && relaysNothing(response) && readResolved(body)) return "unavailable";
+		return read ?? "failed";
 	} catch {
 		return "failed";
 	}

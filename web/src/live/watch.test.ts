@@ -4,6 +4,7 @@ import {
 	CLOSE_ENOUGH,
 	FAST_NUDGE,
 	NUDGE,
+	OVERRUN_S,
 	SEEK_AT,
 	SETTLED,
 	STARTING_MS,
@@ -16,6 +17,7 @@ import {
 	correction,
 	expected,
 	STALE_MS,
+	TELL_EVERY,
 	TELL_STILL,
 	hearShows,
 	readShow,
@@ -464,6 +466,32 @@ it("skips only the video it was asked to skip, so two presses do not skip two", 
 	theatre.skip(first);
 	theatre.skip(first);
 
+	expect(theatre.state().now?.ticket).toBe(ticketOf("two"));
+	theatre.close();
+});
+
+it("moves on from a video the holder's player never finished, once the timeline is past its end", async () => {
+	// The timers alone: faked whole, performance.now would no longer be the clock above.
+	vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+	const { room } = fakeRoom();
+	const theatre = new Theatre(room, fakeDeps());
+	await theatre.add("https://example.invalid/one", "Holder");
+	await theatre.add("https://example.invalid/two", "Holder");
+
+	// Never ready and never ended: a holder who cannot play it at all.
+	clock += STARTING_MS + 100_000;
+	vi.advanceTimersByTime(TELL_EVERY);
+	expect(theatre.state().now?.ticket).toBe(ticketOf("one"));
+
+	clock += OVERRUN_S * 1000;
+	vi.advanceTimersByTime(TELL_EVERY);
+	expect(theatre.state().now?.ticket).toBe(ticketOf("two"));
+
+	// Paused past the end is still paused, not over.
+	clock += STARTING_MS + 100_000;
+	theatre.pause();
+	clock += 60_000;
+	vi.advanceTimersByTime(TELL_EVERY * 5);
 	expect(theatre.state().now?.ticket).toBe(ticketOf("two"));
 	theatre.close();
 });

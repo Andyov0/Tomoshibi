@@ -78,6 +78,14 @@ export const FAST_NUDGE = 0.12;
 /** How long a new video waits for the holder's player before its timeline runs anyway. */
 export const STARTING_MS = 8000;
 
+/**
+ * How far past its end the timeline may run before the video is taken to be
+ * over without the holder's player saying so: a holder who cannot play it --
+ * where nothing is relayed, a video their own connection cannot reach -- would
+ * otherwise leave everybody at its last frame, with the queue waiting behind.
+ */
+export const OVERRUN_S = 5;
+
 /** How long a show that has said nothing is believed to still exist. */
 export const STALE_MS = 20_000;
 
@@ -162,6 +170,10 @@ export class Theatre {
 		room.on(RoomEvent.ParticipantConnected, this.announce);
 		let still = 0;
 		this.timer = setInterval(() => {
+			if (this.overran()) {
+				this.next();
+				return;
+			}
 			still += TELL_EVERY;
 			if (this.running() || still >= TELL_STILL) {
 				still = 0;
@@ -182,6 +194,14 @@ export class Theatre {
 		this.settle();
 		const at = this.position + (this.running() ? (performance.now() - this.at) / 1000 : 0);
 		return this.now.duration ? Math.min(at, this.now.duration) : at;
+	}
+
+	/** Whether the timeline has run OVERRUN_S past the end of what is playing. */
+	private overran(): boolean {
+		if (!this.now?.duration || this.now.live) return false;
+		this.settle();
+		if (!this.running()) return false;
+		return this.position + (performance.now() - this.at) / 1000 >= this.now.duration + OVERRUN_S;
 	}
 
 	/** Whether the timeline is moving: playing, and not waiting for the video to start. */

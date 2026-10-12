@@ -316,6 +316,19 @@ const MinMusicToken = 24
 type Watch struct {
 	URL   string `yaml:"url"`
 	Token string `yaml:"token"`
+
+	// DirectOnly has every viewer play a video from where it is, and nobody
+	// through this server. The gateway still reads links -- a title and a
+	// length are a few hundred bytes -- but nothing it would relay passes
+	// through here: no video, no playlist, no media server's library. A
+	// viewer whose own connection cannot reach a video does not see it, and
+	// is told so; a source that plays only through the relay is refused when
+	// it is pasted.
+	//
+	// For a deployment that pays for what leaves it. A relayed film is every
+	// byte of it, for every viewer who needed the relay, through whatever is
+	// in front of this server.
+	DirectOnly bool `yaml:"direct_only"`
 }
 
 // Enrol is what a machine running the install script is told.

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
 import { useVideoInfo } from "@/hooks/useVideoInfo";
 import { keep, recall } from "@/lib/storage";
@@ -18,7 +19,7 @@ import {
 import type { Resolved } from "@/live/watch-api";
 import { BUFFERING, ENDED, PLAYING, type YouTubePlayer, youtubeApi } from "@/live/youtube";
 import type { Room } from "livekit-client";
-import { Clapperboard, ListVideo, Loader2, Pause, Play, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { Clapperboard, CloudOff, ListVideo, Loader2, Pause, Play, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /**
@@ -31,6 +32,10 @@ import { type ReactNode, useEffect, useRef, useState, useSyncExternalStore } fro
  * deployment. YouTube is the one source whose addresses nobody else can use,
  * so it plays through YouTube's own player where YouTube can be reached and
  * through the relay otherwise.
+ *
+ * On a deployment that relays nothing there is no second place: a viewer
+ * whose connection cannot reach the video is told so, and the player goes on
+ * trying, since a connection that was slow rather than shut may yet get there.
  *
  * The controls drive the show, not this player: pressing pause asks the show
  * to pause, and everybody pauses. This player also does it at once, so the
@@ -51,6 +56,12 @@ export const STALL_MS = 8000;
  * show every quarter second, it was asked to jump again and again.
  */
 const SEEK_GAP_MS = 1500;
+
+/** YouTube's player's errors for a video whose owner allows it on no other site. */
+const EMBEDDING_REFUSED = [101, 150];
+
+/** Why a video does not play for this viewer, where nothing is relayed. */
+type Lost = "network" | "refused" | "failed";
 
 /** How long YouTube's player is given to begin after being asked, before the browser is taken to have refused. */
 const YOUTUBE_REFUSED_MS = 1500;
@@ -166,6 +177,20 @@ function Player({
 	const t = useT();
 	const [relayed, setRelayed] = useState(info.relay);
 	const [blocked, setBlocked] = useState(false);
+	/**
+	 * Not playing for this viewer from where it is, with no relay to fall back
+	 * on: their connection does not get there, or the site answered and would
+	 * not play it -- its owner allows it on no other site, or it is gone --
+	 * which no connection cures.
+	 */
+	const [unreachable, setUnreachable] = useState<false | Lost>(false);
+	const sorry = useLingering(unreachable !== false, 160);
+	/** What was said, kept while it leaves. */
+	const said = useRef<Lost>("network");
+	if (unreachable) said.current = unreachable;
+	/** For the loop below, which outlives a render: a refused player is not asked again. */
+	const refused = useRef(false);
+	refused.current = unreachable === "refused" || unreachable === "failed";
 	/** For a video that starts on the relay: whether the copy from where it is has been tried. */
 	const triedDirect = useRef(false);
 	const [volume, setVolumeState] = useState(rememberedVolume);
@@ -191,13 +216,19 @@ function Player({
 			? info.proxy
 			: (info.play as { kind: "file" | "hls"; url: string });
 
+	/** Where the video is has failed this viewer: the relay, or where there is none, saying so. */
+	const giveUp = (why: Lost = "network") =>
+		// The site's answer stands: a stall after it is that answer, not the connection.
+		info.proxy ? setRelayed(true) : setUnreachable((was) => (was && was !== "network" ? was : why));
+
 	// A video element, for a file or an HLS playlist, from where it is or relayed.
 	useEffect(() => {
-		if (playsAsYoutube) return;
+		if (playsAsYoutube || !source) return;
 		const element = videoElement.current;
 		if (!element) return;
 
 		let stopped = false;
+		let gaveUp = false;
 		let destroy = () => {};
 		// Given the relay once, and only while it has never played: a stall
 		// after that is buffering, which the relay would not cure. Measured
@@ -206,8 +237,11 @@ function Player({
 		const failed = (why: string) => {
 			if (stopped || played.current) return;
 			if (!relayed) {
-				console.warn("watch: playing from where the video is failed, relaying", why, element.error?.code);
-				setRelayed(true);
+				// Said once: with no relay, a stall goes on being one every second.
+				if (gaveUp) return;
+				gaveUp = !info.proxy;
+				console.warn("watch: playing from where the video is failed", why, element.error?.code);
+				giveUp();
 			} else if (info.relay && info.play.kind !== "relay" && !triedDirect.current) {
 				// The relay was the first choice and failed: the lower quality
 				// from where the video is, rather than nothing.
@@ -219,6 +253,7 @@ function Player({
 		const errored = () => failed("error");
 		const began = () => {
 			played.current = true;
+			setUnreachable(false);
 		};
 		const playable = () => myTheatre(room)?.ready(video.key);
 		// Here, with the element it belongs to: a holder whose YouTube fell
@@ -310,7 +345,7 @@ function Player({
 			element.load();
 			handle.current = undefined;
 		};
-	}, [playsAsYoutube, source.kind, source.url, relayed, room, video.key, info.relay]);
+	}, [playsAsYoutube, source?.kind, source?.url, relayed, room, video.key, info.relay]);
 
 	// YouTube's own player, where YouTube can be reached; the relay where it cannot.
 	useEffect(() => {
@@ -359,19 +394,21 @@ function Player({
 							if (event.data === PLAYING) {
 								played.current = true;
 								setBlocked(false);
+								setUnreachable(false);
 							}
 							if (event.data === ENDED) myTheatre(room)?.ended(video.key);
 						},
-						// Embedding refused, or the video unavailable here: the relay.
+						// Embedding refused, or the video unavailable here: the relay,
+						// or where there is none, which of the two it was.
 						onError: (event) => {
 							console.warn("watch: YouTube's player refused the video", event.data);
-							if (!stopped) setRelayed(true);
+							if (!stopped) giveUp(EMBEDDING_REFUSED.includes(event.data) ? "refused" : "failed");
 						},
 					},
 				});
 			},
 			() => {
-				if (!stopped) setRelayed(true);
+				if (!stopped) giveUp();
 			},
 		);
 
@@ -380,7 +417,7 @@ function Player({
 		// and is waited on; see blocked.
 		const stall = setInterval(() => {
 			if (stopped || played.current || !latest.current.show.playing) return;
-			if (Date.now() - started > STALL_MS && !isReady) setRelayed(true);
+			if (Date.now() - started > STALL_MS && !isReady) giveUp();
 		}, 1000);
 
 		return () => {
@@ -405,8 +442,10 @@ function Player({
 		const keep = () => {
 			const player = handle.current;
 			const show = latest.current;
-			if (!player?.ready()) {
+			if (!player?.ready() || refused.current) {
 				setWaiting(true);
+				// Where everybody is, for a viewer with nothing playing here.
+				if (!video.live) setNow(expected(show));
 				return;
 			}
 			setWaiting(false);
@@ -484,6 +523,8 @@ function Player({
 		setScrubbing(undefined);
 	};
 
+	const site = siteOf(info.link);
+
 	// A refused YouTube player is started by a press on the player itself: one
 	// on anything of this page's is not a press inside YouTube's frame, and iOS
 	// lets only that start it. So the frame takes presses while it is refused.
@@ -502,13 +543,50 @@ function Player({
 				<video ref={videoElement} playsInline className="absolute inset-0 size-full object-contain" />
 			)}
 
-			{waiting && (
+			{waiting && !unreachable && (
 				<div className="pointer-events-none absolute inset-0 grid place-items-center">
 					<Loader2 className="size-6 animate-spin text-white/70" />
 				</div>
 			)}
 
+			{sorry.mounted && (
+				<div
+					className={cn(
+						"pointer-events-none absolute inset-0 grid place-items-center bg-black/85 px-4 text-center",
+						sorry.leaving ? "animate-fade-out" : "animate-fade-in",
+					)}
+				>
+					<div className="flex max-w-72 flex-col items-center gap-2 text-white">
+						<CloudOff className="size-6 text-white/70" />
+						<p className="text-sm">{t("This video does not reach you")}</p>
+						<p className="text-white/60 text-xs">
+							{/* Not "everybody else goes on watching" for what the site
+							    refused: what it refuses here, it refuses everybody. */}
+							{said.current === "refused" && site
+								? t("It plays only on {site} itself.", { site })
+								: said.current === "failed" && site
+									? t("{site} would not play it here.", { site })
+									: site
+									? t("Your connection cannot reach {site}. Everybody else goes on watching.", { site })
+									: t("Your connection cannot reach where it is. Everybody else goes on watching.")}
+						</p>
+						{/^https?:\/\//.test(info.link) && (
+							<a
+								href={info.link}
+								target="_blank"
+								rel="noopener noreferrer"
+								onClick={(event) => event.stopPropagation()}
+								className="pointer-events-auto text-white/80 text-xs underline underline-offset-2 hover:text-white"
+							>
+								{t("Open the link")}
+							</a>
+						)}
+					</div>
+				</div>
+			)}
+
 			{blocked &&
+				!unreachable &&
 				(tapYoutube ? (
 					<div className="pointer-events-none absolute inset-x-0 top-3 grid place-items-center">
 						<span className="flex items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-sm text-white">
@@ -607,6 +685,16 @@ function Player({
 			</div>
 		</div>
 	);
+}
+
+/** The site a link is on, as people say it: "youtube.com", not "www.youtube.com". */
+export function siteOf(link: string): string {
+	try {
+		const { protocol, hostname } = new URL(link);
+		return protocol === "https:" || protocol === "http:" ? hostname.replace(/^www\./, "") : "";
+	} catch {
+		return "";
+	}
 }
 
 function Control({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {

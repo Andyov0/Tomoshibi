@@ -103,6 +103,23 @@ describe("a video only the relay can play", () => {
 	});
 });
 
+describe("a deployment that relays nothing", () => {
+	const direct = (body: unknown) =>
+		vi.fn(async () => new Response(JSON.stringify(body), { status: 200, headers: { "X-Watch-Relay": "off" } }));
+
+	it("gives a video no relayed copy, never starts one on the relay, and shows no poster only the relay has", async () => {
+		vi.stubGlobal("fetch", direct({ ...good, relay: true, cover: "media?t=Poster_ticket_12345678" }));
+		const found = await resolveVideo("https://x");
+		expect(found).toMatchObject({ title: "A film", relay: false, cover: "", proxy: undefined });
+		expect(found).toMatchObject({ play: good.play });
+	});
+
+	it("refuses what only the relay could play when it is pasted, as a link that cannot be played", async () => {
+		vi.stubGlobal("fetch", direct({ ...good, relay: true, play: { kind: "relay" } }));
+		expect(await resolveVideo("library:home/1a2b")).toBe("unavailable");
+	});
+});
+
 describe("the media servers", () => {
 	const answer = (body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status: 200 }));
 

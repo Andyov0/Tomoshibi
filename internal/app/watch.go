@@ -20,6 +20,10 @@ possible, in the same shape as the music library's, with three paths:
 	media     a ticket's video, or its playlists and segments, relayed for a
 	          viewer who cannot fetch it from where it is
 
+A deployment may relay nothing (meet.watch.direct_only): then there is no
+library and no media, and every answer says so, for the client to play each
+video from where it is or not at all.
+
 The first two are for somebody signed in, because resolving is the deployment's
 work done on somebody's behalf. The last two are for anybody in the call, guests
 included, since they watch too -- and neither is a proxy anybody can point
@@ -36,6 +40,15 @@ and a page relayed as a page would run with the rights of whoever opened it.
 
 var watchPaths = map[string]bool{"ready": true, "resolve": true, "library": true, "info": true, "media": true}
 
+// What a deployment that relays nothing still answers: whether there is a
+// gateway, and what a link or a ticket plays. Not media, which is the relay,
+// nor library, whose every item plays only through it.
+var directPaths = map[string]bool{"ready": true, "resolve": true, "info": true}
+
+// Said on every answer from a deployment that relays nothing, so a viewer's
+// player does not try a relay that is not there and is not answered.
+const relayHeader = "X-Watch-Relay"
+
 // What a relayed answer may say it is. Anything else is sent as bytes.
 var mediaTypes = []string{
 	"video/", "audio/", "application/vnd.apple.mpegurl", "application/x-mpegurl",
@@ -49,9 +62,12 @@ func (a *App) watch(w http.ResponseWriter, r *http.Request) {
 	conf := a.conf.Meet.Watch
 	what := r.PathValue("what")
 
-	if conf.URL == "" || !watchPaths[what] {
+	if conf.URL == "" || !watchPaths[what] || (conf.DirectOnly && !directPaths[what]) {
 		http.NotFound(w, r)
 		return
+	}
+	if conf.DirectOnly {
+		w.Header().Set(relayHeader, "off")
 	}
 
 	if what == "ready" || what == "resolve" || what == "library" {

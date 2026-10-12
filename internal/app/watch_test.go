@@ -180,3 +180,34 @@ func TestOnlySomebodySignedInMayBrowseTheLibrary(t *testing.T) {
 		t.Errorf("an SVG poster came back as %q; it is a document that can carry script", kind)
 	}
 }
+
+func TestADeploymentThatRelaysNothingPassesNoMediaThrough(t *testing.T) {
+	var asked []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	t.Cleanup(upstream.Close)
+	mux, app, cookie := signedInApp(t)
+	app.conf.Meet.Watch = config.Watch{URL: upstream.URL, Token: watchToken, DirectOnly: true}
+
+	for _, path := range []string{"/api/watch/media?t=a-ticket", "/api/watch/library?op=servers"} {
+		if got := musicGet(mux, path, cookie).Code; got != http.StatusNotFound {
+			t.Errorf("%s answered %d on a deployment that relays nothing", path, got)
+		}
+	}
+	if len(asked) != 0 {
+		t.Fatalf("the gateway was asked %v", asked)
+	}
+
+	for _, path := range []string{"/api/watch/ready", "/api/watch/resolve?url=https%3A%2F%2Fexample.invalid%2Fv", "/api/watch/info?t=a-ticket"} {
+		got := musicGet(mux, path, cookie)
+		if got.Code != http.StatusOK {
+			t.Errorf("%s answered %d; reading a link is still done", path, got.Code)
+		}
+		if got.Header().Get("X-Watch-Relay") != "off" {
+			t.Errorf("%s did not say there is no relay, so a viewer's player would try one", path)
+		}
+	}
+}

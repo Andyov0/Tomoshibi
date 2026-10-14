@@ -40,19 +40,42 @@ export function usePoll<T>(
 	const signedOut = useRef(onSignedOut);
 	signedOut.current = onSignedOut;
 
+	// Each question numbered as it is asked, and the number of the newest one
+	// whose answer is on screen. The timer asks one question at a time, but a
+	// refresh asked for by hand — the reread after a press — goes beside it, and
+	// on a slow link the timer's, asked first, could arrive last and put the
+	// list from before the press back on the page: the box flipped back with no
+	// message, and the next press on that row was built on it. An answer, or a
+	// failure, to a question older than the one shown is dropped.
+	const asked = useRef(0);
+	const shown = useRef(0);
+
 	const refresh = useCallback(async () => {
+		const mine = ++asked.current;
+
+		let answer: Awaited<T>;
 		try {
-			setValue(await current.current());
-			setError(undefined);
+			answer = await current.current();
 		} catch (err) {
+			if (mine < shown.current) return;
 			if (err instanceof SignedOut) {
 				signedOut.current?.();
 				return;
 			}
+			shown.current = mine;
 			setError(err instanceof Error ? err.message : String(err));
-		} finally {
 			setLoading(false);
+			return;
 		}
+
+		// Dropped whole, the end of waiting included: an older answer arriving
+		// after the subject changed is no reason to stop saying the new one is
+		// on its way.
+		if (mine < shown.current) return;
+		shown.current = mine;
+		setValue(answer);
+		setError(undefined);
+		setLoading(false);
 	}, []);
 
 	// What the question is about, where it is about something.
@@ -71,6 +94,8 @@ export function usePoll<T>(
 	useEffect(() => {
 		if (about === undefined) return;
 
+		// Whatever is still out was asked about the last subject.
+		shown.current = asked.current + 1;
 		setValue(undefined);
 		setError(undefined);
 		setLoading(true);

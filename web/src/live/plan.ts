@@ -32,14 +32,31 @@ export const GAP = 8;
  */
 export const TILES_PER_PAGE = 9;
 
+/** How far above the bottom of the window the controls sit, without a home indicator: max(1.25rem, …). */
+export const ISLAND_OFFSET = 20;
+
+/** How tall the controls are at their largest: forty-four pixel buttons, six of padding each side, a border. */
+export const ISLAND_HEIGHT = 58;
+
 /**
- * Height the floating controls occupy at the bottom of the window.
+ * Height the floating controls occupy at the bottom of the window: how far up
+ * they sit, how tall they are, and a gap.
  *
  * Reserved so that nothing is laid out underneath them. The filmstrip used to
  * run to the bottom edge and pass beneath the island, which put whoever happened
  * to be in the middle of the strip behind a row of buttons.
+ *
+ * This is the figure for a screen with no home indicator, and it is only where
+ * nothing has been measured: the room measures the island where it is drawn and
+ * passes what it found (`island`, below, and ControlBar's `onReserve`). It was a
+ * single constant of 68 once, written when the island was forty pixels tall and
+ * twenty from the edge, and it outlived both: the island grew to 58, a phone with
+ * a home indicator lifts it to the inset and eight more, and the strip's last
+ * ten pixels on a laptop — thirty-two on an iPhone, where the names are — sat
+ * under the buttons, so a press on somebody's name pressed the controls (found
+ * in review, 2026-10-14).
  */
-export const ISLAND = 68;
+export const ISLAND = ISLAND_OFFSET + ISLAND_HEIGHT + GAP;
 
 /** How tall a picture is in the filmstrip. */
 const STRIP = 112;
@@ -123,11 +140,11 @@ export interface Size {
  * row aligned to the left leaves its gap at one end, which reads as a mistake
  * rather than as a room with somebody missing from it.
  */
-export function planGrid(container: Size, ids: string[]): Plan {
+export function planGrid(container: Size, ids: string[], island = ISLAND): Plan {
 	const plan: Plan = new Map();
 
 	const layout = arrange(
-		{ width: container.width, height: Math.max(0, container.height - ISLAND) },
+		{ width: container.width, height: Math.max(0, container.height - island) },
 		ids.length,
 		GAP,
 		aspectFor(container),
@@ -167,7 +184,7 @@ export function planFocus(
 	container: Size,
 	stage: string,
 	strip: string[],
-	options: { fullscreen?: boolean } = {},
+	options: { fullscreen?: boolean; island?: number } = {},
 ): Plan {
 	const plan: Plan = new Map();
 	if (container.width <= 0 || container.height <= 0) return plan;
@@ -180,7 +197,7 @@ export function planFocus(
 		return plan;
 	}
 
-	const bottom = container.height - ISLAND;
+	const bottom = container.height - (options.island ?? ISLAND);
 	const showStrip = strip.length > 0;
 	const stripTop = bottom - STRIP;
 
@@ -210,6 +227,31 @@ export function planFocus(
 }
 
 /**
+ * How far above the bottom of the room something drawn over the pictures has to
+ * end to leave these ones uncovered: the distance to the top of the highest of
+ * them, and a gap. Nothing where none of them has been placed.
+ *
+ * For the filmstrip, which the card saying that a share is more than the line
+ * carries was drawn straight across. That card sat just clear of the controls,
+ * which is exactly where the strip begins — the strip is laid out from the
+ * island up — so at every width from a phone to a laptop a press on the
+ * pictures in it landed on the card, and the person sharing could not put
+ * anybody on the stage until they had answered it. Read from the plan rather
+ * than worked out again from ISLAND and the strip's height, so that it follows
+ * the strip wherever the plan moves it, and is nothing when there is no strip.
+ */
+export function clearOf(plan: Plan, ids: string[], container: Size): number | undefined {
+	const tops = ids.flatMap((id) => {
+		const spot = plan.get(id);
+		return spot ? [spot.y] : [];
+	});
+
+	if (tops.length === 0) return undefined;
+
+	return container.height - Math.min(...tops) + GAP;
+}
+
+/**
  * How many pictures the filmstrip holds at this width.
  *
  * At least one, because a strip that holds nobody would page for ever without
@@ -235,7 +277,7 @@ export function stripCapacity(container: Size): number {
  * trailing edge, clear of the controls at the foot and of the room's name at
  * the head.
  */
-export function planClose(container: Size, filling: string, cards: string[]): Plan {
+export function planClose(container: Size, filling: string, cards: string[], island = ISLAND): Plan {
 	const plan: Plan = new Map();
 	if (container.width <= 0 || container.height <= 0) return plan;
 
@@ -245,13 +287,13 @@ export function planClose(container: Size, filling: string, cards: string[]): Pl
 	// space beside the controls can hold.
 	const width = Math.min(
 		container.width * (upright(container) ? 0.26 : 0.18),
-		(container.height - ISLAND - 2 * GAP) / 2,
+		(container.height - island - 2 * GAP) / 2,
 	);
 	const height = width / aspectFor(container);
 
 	cards.forEach((id, index) => {
 		const top = HEADROOM + index * (height + GAP);
-		if (top + height > container.height - ISLAND) return;
+		if (top + height > container.height - island) return;
 
 		plan.set(id, {
 			x: container.width - width - GAP,

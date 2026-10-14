@@ -48,6 +48,20 @@ export interface Relay {
 	lon?: number;
 }
 
+/**
+ * Whether a relay's region puts it in mainland China.
+ *
+ * By the deployment's own labels, CN-East, CN-South and so on, read the way the
+ * picker and the dictionaries read them: case aside, and "CN" alone or as the
+ * first part of a path counting too. Nothing else is taken as a sign of it --
+ * not a flag in a label, not an address -- because a guess that is wrong
+ * here sends somebody abroad to the relay for every YouTube video, which costs
+ * the deployment a stream nobody needed.
+ */
+export function mainland(region: string | undefined): boolean {
+	return /^cn(?:$|[-/\s])/i.test((region ?? "").trim());
+}
+
 export interface RelayList {
 	relays: Relay[];
 	/** Whether this deployment will act on a measurement. */

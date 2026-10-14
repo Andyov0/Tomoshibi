@@ -91,7 +91,7 @@ compiler and do not need a test; a rule enforced in the wrong place does.
   handler tested with its gate removed.
 - Where a gate needs a concrete dependency to be exercised, the dependency is the
   problem. `internal/admin` names a narrow interface for each thing it needs —
-  twelve of them now — for exactly this reason; the API held a real media server
+  fourteen of them now — for exactly this reason; the API held a real media server
   once and sat at nothing per cent.
 - Verify against the real thing when the claim is about the real thing. Two
   headless browsers with `--use-fake-device-for-media-stream` have settled more

@@ -8,11 +8,15 @@ import { type FormEvent, useEffect, useState } from "react";
 
 /**
  * The deployment's media servers, browsed: their libraries, what is in them,
- * and a search, for somebody signed in choosing what everybody will watch.
+ * and a search, for somebody given them choosing what everybody will watch.
  *
  * Choosing something hands its link to the show the way a pasted one is (see
  * onChoose), so a video from a media server is queued, skipped and kept in
  * step like any other. Every address it plays from stays with the gateway.
+ * Whose choice it was matters more here than anywhere: a film from a media
+ * server is relayed for everybody under the chooser's grant, so the link is
+ * read in the chooser's own browser even when somebody else runs the show
+ * (addVideo in WatchTab.tsx), never handed to the holder to read.
  */
 export function MediaBrowser({
 	servers,

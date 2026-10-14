@@ -16,6 +16,7 @@ import {
 	type Standing,
 } from "@/live/host";
 import { scopeOf } from "@/live/names";
+import { signatureOf } from "@/live/name";
 import { actionDone, actionFailed, atTheDoor } from "@/live/notices";
 import { cn } from "@/lib/utils";
 import type { Room } from "livekit-client";
@@ -273,16 +274,11 @@ export function HostPanel({
 							</button>
 
 							{!scoped && (
-								<button
-									type="button"
-									disabled={busy !== undefined}
-									onClick={() => act(one.identity, () => handOver(room, one))}
-									aria-label={t("Make host")}
-									title={t("Make host")}
-									className="rounded p-1 text-fg-muted hover:bg-surface-hi hover:text-tally disabled:opacity-30"
-								>
-									<Crown className="size-3.5" />
-								</button>
+								<HandOver
+									guest={signatureOf(one.identity)?.proven === false}
+									busy={busy !== undefined}
+									onHandOver={() => act(one.identity, () => handOver(room, one))}
+								/>
 							)}
 
 							<button
@@ -424,6 +420,46 @@ export function Hosting({ room, standing }: { room: Room; standing: Standing }) 
 }
 
 
+/**
+ * The crown beside somebody, which makes them the host.
+ *
+ * Drawn as unavailable beside a guest — somebody whose identity was drawn from
+ * nothing rather than from a passphrase — because the server refuses to hand a
+ * room to one: the mark is worn by whoever reads it, so a room parked on it
+ * answers to anybody. It used to be pressable like any other, and the refusal
+ * came back as "they have already left", about somebody visibly still in the
+ * call.
+ *
+ * Dimmed rather than taken away, so a host looking for the control finds it and
+ * finds out why; and pressable rather than disabled, because a disabled button
+ * explains itself only to a pointer that can hover — on a phone, which is where
+ * plenty of hosts are, a title is never seen. A press says the reason and asks
+ * the server nothing. Named by the signature's prefix and nothing else: an
+ * identity that does not parse as either is left to the server, which knows it
+ * as nobody.
+ */
+function HandOver({ guest, busy, onHandOver }: { guest: boolean; busy: boolean; onHandOver: () => void }) {
+	const t = useT();
+	const why = t("They joined without a passphrase, so they cannot run the room. Ask them to rejoin with one.");
+
+	return (
+		<button
+			type="button"
+			disabled={busy}
+			aria-disabled={guest || undefined}
+			onClick={guest ? () => actionFailed(why) : onHandOver}
+			aria-label={t("Make host")}
+			title={guest ? why : t("Make host")}
+			className={cn(
+				"rounded p-1 text-fg-muted transition-colors disabled:opacity-30",
+				guest ? "cursor-not-allowed opacity-30" : "hover:bg-surface-hi hover:text-tally",
+			)}
+		>
+			<Crown className="size-3.5" />
+		</button>
+	);
+}
+
 /** Choosing where the meeting is held, from inside it. */
 function Elsewhere({
 	admin,
@@ -519,6 +555,8 @@ function explain(err: unknown, t: (phrase: Phrase) => string): string {
 			return t("That server is reserved, and this meeting may not be put on it.");
 		case "no_such_person":
 			return t("They have already left.");
+		case "not_proven":
+			return t("They joined without a passphrase, so they cannot run the room. Ask them to rejoin with one.");
 		case "not_yours":
 			return t("You no longer run this room.");
 		case "scoped_room":

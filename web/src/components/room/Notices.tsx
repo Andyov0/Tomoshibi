@@ -49,16 +49,14 @@ export function Notices() {
 			offset={16}
 			gap={8}
 			// Below six hundred these stretch across the foot of the screen, which
-			// is the library's own doing and the right shape for a hand. What is
-			// set here is how far up: the controls sit in an island along that
-			// same edge, and a notice laid over the button somebody is reaching
-			// for is worst on the one that asks them to press it.
-			// Below six hundred these stretch across the foot of the screen, which
 			// is the library's own doing and the right shape for a hand. How far
 			// up is not one number: the screen before a call keeps its own button
 			// down there and the call keeps an island, and a notice laid over
 			// either is a notice covering the thing somebody is reaching for.
-			// This clears the first; the stylesheet lifts it for the second.
+			// This clears the first. The second is index.css, by the position
+			// rather than by this offset — the library writes the offset inline,
+			// where no stylesheet can change it, which is why the rule there that
+			// tried to went unnoticed for as long as it did.
 			mobileOffset={{
 				bottom: "calc(env(safe-area-inset-bottom) + 2.5rem)",
 				left: 12,
@@ -71,7 +69,16 @@ export function Notices() {
 					toast: [
 						// Across the foot in a hand, and no wider than its own words
 						// once there is a column to sit in.
-						"ml-auto flex w-full max-w-full sm:w-fit sm:max-w-72",
+						//
+						// Pushed to the right only in the column. In a hand the
+						// library pins each notice at left 0 with a width of its own
+						// two offsets short of the strip it sits in, and a left margin
+						// of auto took those twenty-four pixels as room to move into:
+						// every notice on a phone sat twelve pixels in from where it
+						// should and ran twelve off the right edge, its last words
+						// cut. Measured at 320 and 375 on the refusal a host meets
+						// handing a room to a guest, and the same on every other.
+						"flex w-full max-w-full sm:ml-auto sm:w-fit sm:max-w-72",
 						"items-start gap-2 rounded-lg border border-border",
 						// The edge is the whole of the severity system. A wash of
 						// colour over a notice this small says less than a rail

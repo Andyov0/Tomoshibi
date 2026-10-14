@@ -113,3 +113,76 @@ describe("how often it asks", () => {
 		await act(async () => answer(1));
 	});
 });
+
+/*
+ * An older answer never replaces a newer one.
+ *
+ * The timer's question and a refresh asked for by hand — after a box was
+ * pressed, to read back what the server now holds — can be out together, and
+ * on a slow link the timer's, asked first, can arrive last. It used to be shown
+ * whenever it arrived, so the list from before the press was the one left on
+ * the page: the box flipped back with no message, and the next press on that
+ * row was built on it.
+ */
+describe("answers out of order", () => {
+	it("keeps the answer to the later question", async () => {
+		const pending: ((value: string) => void)[] = [];
+		const ask = vi.fn(
+			() =>
+				new Promise<string>((resolve) => {
+					pending.push(resolve);
+				}),
+		);
+
+		const { result } = renderHook(() => usePoll(ask, { every: 60_000 }));
+		expect(ask).toHaveBeenCalledTimes(1);
+
+		// The press's own reread, asked while the timer's is still out.
+		let refreshed: Promise<void> = Promise.resolve();
+		act(() => {
+			refreshed = result.current.refresh();
+		});
+		expect(ask).toHaveBeenCalledTimes(2);
+
+		await act(async () => {
+			pending[1]?.("after the press");
+			await refreshed;
+		});
+		expect(result.current.value).toBe("after the press");
+
+		// The timer's, asked first, arrives last.
+		await act(async () => {
+			pending[0]?.("before the press");
+		});
+		expect(result.current.value).toBe("after the press");
+	});
+
+	it("does not show an older question's failure over a newer answer", async () => {
+		const pending: { resolve: (value: string) => void; reject: (reason: Error) => void }[] = [];
+		const ask = vi.fn(
+			() =>
+				new Promise<string>((resolve, reject) => {
+					pending.push({ resolve, reject });
+				}),
+		);
+
+		const { result } = renderHook(() => usePoll(ask, { every: 60_000 }));
+
+		let refreshed: Promise<void> = Promise.resolve();
+		act(() => {
+			refreshed = result.current.refresh();
+		});
+
+		await act(async () => {
+			pending[1]?.resolve("after the press");
+			await refreshed;
+		});
+
+		await act(async () => {
+			pending[0]?.reject(new Error("the older question failed"));
+		});
+
+		expect(result.current.error).toBeUndefined();
+		expect(result.current.value).toBe("after the press");
+	});
+});

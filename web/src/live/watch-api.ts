@@ -11,13 +11,23 @@
 export interface Playable {
 	/**
 	 * A file a video element plays, an HLS playlist, a YouTube video by its id,
-	 * or nothing but the relay: a media server whose every address carries the
-	 * deployment's account, which no viewer is given.
+	 * or nothing but the relay: a media server's film, whose every address
+	 * carries the deployment's account, which no viewer is given; or one of
+	 * Bilibili's bangumi episodes, whose whole -- and anything above 720p --
+	 * Bilibili hands only to a request carrying its own Referer, which no page
+	 * can send.
 	 */
-	kind: "file" | "hls" | "youtube" | "relay";
+	kind: "file" | "hls" | "youtube" | "relay" | "bangumi";
 	url?: string;
 	id?: string;
 }
+
+/**
+ * Whether a video plays only through the relay: from nowhere a viewer could
+ * reach it themselves, so with no relay it plays nowhere, and with one every
+ * viewer plays it there from the start rather than falling back to it.
+ */
+export const relayOnly = (play: Playable) => play.kind === "relay" || play.kind === "bangumi";
 
 /** What a link plays, as the gateway read it. */
 export interface Resolved {
@@ -50,10 +60,36 @@ export interface Resolved {
 	 * reach the video does not see it.
 	 */
 	proxy?: { kind: "file" | "hls"; url: string };
+	/**
+	 * Whose grant a media server's film is relayed under, by signature, as the
+	 * server says it (X-Watch-Grantor, internal/app/watch.go). Absent for
+	 * anything else. What the holder of a show checks a handed-over ticket
+	 * against; see Theatre.addTicket.
+	 */
+	grantor?: string;
 }
 
-/** What a deployment that relays nothing says on every answer; see internal/app/watch.go. */
+/**
+ * What an answer says about a video this deployment will not relay; see
+ * internal/app/watch.go. Read off each answer rather than once for the page,
+ * because on a deployment that relays nothing else it is still left off one
+ * kind of answer: a film from a media server that somebody given the grant
+ * chose, which plays only through the relay.
+ */
 const relaysNothing = (response: Response) => response.headers.get("X-Watch-Relay") === "off";
+
+/**
+ * The grantor an answer names, laid onto what was read from it.
+ *
+ * Kept as said, within reason, rather than checked for the shape of a
+ * signature: it is compared, never shown or fetched, and one that did not look
+ * like a signature and were dropped for it would leave a relayed film with no
+ * grantor to check — which is the shape of a film anybody may hand over.
+ */
+function withGrantor(read: Resolved, response: Response): Resolved {
+	const grantor = response.headers.get("X-Watch-Grantor")?.trim().slice(0, 64);
+	return grantor ? { ...read, grantor } : read;
+}
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 const count = (value: unknown) => (typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0);
@@ -80,7 +116,7 @@ export function readResolved(body: Record<string, unknown>, relays = true): Reso
 	const kind = text(play.kind);
 	const proxyKind = text(proxy.kind);
 
-	if (kind !== "file" && kind !== "hls" && kind !== "youtube" && kind !== "relay") return undefined;
+	if (kind !== "file" && kind !== "hls" && kind !== "youtube" && kind !== "relay" && kind !== "bangumi") return undefined;
 	if (proxyKind !== "file" && proxyKind !== "hls") return undefined;
 	const ticket = text(body.ticket);
 	if (!TICKET.test(ticket)) return undefined;
@@ -89,7 +125,7 @@ export function readResolved(body: Record<string, unknown>, relays = true): Reso
 	if (text(proxy.url) !== `media?t=${ticket}`) return undefined;
 	if (kind === "youtube" && !/^[\w-]{11}$/.test(text(play.id))) return undefined;
 	if ((kind === "file" || kind === "hls") && !/^https?:\/\//.test(text(play.url))) return undefined;
-	if (kind === "relay" && !relays) return undefined;
+	if (relayOnly({ kind }) && !relays) return undefined;
 	// A picture from the relay -- a media server's poster, fetched with the
 	// deployment's account -- or one on the open web; nothing else.
 	const cover = text(body.cover);
@@ -103,7 +139,7 @@ export function readResolved(body: Record<string, unknown>, relays = true): Reso
 		link: text(body.link),
 		live: body.live === true,
 		relay: relays && body.relay === true,
-		play: kind === "youtube" ? { kind, id: text(play.id) } : kind === "relay" ? { kind } : { kind, url: text(play.url) },
+		play: kind === "youtube" ? { kind, id: text(play.id) } : relayOnly({ kind }) ? { kind } : { kind, url: text(play.url) },
 		proxy: relays ? { kind: proxyKind, url: `/api/watch/media?t=${ticket}` } : undefined,
 	};
 }
@@ -116,7 +152,7 @@ const RELAYED = /^media\?t=[\w-]{16,64}$/;
 
 /*
  * The media servers the deployment has an account on: browsed and searched by
- * somebody signed in, choosing what everybody will watch.
+ * somebody given them, choosing what everybody will watch.
  */
 
 export interface MediaServer {
@@ -165,7 +201,12 @@ async function library(params: Record<string, string>): Promise<Record<string, u
 	}
 }
 
-/** The media servers there are, for this person; none where there are none or nobody signed in. */
+/**
+ * The media servers there are, for this person; none where there are none,
+ * nobody is signed in, or this person was not given them -- the server answers
+ * all three the same way as far as this page is concerned, with something that
+ * is not a list.
+ */
 export async function mediaServers(): Promise<MediaServer[]> {
 	const found = await library({ op: "servers" });
 	if (!Array.isArray(found?.servers)) return [];
@@ -197,7 +238,19 @@ export function mediaLink(server: string, item: string): string {
  * per ticket and kept for the life of the page, and filled straight in for the
  * person who resolved it.
  */
-const infos = new Map<string, Resolved | "failed">();
+
+/**
+ * A ticket that read as nothing: "failed" where it could not be read at all --
+ * expired, refused, not a ticket -- and "unavailable" where it was read and
+ * plays only through a relay the server said this deployment will not run for
+ * it (X-Watch-Relay: off on a media server's film or a bangumi episode). Told
+ * apart because they are different things to say: "could not be read, try
+ * again" sent somebody retrying a video that the switch on the management pages
+ * had turned off, and that no retry would play.
+ */
+export type Unread = "failed" | "unavailable";
+
+const infos = new Map<string, Resolved | Unread>();
 const asking = new Set<string>();
 const infoListeners = new Set<() => void>();
 
@@ -211,20 +264,13 @@ export function subscribeInfo(listener: () => void): () => void {
 }
 
 /** What a ticket plays, if this page knows yet; asks the server once if not. */
-export function videoInfo(ticket: string): Resolved | "failed" | undefined {
+export function videoInfo(ticket: string): Resolved | Unread | undefined {
 	const known = infos.get(ticket);
 	if (known !== undefined || asking.has(ticket) || !TICKET.test(ticket)) return known;
 
 	asking.add(ticket);
-	void fetch(`/api/watch/info?${new URLSearchParams({ t: ticket })}`, { credentials: "same-origin" })
-		.then(async (response) => {
-			const read = response.ok
-				? readResolved((await response.json()) as Record<string, unknown>, !relaysNothing(response))
-				: undefined;
-			// Only the ticket asked about: an answer naming another is not this one.
-			infos.set(ticket, read && read.ticket === ticket ? read : "failed");
-		})
-		.catch(() => infos.set(ticket, "failed"))
+	void readInfo(ticket)
+		.then((found) => infos.set(ticket, found))
 		.finally(() => {
 			asking.delete(ticket);
 			infoChanged();
@@ -232,8 +278,54 @@ export function videoInfo(ticket: string): Resolved | "failed" | undefined {
 	return undefined;
 }
 
+/** What the server says a ticket plays, now. */
+async function readInfo(ticket: string): Promise<Resolved | Unread> {
+	try {
+		const response = await fetch(`/api/watch/info?${new URLSearchParams({ t: ticket })}`, {
+			credentials: "same-origin",
+		});
+		const body = response.ok ? ((await response.json()) as Record<string, unknown>) : undefined;
+		const read = body && readResolved(body, !relaysNothing(response));
+		// Read only as what it would be with a relay: a video that plays
+		// nowhere else, on a ticket the server will not relay.
+		const withheld = body && !read && relaysNothing(response) ? readResolved(body) : undefined;
+		// Only the ticket asked about: an answer naming another is not this one.
+		return read && read.ticket === ticket
+			? withGrantor(read, response)
+			: withheld && withheld.ticket === ticket
+				? "unavailable"
+				: "failed";
+	} catch {
+		return "failed";
+	}
+}
+
+/**
+ * What a ticket plays, asked of the server again: for a player whose relay
+ * stopped partway through a video that plays nowhere else.
+ *
+ * The page otherwise asks once per ticket and keeps the answer, so a bangumi
+ * episode whose switch was turned off mid-episode, or a film whose grant was
+ * withdrawn, went on reading as playable here while every piece of it was
+ * refused, and its viewers sat at the last frame with nothing said. Only that
+ * answer -- the server will not relay it -- replaces what the page knew, and
+ * the screen then says so in place of the player. Any other answer leaves
+ * it alone: a ticket that still reads as playable is the player's to try
+ * again, and one that could not be read this time, because the server or the
+ * network faltered, is no reason to unlearn a video that was playing.
+ */
+export async function askAgain(ticket: string): Promise<Resolved | Unread> {
+	if (!TICKET.test(ticket)) return "failed";
+	const found = await readInfo(ticket);
+	if (found === "unavailable") {
+		infos.set(ticket, found);
+		infoChanged();
+	}
+	return found;
+}
+
 /** What this page knows a ticket plays, without asking. */
-export function knownInfo(ticket: string): Resolved | "failed" | undefined {
+export function knownInfo(ticket: string): Resolved | Unread | undefined {
 	return infos.get(ticket);
 }
 
@@ -243,19 +335,108 @@ export function rememberInfo(found: Resolved): void {
 	infoChanged();
 }
 
-/** What a pasted link plays, or why it plays nothing. */
-export async function resolveVideo(pasted: string): Promise<Resolved | "not_a_video" | "unavailable" | "failed"> {
+/**
+ * What a ticket plays, once the server has said: the same question as
+ * videoInfo, and the same answer kept for the page, waited for.
+ *
+ * Asked by whoever runs a show of a ticket somebody else resolved and handed
+ * over (see Theatre.addTicket in watch.ts). The ticket is only a name the
+ * gateway issued; what it plays, and whether this deployment relays it, is the
+ * server's to say, and this is where it is said -- a media server's film the
+ * server's ledger does not hold comes back without its relay and so reads as
+ * unavailable, the way it would for every viewer.
+ */
+export function readTicket(ticket: string): Promise<Resolved | Unread> {
+	if (!TICKET.test(ticket)) return Promise.resolve("failed");
+
+	return new Promise((settle) => {
+		const answered = (): boolean => {
+			const known = videoInfo(ticket);
+			if (known === undefined) return false;
+			stop();
+			settle(known);
+			return true;
+		};
+		const stop = subscribeInfo(answered);
+		answered();
+	});
+}
+
+/** Why a link plays nothing here, as the server said it. */
+export type Unresolved = "not_a_video" | "unavailable" | Withheld | "not_allowed" | "emby_not_allowed" | "failed";
+
+/**
+ * Why a video that was read cannot be played here, where the gateway can say
+ * more than that it cannot. Today all of them are Bilibili's shows: a members'
+ * episode, whose whole Bilibili hands only to its own player (a page elsewhere
+ * is given a three-minute preview, whatever account asks); one under DRM; one
+ * Bilibili does not offer in the region the deployment reads it from; and one
+ * Bilibili answers is not there. That last is not "not_a_video": the link was
+ * read as a show's, and the show is often there for whoever pasted it -- a
+ * season offered only in Hong Kong, Macau and Taiwan may be answered from the
+ * mainland as nothing at that number rather than refused by region -- so saying
+ * the link was no video told somebody looking at the episode that it was not one.
+ */
+export type Withheld = "members_only" | "copy_protected" | "region_locked" | "not_found";
+
+const WITHHELD: readonly Withheld[] = ["members_only", "copy_protected", "region_locked", "not_found"];
+
+/**
+ * A 422 read for its reason. Any other code, or none, is a video that cannot be
+ * played here, which is all a 422 said before the gateway gave reasons and all
+ * the server's own 422 says still.
+ */
+async function withheldBy(response: Response): Promise<Withheld | "unavailable"> {
+	try {
+		const { error } = (await response.json()) as { error?: unknown };
+		return WITHHELD.find((reason) => reason === error) ?? "unavailable";
+	} catch {
+		return "unavailable";
+	}
+}
+
+/**
+ * The two refusals of a person rather than of a link, told apart by the code
+ * the server sends with them: an account not given watching together at all,
+ * and a film from a media server, which is relayed only for somebody given that
+ * and only for what they chose themselves (see internal/app/may.go). Any other
+ * 403 is nothing this page can explain, and reads as a failure.
+ */
+async function refusedBy(response: Response): Promise<"not_allowed" | "emby_not_allowed" | "failed"> {
+	try {
+		const { error } = (await response.json()) as { error?: unknown };
+		return error === "not_allowed" || error === "emby_not_allowed" ? error : "failed";
+	} catch {
+		return "failed";
+	}
+}
+
+/**
+ * What a pasted link plays, or why it plays nothing.
+ *
+ * `forOther` is for whoever runs a show reading a link somebody else added.
+ * It is said to the server because the server decides whether a film from a
+ * media server is relayed by who chose it, and the browser asking is not always
+ * theirs: a show reads every link pasted by somebody who cannot read one
+ * themselves -- a guest -- with its holder's session. Unsaid, a guest pasting
+ * a media server's address into a granted holder's show would be spending the
+ * holder's grant; said, the server refuses such a film and everything else
+ * reads as it always did.
+ */
+export async function resolveVideo(pasted: string, { forOther = false }: { forOther?: boolean } = {}): Promise<Resolved | Unresolved> {
 	const params = new URLSearchParams({ url: pasted.slice(0, 2000) });
+	if (forOther) params.set("for", "other");
 	try {
 		const response = await fetch(`/api/watch/resolve?${params}`, { credentials: "same-origin" });
 		if (response.status === 404) return "not_a_video";
-		if (response.status === 422) return "unavailable";
+		if (response.status === 422) return await withheldBy(response);
+		if (response.status === 403) return await refusedBy(response);
 		if (!response.ok) return "failed";
 		const body = (await response.json()) as Record<string, unknown>;
 		const read = readResolved(body, !relaysNothing(response));
 		// Read, and playable only through a relay this deployment does not run.
 		if (!read && relaysNothing(response) && readResolved(body)) return "unavailable";
-		return read ?? "failed";
+		return read ? withGrantor(read, response) : "failed";
 	} catch {
 		return "failed";
 	}

@@ -5,13 +5,16 @@ import { chosenRelay, leftRoom, rememberRelay, wasIn } from "@/live/api";
 import { deployment, join as requestJoin } from "@/live/api";
 import { generateRoomName, normaliseRoomName, validRoomName } from "@/live/names";
 import { connect, create } from "@/live/room";
-import { sharpShares } from "@/live/sharpness";
+import { cushionShares } from "@/live/delay";
+import { watchShareFreezes } from "@/live/freeze";
+import { magnifyShares } from "@/live/lens";
 import { forgetMeeting, keepMeeting, meetingToken, whenSaid } from "@/live/meeting";
 import { useT } from "@/hooks/useT";
 import { deviceFailed, joinFailed, newerVersion } from "@/live/notices";
 import { watchForNewerBuild } from "@/live/freshness";
 import { Lobby, SignIn } from "@/routes/Lobby";
-import { type Choices, PreJoin, remembered, rememberedName } from "@/routes/PreJoin";
+import { type Choices, PreJoin, rememberedName } from "@/routes/PreJoin";
+import { rememberedDevices, restoreDevices } from "@/live/preferences";
 import { Moving } from "@/components/room/Moving";
 import { Room } from "@/routes/Room";
 import { RoomEvent, type Room as LiveRoom } from "livekit-client";
@@ -91,6 +94,11 @@ export function App() {
 	// And the machine it is actually on, where the two came apart. Undefined for
 	// most calls, which is what makes the panel say one name rather than two.
 	const [carrying, setCarrying] = useState<string>();
+
+	// The region of the machine the call came in through, which is the best
+	// this page knows of where its viewer is: a mainland one skips YouTube for
+	// the relay (see WatchScreen).
+	const [entry, setEntry] = useState<string>();
 
 	// Whether this page is older than the server, for as long as it is open.
 	// See live/freshness.ts: a page kept open across a deployment went on running
@@ -222,7 +230,7 @@ export function App() {
 							// better than any of the ways of avoiding it.
 							secret: "",
 							relay: chosenRelay(),
-							...remembered(),
+							...rememberedDevices(),
 						}).catch(unattended);
 					}
 
@@ -244,7 +252,7 @@ export function App() {
 						// See above: a reload cannot recover a word nothing stored.
 						secret: "",
 						relay: chosenRelay(),
-						...remembered(),
+						...rememberedDevices(),
 					}).catch(unattended);
 
 					return;
@@ -352,7 +360,16 @@ export function App() {
 				// the picker used rather than as an address.
 				setHolding(grant.relay);
 				setCarrying(grant.holding);
+				setEntry(grant.region);
 				await connect(made, grant, secret);
+
+				// The microphone, camera and speakers last picked in a call, where
+				// they are still there. Before either is started, so that the first
+				// track is the right device rather than the default for a moment and
+				// then a switch. It cannot fail the join: anything it cannot do
+				// leaves the browser's default, which is where everybody was before
+				// the choice was remembered at all.
+				await restoreDevices(made);
 
 				// After connecting rather than before, so somebody appears in the
 				// room the moment they join and their devices come up a beat
@@ -373,12 +390,21 @@ export function App() {
 					.setCameraEnabled(camera)
 					.catch((err: unknown) => deviceFailed("camera", err));
 
-				// A shared screen is not a face: it is subscribed at full size
-				// however small its tile is, because the alternative is text
-				// delivered at thumbnail resolution. See live/sharpness.ts for why
-				// the obvious way of asking for that does nothing.
-				const sharp = sharpShares(made);
-				made.once(RoomEvent.Disconnected, sharp);
+				// A shared screen is asked for at the size it covers here, like a
+				// face, and paused where nobody can see it (see `create`). What is
+				// added for a share is the pixels a pinch or a denser display gives
+				// it, which the measurement does not see by itself (live/lens.ts);
+				// one viewer's way out of a freeze the server does not notice — a
+				// rung lower for a while, never anything the person sharing sends;
+				// see live/freeze.ts — and a fifth of a second's cushion under the
+				// share's picture and sound, never anybody's face or voice; see
+				// live/delay.ts.
+				const unmagnify = magnifyShares(made);
+				made.once(RoomEvent.Disconnected, unmagnify);
+				const thaw = watchShareFreezes(made);
+				made.once(RoomEvent.Disconnected, thaw);
+				const cushion = cushionShares(made);
+				made.once(RoomEvent.Disconnected, cushion);
 
 				current.current = made;
 				setLive(made);
@@ -594,7 +620,7 @@ export function App() {
 					passphrase: said.current,
 					secret: sealed.current,
 					relay: "",
-					...remembered(),
+					...rememberedDevices(),
 				}).catch(unattended);
 
 				return;
@@ -696,7 +722,7 @@ export function App() {
 	);
 
 	if (live) {
-		return page("call", <Room room={live} relay={holding} carrying={carrying} onLeave={onLeave} />);
+		return page("call", <Room room={live} relay={holding} carrying={carrying} entry={entry} onLeave={onLeave} />);
 	}
 
 	// Nothing rather than a spinner. The two requests behind this take one round

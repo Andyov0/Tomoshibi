@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { GAP, ISLAND, planClose, planFocus, planGrid, stripCapacity } from "./plan";
+import {
+	GAP,
+	ISLAND,
+	ISLAND_HEIGHT,
+	ISLAND_OFFSET,
+	clearOf,
+	planClose,
+	planFocus,
+	planGrid,
+	stripCapacity,
+} from "./plan";
 
 const WINDOW = { width: 1600, height: 900 };
 
@@ -149,6 +159,50 @@ describe("planFocus", () => {
 	});
 });
 
+/*
+ * Something drawn over the foot of the room that must not cover the filmstrip.
+ *
+ * The card saying a share is more than the line carries sat just clear of the
+ * controls, which is where the strip begins: at every width it covered the
+ * strip whole and a press on anybody in it landed on the card. Measured in the
+ * browser at 320, 375, 414 and 1280; held here as the arithmetic it rests on.
+ */
+describe("clearOf", () => {
+	const sizes = [
+		{ width: 320, height: 640 },
+		{ width: 375, height: 812 },
+		{ width: 414, height: 896 },
+		{ width: 1280, height: 800 },
+	];
+
+	it("ends whatever sits above it short of every picture in the strip", () => {
+		for (const size of sizes) {
+			const strip = ids(Math.min(3, stripCapacity(size)));
+			const plan = planFocus(size, "stage", strip);
+			const bottom = clearOf(plan, strip, size);
+			if (bottom === undefined) throw new Error("a strip that is there was said not to be");
+
+			for (const id of strip) {
+				const spot = plan.get(id);
+				if (!spot) throw new Error("somebody in the strip was not placed");
+
+				// The lower edge of anything lifted by this, measured from the top.
+				expect(size.height - bottom, `${size.width} wide`).toBeLessThanOrEqual(spot.y - GAP + 0.5);
+			}
+
+			// And so above the controls as well, which the strip is above.
+			expect(bottom).toBeGreaterThan(ISLAND);
+		}
+	});
+
+	it("is nothing where there is no strip to clear", () => {
+		const size = { width: 375, height: 812 };
+
+		expect(clearOf(planFocus(size, "stage", []), [], size)).toBeUndefined();
+		expect(clearOf(planFocus(size, "stage", ids(2), { fullscreen: true }), ids(2), size)).toBeUndefined();
+	});
+});
+
 describe("stripCapacity", () => {
 	it("fits what the width allows", () => {
 		// Both landscape, or this compares two different tile shapes rather
@@ -267,5 +321,74 @@ describe("planClose", () => {
 
 	it("plans nothing for an unmeasured container", () => {
 		expect(planClose({ width: 0, height: 0 }, "them", ["me"]).size).toBe(0);
+	});
+});
+
+/*
+ * The controls are an island floating over the foot of the room, and nothing
+ * the plan places may end underneath it: a picture there is a picture whose
+ * name, and whose lower edge, press the controls instead.
+ *
+ * The reserve was a constant of 68 written when the island was forty pixels tall,
+ * and the island grew to 58 and was lifted clear of the home indicator: the
+ * filmstrip's last ten pixels sat under it on a laptop, and thirty-two on an
+ * iPhone, where each picture's name is drawn. The room now measures the island
+ * where it is drawn (hooks/useIslandReserve.ts) and passes what it found; these
+ * hold the plan to it, and the figure for nothing measured to a laptop's island.
+ */
+describe("the island", () => {
+	/** Where the controls' top edge is, from the bottom: max(20, inset + 8), then their height. */
+	const top = (inset: number) => Math.max(ISLAND_OFFSET, inset + 8) + ISLAND_HEIGHT;
+
+	const screens: [string, { width: number; height: number }, number][] = [
+		["a laptop", { width: 1280, height: 800 }, 0],
+		["an Android phone", { width: 414, height: 896 }, 0],
+		["an iPhone with a home indicator", { width: 390, height: 844 }, 34],
+		["a smaller iPhone with one", { width: 375, height: 812 }, 34],
+	];
+
+	it("keeps the stage, the strip and the cards above the controls as measured", () => {
+		for (const [what, size, inset] of screens) {
+			const island = top(inset) + GAP;
+			const strip = ids(Math.min(3, stripCapacity(size)));
+
+			const plans = {
+				strip: planFocus(size, "stage", strip, { island }),
+				close: planClose(size, "them", ["me"], island),
+			};
+
+			for (const [arrangement, plan] of Object.entries(plans)) {
+				for (const [id, spot] of plan) {
+					// The one picture that fills the screen in a call of two is
+					// drawn under everything on purpose.
+					if (arrangement === "close" && id === "them") continue;
+					expect(spot.y + spot.height, `${what}, ${arrangement}, ${id}`).toBeLessThanOrEqual(size.height - top(inset) + 0.5);
+				}
+			}
+		}
+	});
+
+	it("gives the grid the measured island to fill around", () => {
+		// The grid is centred in the whole room by design and may reach half
+		// the reserve into it (see planGrid, and "keeps clear of the controls"
+		// above); what it must take is the measured reserve, not the old one.
+		for (const [what, size, inset] of screens) {
+			const island = top(inset) + GAP;
+			for (const spot of planGrid(size, ids(6), island).values()) {
+				expect(spot.y + spot.height, what).toBeLessThanOrEqual(size.height - island / 2 + 0.5);
+			}
+		}
+	});
+
+	it("is a laptop's controls where nothing has been measured", () => {
+		const size = { width: 1280, height: 800 };
+		const strip = ids(3);
+		const plan = planFocus(size, "stage", strip);
+
+		for (const id of strip) {
+			const spot = plan.get(id);
+			if (!spot) throw new Error("somebody in the strip was not placed");
+			expect(spot.y + spot.height).toBeLessThanOrEqual(size.height - top(0));
+		}
 	});
 });

@@ -143,3 +143,58 @@ describe("the controls' lane", () => {
 		).toBe(true);
 	});
 });
+
+/*
+ * A rule written against a library's own styles, that loses to them.
+ *
+ * Sonner injects its stylesheet at runtime, outside every cascade layer, and
+ * writes its offsets as inline custom properties on the toaster. A rule of ours
+ * inside `@layer` loses to the first whatever its specificity, and a custom
+ * property of ours loses to the second whatever its layer. Both had happened:
+ * the rule meant to lift notices clear of the call's controls set
+ * `--mobile-offset-bottom` from inside the utilities layer and never applied, so
+ * notices sat over the hang-up button on every phone (2026-10-14); and the width
+ * of the column beside it had been lost the same way without anybody noticing.
+ * Neither looked wrong in the source, and a unit test cannot run the cascade,
+ * so this holds the two conditions that make such a rule able to apply at all.
+ */
+describe("a rule aimed at the notices' own elements", () => {
+	/** Every block in the stylesheet, with the headers of the blocks around it. */
+	function blocks(text: string) {
+		const found: { header: string; within: string[]; body: string }[] = [];
+		const open: { header: string; start: number }[] = [];
+		let since = 0;
+
+		for (let at = 0; at < text.length; at++) {
+			const char = text[at];
+			if (char === "{") {
+				open.push({ header: text.slice(since, at).replace(/\/\*[\s\S]*?\*\//g, "").trim(), start: at + 1 });
+				since = at + 1;
+			} else if (char === "}") {
+				const block = open.pop();
+				if (block) found.push({ header: block.header, within: open.map((one) => one.header), body: text.slice(block.start, at) });
+				since = at + 1;
+			} else if (char === ";") {
+				since = at + 1;
+			}
+		}
+
+		return found;
+	}
+
+	const aimed = blocks(css).filter((block) => block.header.includes("data-sonner-toaster"));
+
+	it("is found, so that the checks below are checking something", () => {
+		expect(aimed.length).toBeGreaterThanOrEqual(2);
+	});
+
+	it("is outside every layer, where the library's own rules are", () => {
+		const layered = aimed.filter((block) => block.within.some((header) => header.startsWith("@layer")));
+		expect(layered.map((block) => block.header)).toEqual([]);
+	});
+
+	it("does not try to set an offset the library writes inline", () => {
+		const overridden = aimed.filter((block) => /--(mobile-)?offset-/.test(block.body));
+		expect(overridden.map((block) => block.header)).toEqual([]);
+	});
+});

@@ -847,6 +847,44 @@ func announceSettings(conf *config.Config) {
 		"bind", conf.LiveKit.BindAddresses,
 		"http", conf.LiveKit.Port,
 		"codecs", codecs)
+
+	// How each viewer's share of the media is decided, said wherever media is
+	// held. A relay brought up before these settings existed gets them added
+	// to its file by hand, and the strict loader only proves that what was
+	// added is spelled right: not that it went into the file the service
+	// reads, nor that the process answering is one started since. A relay on
+	// the receive-side estimate looks exactly like one on the sender-side
+	// estimate until somebody's screen share freezes, so the difference is
+	// written where a restart leaves it to be read. RELAY.md has the numbers
+	// behind both settings.
+	//
+	// Not on a control node, which holds no media and would be reporting
+	// defaults that govern nothing.
+	if conf.Meet.Role != config.RoleControl {
+		slog.Info(mediaSettingsSaid, mediaSettings(conf)...)
+	}
+}
+
+// mediaSettingsSaid is what a relay starts that line with.
+//
+// The words of that line are not this file's to change alone. The release
+// script for running relays and RELAY.md's own steps find it by "how each
+// viewer" and read "send side bwe" and "video nack window" off it, and a key
+// renamed here would have every relay on release day report that the process
+// answering did not read its settings — and an operator roll back a relay that
+// had been changed correctly. TestMediaSettingsLine renders it through the media
+// server's own logger, in both of its formats, and matches it the way they do.
+const mediaSettingsSaid = "settings: how each viewer's media is chosen"
+
+// mediaSettings is the rest of that line.
+func mediaSettings(conf *config.Config) []any {
+	cc := conf.LiveKit.RTC.CongestionControl
+	return []any{
+		"congestion control", cc.Enabled,
+		"send side bwe", cc.UseSendSideBWE,
+		"pacer", cc.SendSideBWEPacer,
+		"video nack window", conf.LiveKit.RTC.PacketBufferSizeVideo,
+	}
 }
 
 // announce prints where to open the client.

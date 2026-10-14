@@ -575,6 +575,65 @@ func TestTheHostsOwnMarkIsNotPublishedToTheRoom(t *testing.T) {
 	}
 }
 
+// A room handed to a guest is refused for being a guest, not for somebody
+// having gone.
+//
+// Both refusals were one code, no_such_person, and the panel says that code as
+// "they have already left" — so a host pressing the crown beside a guest who was
+// plainly still in the call was told the guest had left, and went looking for a
+// fault in the list of people rather than for the passphrase the guest lacked.
+// The refusal itself stands: an issued mark is worn by whoever reads it (see
+// TestAnIssuedMarkCannotBeWornToBecomeTheHost). Only what it is called changes.
+func TestARoomHandedToAGuestIsRefusedAsAGuestNotAsSomebodyGone(t *testing.T) {
+	mux, st := hosted(t)
+
+	if _, err := st.OpenRoom("standup", true); err != nil {
+		t.Fatal(err)
+	}
+
+	host, identity := tokenFor(t, "standup", "the host's own passphrase")
+	mark, _ := room.SignatureOf(identity)
+
+	if err := st.SetHost("standup", mark.Trip); err != nil {
+		t.Fatal(err)
+	}
+
+	hand := func(to string) *httptest.ResponseRecorder {
+		return ask(mux, asking(http.MethodPost, "/api/rooms/standup/host", host, `{"to":"`+to+`"}`))
+	}
+
+	_, guest := tokenFor(t, "standup", "")
+	if refused := hand(guest); refused.Code != http.StatusBadRequest || refusal(t, refused) != reasonNotProven {
+		t.Errorf("handing the room to a guest answered %d %q, want 400 %q: the panel says "+
+			"anything else as somebody who is in the call having left it",
+			refused.Code, refusal(t, refused), reasonNotProven)
+	}
+
+	if got := st.HostOf("standup"); got != mark.Trip {
+		t.Fatalf("a refused handover moved the room to %q; a room parked on an issued mark "+
+			"answers to whoever reads it", got)
+	}
+
+	// Somebody who is nobody at all is still nobody.
+	if refused := hand("somebody"); refused.Code != http.StatusBadRequest || refusal(t, refused) != reasonNoSuchPerson {
+		t.Errorf("handing the room to an identity that is not one answered %d %q, want 400 %q",
+			refused.Code, refusal(t, refused), reasonNoSuchPerson)
+	}
+
+	// And somebody who joined with a passphrase is handed it, so the refusal
+	// above is about the guest and not about handing over.
+	_, proven := tokenFor(t, "standup", "a passphrase of their own")
+	theirs, _ := room.SignatureOf(proven)
+
+	if handed := hand(proven); handed.Code != http.StatusOK {
+		t.Fatalf("handing the room to somebody with a passphrase answered %d", handed.Code)
+	}
+
+	if got := st.HostOf("standup"); got != theirs.Trip {
+		t.Errorf("the room was handed over and is held by %q, want %q", got, theirs.Trip)
+	}
+}
+
 /*
  * Acting on a room after the token that got you in has expired.
  *

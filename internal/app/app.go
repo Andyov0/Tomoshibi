@@ -61,6 +61,11 @@ type App struct {
 	// with no relays to be wrong about.
 	reach *reach
 
+	// relayed is what the watch relay remembers between requests: whether
+	// each grantor's Emby grant stood when last asked, and what has been
+	// carried under each. See watchledger.go.
+	relayed watchLedger
+
 	stop    chan struct{}
 	closing sync.Once
 
@@ -236,6 +241,15 @@ func (a *App) sweep() {
 	} else if gone > 0 {
 		slog.Info("swept trend buckets past their resolution's retention", "gone", gone)
 	}
+
+	// The tickets the media server relay agreed to carry. Each is refused past
+	// its expiry when read, so this is growth again: a row per film anybody
+	// granted Emby ever chose, and one per playlist and segment of it.
+	if gone, err := a.store.SweepWatchTickets(now); err != nil {
+		slog.Error("failed to sweep the watch tickets", "error", err)
+	} else if gone > 0 {
+		slog.Info("swept expired watch tickets", "gone", gone)
+	}
 }
 
 // forget clears one sweep's worth, and keeps going while there is more.
@@ -353,6 +367,11 @@ func (a *App) Handler() http.Handler {
 
 		return mux
 	}
+
+	// What the watch relay has carried for each person granted it, for the
+	// accounts page. Handed over here rather than in New because this is where
+	// both halves exist however the application was assembled.
+	a.admin.UseSpent(&a.relayed)
 
 	// Registered before the client's fallback, and only where somebody
 	// configured an administrator. Absent that, these paths are not refused —
@@ -477,6 +496,25 @@ type joinResponse struct {
 	// work it out. Empty on a deployment that holds its own media, where the
 	// question does not arise.
 	Relay string `json:"relay,omitempty"`
+
+	// Region is the deployment's own label for the relay this person's browser
+	// chose — measured or picked — where they were given it. Not the one the
+	// join ended on after sending them to the meeting's holder or through a
+	// bridge, and not the one holding the meeting; empty wherever the choice
+	// was not theirs. See where it is taken in join.
+	//
+	// What it says is where the person probably is, which is a thing a client
+	// has no other honest way to learn and one thing turns on: a viewer who came
+	// in through a relay in mainland China cannot reach YouTube, and is given
+	// the relayed copy of a video at once rather than after the seconds it
+	// takes YouTube's script to fail to arrive. Wrong in the other direction it
+	// costs more: a viewer abroad told they are in the mainland has every video
+	// sent through this deployment, for nothing. So it is said only where it is
+	// known, and an empty one leaves the client trying YouTube first. The same
+	// label /api/relays already gives everybody, sent here because the client
+	// would otherwise have to find it in that list by a name that may be a
+	// label.
+	Region string `json:"region,omitempty"`
 }
 
 // What a client needs to know about the server it reached, before anybody has
@@ -712,12 +750,24 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 
 	// Already decided for a scoped name, and nothing below can take it back:
 	// every setting only adds to who may open one.
+	//
+	// Being signed in opens a room only for somebody who was not refused the
+	// open permission. What it does not touch is a passphrase belonging to
+	// nobody, which under the middle setting opens a room as it always did:
+	// that is what the setting means, and an account refused the permission
+	// can sign out and type one like anybody else. What it does refuse is that
+	// account's own passphrase typed into the field, which would otherwise be
+	// the permission undone by not signing in.
+	//
+	// Asked only where the policy asks it: each is a walk of the accounts.
 	mayOpen := isAdmin || scoped
+	signedOpens := func() bool { return signature != "" && a.holds(signature, store.PermOpen) }
+
 	switch a.opening() {
 	case room.ByAnyone:
 		mayOpen = true
 	case room.BySigned:
-		mayOpen = mayOpen || !body.Passphrase.Empty() || signature != ""
+		mayOpen = mayOpen || signedOpens() || (!body.Passphrase.Empty() && a.typedOpens(body.Passphrase))
 
 	// An account, and not a passphrase somebody set themselves.
 	//
@@ -725,7 +775,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	// policy: an administrator can always open a room whatever this says, so
 	// this is never a locked door with no key.
 	case room.ByAccounts:
-		mayOpen = mayOpen || signature != ""
+		mayOpen = mayOpen || signedOpens()
 	}
 
 	// Whether this name has been used before, asked before it is written down,
@@ -856,6 +906,26 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 
 	entry := a.relays.pick(name, wanted, r, a.conf.Meet.TrustProxy, isAdmin)
 	holding := entry
+
+	// Where this person probably is, taken now, before anything below sends
+	// them through another machine — and only where it says something about
+	// them: the relay their own browser named and was given. See
+	// joinResponse.Region for what reads it and what a wrong answer costs.
+	//
+	// Read off the entry at the end of the join, it was wrong whenever the join
+	// moved them: somebody abroad whose relay does not forward, joining a
+	// meeting held in Shanghai, was sent to Shanghai and told CN-East, and every
+	// YouTube video of theirs went through this deployment; somebody in
+	// Shanghai bridged to Hong Kong was told Hong Kong and went back to waiting
+	// on YouTube. Nor is the relay picked for somebody who named none, or named
+	// one that is not ours, a statement about them: that one is a hash of the
+	// room's name over the fleet, and most of this fleet is in the mainland. A
+	// placement pinned by an operator is about the meeting, not the person. All
+	// of those say nothing, and a client told nothing tries YouTube first.
+	arrived := ""
+	if body.Relay != "" && entry.Name == body.Relay {
+		arrived = entry.Region
+	}
 
 	// Where the meeting already is, if there still is one.
 	//
@@ -1062,6 +1132,7 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		Identity: grant.Identity,
 		Room:     name,
 		Relay:    entry.Shown(),
+		Region:   arrived,
 		Holding:  elsewhere(entry, holding),
 		Forward:  forward,
 	})
@@ -1375,6 +1446,13 @@ const (
 	// A person named in a request who is not somebody this can act on: not in
 	// the room, not a valid identity, or the caller themselves.
 	reasonNoSuchPerson = "no_such_person"
+	// reasonNotProven is a room handed to somebody whose identity was drawn
+	// from nothing, who is there and cannot hold it. Apart from the code
+	// above, which the client says as "they have already left": said to a host
+	// looking at the guest in question, still in the call, that was a sentence
+	// about somebody else, and it sent them looking for a fault in the roster
+	// rather than for a passphrase.
+	reasonNotProven = "not_proven"
 	// A relay named in a request that this deployment does not have.
 	reasonNoSuchRelay = "no_such_relay"
 	// The media server did not answer, so nothing was done. Distinct from a

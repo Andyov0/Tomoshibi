@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -17,12 +18,18 @@ import (
 /*
 The page somebody signs into to look after their own account.
 
-Deliberately not the management pages. What somebody does here is change their
-own passphrase and their own picture, and nothing else — no relay, no room, no
-setting that belongs to the deployment. Putting the two behind one door would
-mean everybody with an account holding a key to a building they have no business
-in, and dressing the door differently for different people is how a page comes
-to be one mistake away from showing the wrong person the wrong thing.
+Deliberately not the management pages. What somebody changes here is their own
+passphrase and their own picture — no relay, no room, no setting that belongs to
+the deployment. Putting the two behind one door would mean everybody with an
+account holding a key to a building they have no business in, and dressing the
+door differently for different people is how a page comes to be one mistake away
+from showing the wrong person the wrong thing.
+
+The page shows more than it changes. It reads back what the account may use
+(Can, below) so that a feature somebody was not given is explained rather than
+merely missing, and it keeps settings for how calls start — but those are the
+browser's, written to its own storage, and never reach this server. Nothing an
+account holder does here alters what they may do or what anybody else sees.
 
 Recognised the same way everybody here is recognised: a name and a passphrase,
 turned into a signature and compared against what was stored. This server has
@@ -300,7 +307,15 @@ func (a *App) accountPassphrase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.rewrite(was, account); err != nil {
+	if err := a.rewrite(was, account, false); err != nil {
+		// The signature checked above is no longer the record's: an
+		// administrator set a new passphrase while this was on its way, and
+		// what was typed as the current one is not, now.
+		if errors.Is(err, store.ErrNoSuchAccount) {
+			fail(w, http.StatusForbidden, reasonNotYours)
+			return
+		}
+
 		fail(w, http.StatusConflict, reasonPassphraseTaken)
 		return
 	}
@@ -312,6 +327,9 @@ func (a *App) accountPassphrase(w http.ResponseWriter, r *http.Request) {
 			_ = a.store.KeepSession(cookie.Value, session)
 		}
 	}
+
+	// And their figure on the management pages with them; see MoveSpent.
+	a.relayed.MoveSpent(was, account.Trip)
 
 	respond(w, a.accountOf(account))
 }
@@ -346,7 +364,7 @@ func (a *App) accountAvatar(w http.ResponseWriter, r *http.Request) {
 		account.Avatar = body.Image
 	}
 
-	if err := a.rewrite(account.Trip, account); err != nil {
+	if err := a.rewrite(account.Trip, account, true); err != nil {
 		fail(w, http.StatusBadRequest, reasonAvatarLarge)
 		return
 	}
@@ -354,15 +372,28 @@ func (a *App) accountAvatar(w http.ResponseWriter, r *http.Request) {
 	respond(w, a.accountOf(account))
 }
 
-// rewrite saves a change back to whichever list the person is actually in.
+// rewrite saves one of a person's own changes back to whichever list they are
+// actually in: their picture, where picture is true, and otherwise their
+// signature.
 //
 // `was` is the signature they carried before, which is the key an administrator
 // is stored under and is therefore what has to be found again after a passphrase
 // change. An account is keyed by name and does not have this problem, which is
 // why one call cannot serve both without being told.
-func (a *App) rewrite(was string, account store.Account) error {
+//
+// The one field, and never the record. The record in hand was read when the
+// request began, and the request is as long as the picture takes to arrive;
+// written whole, it put back whatever an administrator had changed meanwhile,
+// a block among it, which is how an administrator stops somebody's films being
+// relayed. The administrators' list had learned this already (SetAdminAvatar);
+// the accounts' had not.
+func (a *App) rewrite(was string, account store.Account, picture bool) error {
 	if _, ok := a.store.Account(account.Name); ok {
-		return a.store.UpdateAccount(account.Name, account)
+		if picture {
+			return a.store.SetAccountAvatar(account.Name, account.Avatar)
+		}
+
+		return a.store.SetAccountTrip(account.Name, was, account.Trip)
 	}
 
 	admin, ok := a.store.AdminBySignature(was)
@@ -370,23 +401,23 @@ func (a *App) rewrite(was string, account store.Account) error {
 		return store.ErrNoSuchAccount
 	}
 
-	admin.Avatar = account.Avatar
-
-	if admin.Trip == account.Trip {
-		return a.store.UpdateAdmin(admin)
-	}
-
 	// The signature is the key, so changing it is a move rather than an edit.
 	// Done by the store in one transaction: written as a remove and an add, a
 	// failure between the two would delete an administrator, and the one it
 	// would delete is whoever was changing their own passphrase.
-	if err := a.store.ReplaceAdminTrip(was, account.Trip); err != nil {
-		return err
+	if !picture {
+		if admin.Trip == account.Trip {
+			return nil
+		}
+
+		return a.store.ReplaceAdminTrip(was, account.Trip)
 	}
 
-	admin.Trip = account.Trip
-
-	return a.store.UpdateAdmin(admin)
+	// The picture by itself. The whole record used to go back through
+	// UpdateAdmin, which now carries the picture over from what is stored — so
+	// that another administrator changing this one's role cannot erase it — and
+	// so cannot be how the picture changes.
+	return a.store.SetAdminAvatar(account.Trip, account.Avatar)
 }
 
 func (a *App) avatar(w http.ResponseWriter, r *http.Request) {
@@ -458,12 +489,18 @@ type accountView struct {
 	// link into a room held under one. Like Admin, a courtesy to the page and
 	// never a permission: the invitation endpoint asks the account itself.
 	Scopes []string `json:"scopes,omitempty"`
+	// Can is what they may use, so their page can say so and not offer what
+	// would be refused. A courtesy like the two above: every endpoint it names
+	// asks again for itself. Always present, empty or not, so a page can tell
+	// "nothing" from a server too old to say.
+	Can []string `json:"can"`
 }
 
 func (a *App) accountOf(account store.Account) accountView {
 	view := accountOf(account)
 
 	_, view.Admin = a.store.AdminBySignature(account.Trip)
+	view.Can = a.granted(account.Trip)
 
 	return view
 }

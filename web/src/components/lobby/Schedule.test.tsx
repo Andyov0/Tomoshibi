@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { Refused } from "@/live/api";
 import { type Arrangement, arrange, arrangements, linkFor } from "@/live/meeting";
 import { actionFailed } from "@/live/notices";
 import { Schedule } from "./Schedule";
@@ -219,4 +220,39 @@ it("hands the meeting to the calendar as a file", async () => {
 
 	click.mockRestore();
 	vi.unstubAllGlobals();
+});
+
+/*
+ * An account the arranging was taken away from.
+ *
+ * The lobby offered the form to every account, and the server refused every
+ * press of it with a code the card had no sentence for: "Something went wrong.
+ * Try again." — which no number of tries could make true. What was arranged
+ * before stays the person's to see and to cancel, because the server still
+ * allows both.
+ */
+it("offers no form to an account that may not arrange, and keeps what it arranged", async () => {
+	vi.mocked(arrangements).mockResolvedValueOnce([made]);
+
+	render(<Schedule servers={[]} server="" onServer={() => {}} onOpenChange={() => {}} canArrange={false} />);
+	fireEvent.click(screen.getByRole("button", { name: /Schedule a meeting/ }));
+
+	await screen.findByText("Arranging meetings has not been opened to you.");
+	expect(screen.queryByText("Day")).toBeNull();
+	expect(screen.queryByRole("button", { name: "Arrange" })).toBeNull();
+
+	await screen.findByText("standup");
+	expect(screen.getByRole("button", { name: "Cancel meeting" })).toBeTruthy();
+});
+
+it("says why when arranging was taken away while the lobby was open", async () => {
+	vi.mocked(arrange).mockRejectedValue(new Refused("not_allowed", "403"));
+
+	await opened();
+	chooseToday(11, 0);
+	fireEvent.click(screen.getByRole("button", { name: "Arrange" }));
+
+	await waitFor(() =>
+		expect(actionFailed).toHaveBeenCalledWith("Arranging meetings has not been opened to you."),
+	);
 });

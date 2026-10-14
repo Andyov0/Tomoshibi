@@ -18,8 +18,9 @@ They were held in memory and nowhere else, on the reasoning that a session
 should not outlive the configuration that authorised it. That was true when the
 administrators were a section of a configuration file and changing them meant a
 restart. It stopped being true when the list moved into the store: signing
-somebody out now happens by removing them, which takes effect on the next
-request, and a restart no longer changes who may be here.
+somebody out now happens by removing them, which an open management session
+learns within a minute — it asks the list again that often — and a restart no
+longer changes who may be here.
 
 What the old behaviour actually did was sign everybody out whenever the process
 was upgraded — which, during an afternoon of deployments, is every few minutes,

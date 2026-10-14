@@ -58,7 +58,7 @@ describe("a relay's own button", () => {
 		});
 		checkRelay.mockResolvedValue(answering("bravo", 7));
 
-		render(<RelaysPanel canModerate onSignedOut={vi.fn()} />);
+		render(<RelaysPanel canRelays onSignedOut={vi.fn()} />);
 
 		await screen.findByText("wss://bravo.example:39217");
 		expect(list).toHaveBeenCalledTimes(1);

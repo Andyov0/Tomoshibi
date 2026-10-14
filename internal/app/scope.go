@@ -44,8 +44,9 @@ the host is a member.
 
 ## Nobody is the host, so everybody in it is
 
-A scoped room has no recorded host. Every member, and every administrator who may
-moderate, runs it: mutes, removes, ends the meeting, moves it, answers the door.
+A scoped room has no recorded host. Every member, and every administrator given
+the rooms capability (which moderate carries), runs it: mutes, removes, ends the
+meeting, moves it, answers the door.
 A recorded host was considered and is worse: `ClaimHost` only claims an empty
 record, so a host taken out of the scope would leave the room answering to
 somebody who may no longer enter it and to nobody else, for good. With no host
@@ -230,10 +231,11 @@ func (a *App) storeSilent(w http.ResponseWriter, name string, err error) {
 // inScope reports whether a mark belongs to an account carrying a scope.
 //
 // Accounts only. An administrator is a member of every scope at the door, but
-// running a room is the moderate capability and not membership, so one who may
-// only observe is no more the host of a scoped room than of any other — the
-// split the management pages draw between looking and touching would otherwise
-// be undone for every room with an `@` in it.
+// running a room is the rooms capability — which moderate carries — and not
+// membership, so one who may only observe, or was given only the accounts or
+// the fleet, is no more the host of a scoped room than of any other: the split
+// the management pages draw between looking and touching would otherwise be
+// undone for every room with an `@` in it.
 func (a *App) inScope(mark room.Signature, scope string) bool {
 	if !mark.Proven || scope == "" {
 		return false

@@ -210,10 +210,21 @@ meet:
 ```
 
 `can` is empty for somebody who may only watch: the readings, the trend, the
-health checks, and who is in which room. `moderate` adds the actions — removing
-a participant, muting a track, closing a room, and changing who may open one.
-Two levels rather than one, because binding them together makes the choice
-"everybody gets the dangerous half, or nobody gets the useful one".
+health checks, and who is in which room. `moderate` adds every action. Between
+the two are four finer capabilities, each a part of what `moderate` holds:
+
+| `can` | adds |
+| --- | --- |
+| `rooms` | removing a participant, muting a track, closing and moving a room — from the management pages and from inside a call — and running a room held under a scope |
+| `accounts` | making, renaming, blocking and removing accounts, setting their passphrases, and ticking what each may use — except Emby, and the passphrase of an account that holds it |
+| `relays` | adding, editing, ordering and removing relays, and the install line that enrols one |
+| `settings` | who may open and enter rooms, whether the Emby relay is on at all, whether YouTube is relayed for viewers who cannot reach it, and whether Bilibili's bangumi are relayed for everybody |
+| `moderate` | all four, the list of administrators, and the Emby grant: giving or taking away anybody's, and setting the passphrase of an account that holds it |
+
+Several levels rather than one, because binding them together makes the choice
+"everybody gets the dangerous half, or nobody gets the useful one". An entry
+written as `[moderate]` or as nothing before the finer ones existed means
+exactly what it meant then.
 
 Restart, and `/admin` exists. Where no administrator is listed it does not: the
 address answers like any other nobody claimed, so there is no sign-in page on a
@@ -407,10 +418,10 @@ Either kind is worth exactly its maker's standing: take somebody out of the
 scope, or block them, and every link they made stops working.
 
 **Running the room.** A scoped room has no host on record. Every member, and
-every administrator who may moderate, runs it — mutes, removes, ends the
-meeting, moves it, answers a knock, stops the room's links — whether or not
-they are in the call. There is therefore nobody to hand it over to, and that control
-is not offered.
+every administrator given `rooms` (which `moderate` carries), runs it — mutes,
+removes, ends the meeting, moves it, answers a knock, stops the room's links —
+whether or not they are in the call. There is therefore nobody to hand it over
+to, and that control is not offered.
 
 **Ending is not revoking.** Ending a scoped meeting takes the links made in the
 call and keeps the standing ones, because those were made by members for other

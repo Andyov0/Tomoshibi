@@ -39,13 +39,19 @@ import { Card, Failed } from "./Shell";
  * conflated the two would send an operator looking for a fault that is not one.
  */
 export function RelaysPanel({
-	canModerate,
+	canRelays,
 	onSignedOut,
 }: {
-	canModerate: boolean;
+	/** May add, edit, order and remove relays, and hand out the install line. */
+	canRelays: boolean;
 	onSignedOut: () => void;
 }) {
 	const t = useT();
+
+	// The acts on the fleet, under the name every component below has always
+	// used for them. They were moderate's until the acting half was cut along
+	// what it acts on, and the relays went to their own capability.
+	const canModerate = canRelays;
 
 	// Often enough that a relay going down is noticed while somebody is
 	// watching, rarely enough that the control node is not measuring every

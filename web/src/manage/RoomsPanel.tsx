@@ -24,6 +24,7 @@ import { usePoll } from "./poll";
 import { useTwice } from "./twice";
 import { Card, Empty, Failed, Waiting } from "./Shell";
 import { bitrate, clock, day, since } from "./units";
+import { WatchCard } from "./WatchCard";
 
 /**
  * The rooms, and whoever is in the one selected.
@@ -36,13 +37,22 @@ import { bitrate, clock, day, since } from "./units";
  * client's source and reasoning about it.
  */
 export function RoomsPanel({
-	canModerate,
+	canRooms,
+	canSettings,
 	onSignedOut,
 }: {
-	canModerate: boolean;
+	/** May close rooms, move them, and remove or mute the people in them. */
+	canRooms: boolean;
+	/** May change the deployment-wide switches drawn under the lists. */
+	canSettings: boolean;
 	onSignedOut: () => void;
 }) {
 	const t = useT();
+
+	// The acts on a meeting, under the name every component below has always
+	// used for them. They were moderate's until the acting half was cut along
+	// what it acts on; the switches under the lists went to settings.
+	const canModerate = canRooms;
 
 	const [selected, setSelected] = useState<string>();
 	const [acting, setActing] = useState(false);
@@ -242,8 +252,9 @@ export function RoomsPanel({
 				    happening, what has happened, and what may happen next. Put
 				    above the live rooms it would push the reason anybody opened
 				    this panel below the fold. */}
-				<OpeningCard canModerate={canModerate} onSignedOut={onSignedOut} />
-				<JoiningCard canModerate={canModerate} onSignedOut={onSignedOut} />
+				<OpeningCard canSettings={canSettings} onSignedOut={onSignedOut} />
+				<JoiningCard canSettings={canSettings} onSignedOut={onSignedOut} />
+				<WatchCard canSettings={canSettings} onSignedOut={onSignedOut} />
 			</div>
 
 			{open ? (

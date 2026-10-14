@@ -12,6 +12,7 @@ import { warm } from "@/live/blur";
 import type { Placement } from "@/live/controls";
 import { useT } from "@/hooks/useT";
 import { deviceFailed } from "@/live/notices";
+import { type ChosenKind, rememberDeviceChoice } from "@/live/preferences";
 import { applyOriginalSound, rememberedOriginal } from "@/live/sound";
 import { type Room, supportsAudioOutputSelection } from "livekit-client";
 import { ChevronUp, Loader2 } from "lucide-react";
@@ -144,7 +145,7 @@ export function DeviceMenu({
 	);
 }
 
-function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
+function Devices({ room, kind }: { room: Room; kind: ChosenKind }) {
 	const t = useT();
 	const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
 	const [active, setActive] = useState<string | undefined>(() => room.getActiveDevice(kind));
@@ -182,6 +183,12 @@ function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
 	// device will not come: the switch was once left unawaited, and a device that
 	// failed to start left the menu ticking one thing while the call used
 	// another, with nothing said about either.
+	//
+	// Remembered once it took, and not before, for the next call to start on.
+	// This menu used only to switch, so somebody whose call wants the headset
+	// rather than the laptop picked it again at the start of every one — and a
+	// choice remembered before the device came up would bring back the one that
+	// failed.
 	const select = async (deviceId: string) => {
 		const before = active;
 		setActive(deviceId);
@@ -190,6 +197,8 @@ function Devices({ room, kind }: { room: Room; kind: MediaDeviceKind }) {
 			// A false answer is the SDK saying some track did not take the new
 			// device, which is the same failure without an error to carry it.
 			if (!(await room.switchActiveDevice(kind, deviceId))) throw new Error("not switched");
+
+			rememberDeviceChoice(kind, deviceId);
 		} catch (err) {
 			setActive(before);
 			if (kind !== "audiooutput") deviceFailed(kind === "audioinput" ? "microphone" : "camera", err);

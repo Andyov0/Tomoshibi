@@ -23,10 +23,10 @@ import { Card, Failed } from "./Shell";
  * wants to know.
  */
 export function OpeningCard({
-	canModerate,
+	canSettings,
 	onSignedOut,
 }: {
-	canModerate: boolean;
+	canSettings: boolean;
 	onSignedOut: () => void;
 }) {
 	const t = useT();
@@ -92,14 +92,14 @@ export function OpeningCard({
 							"Only people with an account here can start one. A passphrase somebody set themselves is not enough.",
 						)}
 						chosen={value?.chosen === "accounts"}
-						disabled={!canModerate || saving || !value}
+						disabled={!canSettings || saving || !value}
 						onChoose={() => choose("accounts")}
 					/>
 					<Choice
 						label={t("Administrators")}
 						describes={t("Only administrators can start one. Rooms already in use stay open.")}
 						chosen={value?.chosen === "admins"}
-						disabled={!canModerate || saving || !value}
+						disabled={!canSettings || saving || !value}
 						onChoose={() => choose("admins")}
 					/>
 				</div>
@@ -118,13 +118,19 @@ export function OpeningCard({
 
 				{value && <HowLongItLasts remember={value.remember} />}
 				{value && <WhereItLives policy={value} />}
-				{value && <Caveats policy={value} canModerate={canModerate} />}
+				{value && <Caveats policy={value} canSettings={canSettings} />}
 			</div>
 		</Card>
 	);
 }
 
-function Choice({
+/**
+ * One answer in a radiogroup of them.
+ *
+ * Shared with the watching card, which asks a question of the same shape — one
+ * deployment-wide answer, each option with its consequence written under it.
+ */
+export function Choice({
 	label,
 	describes,
 	chosen,
@@ -270,7 +276,7 @@ function WhereItLives({ policy }: { policy: Policy }) {
  * whether or not the server is obeying it, and whether or not the person
  * looking at it is allowed to move it.
  */
-function Caveats({ policy, canModerate }: { policy: Policy; canModerate: boolean }) {
+function Caveats({ policy, canSettings }: { policy: Policy; canSettings: boolean }) {
 	const t = useT();
 
 	return (
@@ -279,12 +285,12 @@ function Caveats({ policy, canModerate }: { policy: Policy; canModerate: boolean
 				<Note kind="warn">{t("No administrators are configured, so anyone can start a room.")}</Note>
 			)}
 
-			{!canModerate && <Note kind="quiet">{t("You can view this but not change it.")}</Note>}
+			{!canSettings && <Note kind="quiet">{t("You can view this but not change it.")}</Note>}
 		</>
 	);
 }
 
-function Note({ kind, children }: { kind: "warn" | "quiet"; children: ReactNode }) {
+export function Note({ kind, children }: { kind: "warn" | "quiet"; children: ReactNode }) {
 	return (
 		<p
 			className={cn(
@@ -338,10 +344,10 @@ export function words(opening: Opening): Phrase {
  * who guessed a name walk into one.
  */
 export function JoiningCard({
-	canModerate,
+	canSettings,
 	onSignedOut,
 }: {
-	canModerate: boolean;
+	canSettings: boolean;
 	onSignedOut: () => void;
 }) {
 	const t = useT();
@@ -383,14 +389,14 @@ export function JoiningCard({
 							"An invite link, an account, or the passphrase the room was opened with. Guessing the name is not enough.",
 						)}
 						chosen={value?.chosenJoin === "invited"}
-						disabled={!canModerate || saving || !value}
+						disabled={!canSettings || saving || !value}
 						onChoose={() => choose("invited")}
 					/>
 					<Choice
 						label={t("Signed in only")}
 						describes={t("An account and nothing else. Invite links stop working.")}
 						chosen={value?.chosenJoin === "accounts"}
-						disabled={!canModerate || saving || !value}
+						disabled={!canSettings || saving || !value}
 						onChoose={() => choose("accounts")}
 					/>
 				</div>

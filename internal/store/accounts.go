@@ -75,6 +75,16 @@ type Account struct {
 	// it, and never inherited by somebody given the same name later, which a
 	// list of names kept elsewhere would hand straight to them.
 	Scopes []string `json:"scopes,omitempty"`
+
+	// Perms is what this person may use, where it differs from the defaults.
+	// See perms.go, and ask May rather than reading this: a word missing from
+	// it is not a "no".
+	//
+	// On the account for the reason Scopes are — renamed with it, deleted with
+	// it, and never inherited by whoever is given the name next — and written
+	// only by SetAccountPerms and ChangeAccountPerms, for the reason given at
+	// the first.
+	Perms map[string]bool `json:"perms,omitempty"`
 }
 
 var (
@@ -129,6 +139,10 @@ func (a Account) Valid() error {
 		if !room.ValidScope(scope) {
 			return ErrAccountBadScope
 		}
+	}
+
+	if err := knownPerms(a.Perms); err != nil {
+		return err
 	}
 
 	// The signature is checked by the same rule the administrators use, so a
@@ -212,6 +226,7 @@ func (s *Store) AddAccount(account Account) error {
 	}
 
 	account.Name = strings.TrimSpace(account.Name)
+	account.Perms = accountPerms(account.Perms)
 
 	if account.Created.IsZero() {
 		account.Created = time.Now().UTC()
@@ -350,7 +365,26 @@ func (s *Store) AccountBySignature(trip string) (Account, bool) {
 // person who wants to be known differently should not need a new account. The
 // signature may change too, which is what changing a passphrase is. Both are
 // checked against everybody else first.
+//
+// Three fields are not the caller's to write, and are carried over from the
+// stored record inside the transaction whatever the caller passed: Created,
+// LastSeen and Perms. Every caller hands over a whole record it read some time
+// before, so a field taken from the caller is a field put back to whatever it
+// was then. For Perms that would be a revoked grant restored by a page that
+// never knew it had been revoked. LastSeen has its own writer, AccountSeen, and
+// Perms has SetAccountPerms and ChangeAccountPerms.
+//
+// The rest is written as passed, which is why the person's own changes do not
+// come through here: a picture or a passphrase changed from the account page
+// has SetAccountAvatar and SetAccountTrip, which touch the one field. The caller
+// left is an administrator changing the account, whose request reads the record
+// and writes it back within the same moment.
 func (s *Store) UpdateAccount(was string, account Account) error {
+	// Not validated as passed, since it is not what will be written: a stale
+	// copy carrying a word this build has since dropped would otherwise refuse
+	// somebody's change of picture over a field the change does not touch.
+	account.Perms = nil
+
 	if err := account.Valid(); err != nil {
 		return err
 	}
@@ -371,10 +405,17 @@ func (s *Store) UpdateAccount(was string, account Account) error {
 		}
 
 		var existing Account
-		if err := json.Unmarshal(raw, &existing); err == nil {
-			account.Created = existing.Created
-			account.LastSeen = existing.LastSeen
+		if err := json.Unmarshal(raw, &existing); err != nil {
+			// Refused rather than written over. Carrying fields across from a
+			// record that cannot be read would carry nothing, and the record
+			// written in its place would hold every permission at its default
+			// — which, for anybody who had one taken away, is giving it back.
+			return err
 		}
+
+		account.Created = existing.Created
+		account.LastSeen = existing.LastSeen
+		account.Perms = existing.Perms
 
 		key := accountKey(account.Name)
 
@@ -403,6 +444,86 @@ func (s *Store) UpdateAccount(was string, account Account) error {
 	})
 }
 
+// SetAccountAvatar changes an account's picture, and nothing else.
+//
+// For the person changing their own, from the account page. That request reads
+// their record when it begins and the picture after it — up to a hundred
+// kilobytes, sent at whatever pace their connection manages — and handing the
+// whole record back through UpdateAccount wrote every field as it was when the
+// request began. An administrator who blocked them in between was undone by
+// the picture arriving: the block gone, their films relayed again, their
+// session working again. Its own transaction touching its own field, as
+// SetAdminAvatar is for an administrator.
+func (s *Store) SetAccountAvatar(name, avatar string) error {
+	if len(avatar) > maxAvatar {
+		return ErrAvatarTooLarge
+	}
+
+	return s.changeAccount(name, func(account *Account) error {
+		account.Avatar = avatar
+		return nil
+	})
+}
+
+// SetAccountTrip moves an account from one signature to another, and changes
+// nothing else: the person changing their own passphrase.
+//
+// Only from the signature they proved. The request checks their current
+// passphrase against the record it read when it began, and an administrator
+// may have set a new one since; written regardless, the person's change would
+// undo the administrator's reset, which is usually the reason for it.
+func (s *Store) SetAccountTrip(name, was, trip string) error {
+	return s.changeAccount(name, func(account *Account) error {
+		if account.Trip != was {
+			return ErrNoSuchAccount
+		}
+
+		account.Trip = trip
+
+		return nil
+	})
+}
+
+// changeAccount reads one account, changes it, and writes it back, all in one
+// transaction, under the key it was found at.
+func (s *Store) changeAccount(name string, change func(*Account) error) error {
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(accountsBucket)
+		if bucket == nil {
+			return ErrNoSuchAccount
+		}
+
+		key := accountKey(name)
+
+		raw := bucket.Get(key)
+		if raw == nil {
+			return ErrNoSuchAccount
+		}
+
+		var account Account
+		if err := json.Unmarshal(raw, &account); err != nil {
+			// Left as it is for the build that can read it, as everywhere
+			// else a record is changed.
+			return err
+		}
+
+		if err := change(&account); err != nil {
+			return err
+		}
+
+		if taken(bucket, account.Trip, string(key)) {
+			return ErrAccountTripTaken
+		}
+
+		encoded, err := json.Marshal(account)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(key, encoded)
+	})
+}
+
 // RemoveAccount forgets somebody.
 func (s *Store) RemoveAccount(name string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
@@ -422,14 +543,56 @@ func (s *Store) RemoveAccount(name string) error {
 }
 
 // AccountSeen notes that somebody used their account.
+//
+// The one field, in one transaction, rather than the whole record read and
+// handed back. It used to be the second: found by signature, LastSeen set, and
+// passed to UpdateAccount — which carries LastSeen over from the stored record,
+// so what this wrote was the old value, every time, and the page said "never
+// here" about everybody. It also meant every proven join rewrote the whole
+// record from a copy read a moment earlier, which is the race an administrator
+// blocking somebody as they joined would have lost.
+//
+// Never moved backwards, so two joins finishing out of order leave the later.
 func (s *Store) AccountSeen(trip string, at time.Time) {
-	account, ok := s.AccountBySignature(trip)
-	if !ok {
+	if strings.TrimSpace(trip) == "" {
 		return
 	}
 
-	account.LastSeen = at
-	_ = s.UpdateAccount(account.Name, account)
+	_ = s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(accountsBucket)
+		if bucket == nil {
+			return nil
+		}
+
+		var key []byte
+		var account Account
+
+		_ = bucket.ForEach(func(k, raw []byte) error {
+			if key != nil {
+				return nil
+			}
+
+			var one Account
+			if err := json.Unmarshal(raw, &one); err == nil && one.Trip == trip {
+				key, account = append([]byte(nil), k...), one
+			}
+
+			return nil
+		})
+
+		if key == nil || !at.After(account.LastSeen) {
+			return nil
+		}
+
+		account.LastSeen = at
+
+		encoded, err := json.Marshal(account)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(key, encoded)
+	})
 }
 
 // Answering reports whether the store can be read at all.

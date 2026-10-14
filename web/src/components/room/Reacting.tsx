@@ -35,7 +35,7 @@ export function Reacting({ hand, reactions }: { hand?: boolean; reactions?: stri
 					// once are two separate things on screen and must not share a
 					// key, and they must not sit on top of each other either.
 					key={`${one}-${at}`}
-					className="pointer-events-none absolute bottom-10 left-1/2 animate-rise text-3xl"
+					className="pointer-events-none absolute bottom-10 left-1/2 animate-float text-3xl"
 					style={{ marginLeft: `${(at % 3) * 28 - 28}px` }}
 					aria-hidden
 				>

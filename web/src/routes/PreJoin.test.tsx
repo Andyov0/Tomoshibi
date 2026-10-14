@@ -20,7 +20,13 @@ vi.mock("@/live/remember", () => ({ remember: vi.fn(async () => {}) }));
  * sees.
  */
 
-const camera = { stop: vi.fn(), attach: vi.fn(), detach: vi.fn() };
+// As much of a camera track as the preview touches. Most tests here never turn
+// the camera on; the ones that do draw it, and the picture listens for the
+// camera being swapped underneath it.
+const camera = { stop: vi.fn(), attach: vi.fn(), detach: vi.fn(), on: vi.fn(), off: vi.fn() };
+
+// What each preview asked the camera for, so a test can see which one it was.
+const previewed: unknown[] = [];
 
 beforeEach(() => {
 	localStorage.clear();
@@ -30,7 +36,10 @@ beforeEach(() => {
 	// and a real request would hang in a test environment that has no devices.
 	vi.mock("livekit-client", async (original) => ({
 		...(await original<typeof import("livekit-client")>()),
-		createLocalVideoTrack: () => Promise.resolve(camera),
+		createLocalVideoTrack: (options?: unknown) => {
+			previewed.push(options);
+			return Promise.resolve(camera);
+		},
 	}));
 
 	vi.stubGlobal(
@@ -303,5 +312,45 @@ describe("a guest of a scoped room", () => {
 		await joinAs("Sam");
 
 		await waitFor(() => expect(screen.getByRole("button", { name: "Ask to be let in" })).toBeDefined());
+	});
+});
+
+/*
+ * The camera the preview shows, which has to be the one the call will send.
+ *
+ * The room starts on the camera last picked in a call (live/preferences.ts). A
+ * preview that went on showing the browser's default would be a rehearsal of a
+ * picture nobody is about to see, which is the one thing this screen is for.
+ */
+describe("the camera it previews", () => {
+	function devices(...ids: string[]) {
+		Object.defineProperty(navigator, "mediaDevices", {
+			value: {
+				enumerateDevices: async () => ids.map((deviceId) => ({ kind: "videoinput", deviceId })),
+				addEventListener() {},
+				removeEventListener() {},
+			},
+			configurable: true,
+		});
+	}
+
+	beforeEach(() => {
+		previewed.length = 0;
+		localStorage.setItem("meet-live.devices", JSON.stringify({ camera: true, microphone: true }));
+		localStorage.setItem("meet-live.device-choice", JSON.stringify({ videoinput: "cam-2" }));
+	});
+
+	it("is the one last picked in a call, while it is plugged in", async () => {
+		devices("cam-1", "cam-2");
+		open(vi.fn() as never);
+
+		await waitFor(() => expect(previewed).toEqual([{ deviceId: "cam-2" }]));
+	});
+
+	it("is the browser's own when the one picked is gone", async () => {
+		devices("cam-1");
+		open(vi.fn() as never);
+
+		await waitFor(() => expect(previewed).toEqual([undefined]));
 	});
 });

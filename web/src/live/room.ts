@@ -3,7 +3,9 @@ import {
 	type Participant,
 	Room,
 	RoomEvent,
+	type ScreenShareCaptureOptions,
 	Track,
+	type TrackPublishOptions,
 	type VideoCodec,
 	VideoPreset,
 	VideoPresets,
@@ -108,10 +110,15 @@ const AUTOMATIC = { width: 2560, height: 1440, frameRate: 60 as ShareFrameRate }
 /**
  * How many bits a picture of this size and rate is worth.
  *
- * Roughly a tenth of a bit per pixel per frame, which is about what H.264 wants
- * for screen content — text and flat colour compress far better than camera
- * noise, and the number is chosen for the moment a page scrolls rather than for
- * the seconds it sits still.
+ * About a fifth of a bit per pixel per frame — 0.22 — which is twice what H.264
+ * needs for screen content on purpose. It was a tenth, chosen as what text and
+ * flat colour cost at the moment a page scrolls, and it was raised on
+ * 2026-09-07 together with the cap below, when the person sharing asked that
+ * the picture never be trimmed and the asks go up rather than down. A ceiling is
+ * not a target: a still page spends a fraction of it, and the extra is there for
+ * the busy seconds. This comment went on saying "a tenth" for a month after the
+ * number changed, which is how a reader comparing 1440p at 120's 48.7 Mb/s
+ * against it concluded the arithmetic was wrong.
  *
  * Scaled with both dimensions rather than set per size, because the failure it
  * prevents is the same either way: four times the pixels at the same ceiling is
@@ -166,35 +173,58 @@ const BASE_RATE = 30;
  * audio went on perfectly, which is why it was reported as the sharing being
  * broken rather than as a slow network.
  *
- * ## Why two, and why these sizes
+ * ## Why these
  *
- * The first attempt was one layer at 960x540, chosen for legibility on a
- * starved path without asking what else selects a layer. Two things do, and the
- * other one is the tile.
+ * They were 640x360 at half a megabit and fifteen frames and 1280x720 at two and
+ * a half and thirty, and the gap above them was the next fault. The top of a
+ * share asks 34 to 49 Mb/s, fourteen to nineteen times the rung beneath it, so
+ * anybody whose line carried less than the whole share — a hotel's Wi-Fi at
+ * twenty, two of somebody's own devices watching on one line — was handed 720p
+ * at best and read blurred type. And the way back up meant the server proving
+ * thirty-odd megabits of headroom, which it almost never could: it swung between
+ * the two, waiting for a keyframe at every swing, and that is the share that
+ * "jumps to 360p every so often" (2026-10-13). Measured locally, with the server
+ * estimating from the sender's side: a 1080p rung at eight to nine megabits held
+ * thirty frames on 20 to 30 Mb/s downlinks where the old ladder fell to 720p at
+ * fifteen.
  *
- * A subscriber's client reports the size of the element the share is drawn
- * into, and the server takes `requestedSize = height * 0.9` and then the
- * smallest layer at least that tall (livekit-server mediatrackreceiver.go:1113,
- * layerSelectionTolerance at :43). A 540-line layer is therefore selected for
- * any element between about 400 and 640 device pixels tall — a 1366x768 laptop
- * with the window maximised, and a phone held sideways. Those people were being
- * handed fifteen frames a second and 800 kb/s of a screen they had both the
- * bandwidth and the pixels to read properly, and nothing said so.
+ * So, as the owner chose that evening and settled the day after (2026-10-14):
  *
- * So the ladder is built around what a tile will ask for rather than around one
- * number:
+ *   - 1280x720 at 2.5 Mb/s and thirty frames, for a small picture and a short
+ *     line. For a day it was 1.5 and fifteen, and under moving content that
+ *     came out at six to eleven frames a second — which, for two sessions
+ *     sharing a 20 Mb/s line that lost 3%, was all either of them received for
+ *     the whole minute measured. At 2.5 the same busy test picture went out at
+ *     seventeen.
+ *   - 1920x1080 at sixty frames when the share itself is sent at sixty or more,
+ *     at 11.3 Mb/s — eight priced up for the extra frames by the top layer's
+ *     own curve (`forRate`) — and at thirty and 8 Mb/s otherwise. At thirty for
+ *     everybody, the rung made a sixty-frame share half as smooth for whoever
+ *     watched it in an ordinary window: a 2560x1440 window whose picture covers
+ *     1925x1083 device pixels is sent this rung rather than the original, and
+ *     it received thirty frames where the day before it had received sixty.
+ *     Sixty rather than the share's own 120 or 240, because the rung is for a
+ *     line that cannot carry the original, and at 120 it would ask sixteen.
+ *   - The original on top, exactly as chosen.
  *
- *   - 640x360 sits below every real stage, so nothing but a genuinely tiny
- *     element selects it by size. It is what congestion control falls to, and
- *     that is the only way anybody ordinarily reaches it.
- *   - 1280x720 is the honest answer for a small window: more than such an
- *     element can draw, at about a tenth of the top layer's cost.
+ * Which one somebody receives follows from the device pixels their picture
+ * covers (see `create`), and below that from the server's estimate of their
+ * line. The server takes the smallest layer at least nine tenths as tall as
+ * what was asked for (livekit-server mediatrackreceiver.go:1117), so 720 serves
+ * a picture up to 800 device pixels tall, 1080 one up to 1200, and anything
+ * larger — a stage on most screens, and full screen on every one — is sent the
+ * original.
+ *
+ * A rung that is not smaller than the capture is not published at all; see
+ * `rungsBeneath`.
  *
  * ## What they cost the person sharing
  *
- * Three megabits a second whenever anybody is watching at full size, and this
- * paragraph said the opposite for a while, so the mechanism is worth stating
- * exactly.
+ * Up to 13.8 Mb/s whenever anybody is watching a share sent at sixty or more at
+ * full size, and up to 10.5 at fewer frames: 10.8 and 7.5 more than the three of
+ * the ladder before 2026-10-13, which the owner accepted knowingly on 2026-10-14
+ * — and the mechanism is worth stating exactly, because this paragraph said the
+ * opposite for a while.
  *
  * dynacast does pause rungs nobody has asked for — but it enables a *prefix*,
  * not a set. The server reduces every subscriber's demand to one number and
@@ -205,28 +235,118 @@ const BASE_RATE = 30;
  * stage turns on all three, and the case where a single encode goes out is
  * everybody watching *small* — the reverse of what was written here.
  *
- * The cost is therefore a constant rather than a proportion: SMALL and MIDDLE
- * name their own bitrates and `encodingsFromPresets` copies them verbatim, so
- * the rungs are 0.5 + 2.5 = 3.0 Mb/s whatever the top layer is set to. Measured
- * on a 1080p60 share with ten viewers: 19.35 Mb/s on the top rung and 2.96 on
- * the other two. As a share of the whole that is 13% at 1080p60, 24% at its
- * worst (1080p15) and 4% at its best (4K60).
+ * The cost is a constant rather than a proportion: SMALL and MIDDLE name their
+ * own bitrates and `encodingsFromPresets` copies them verbatim, whatever the top
+ * layer is set to. Those are ceilings, and what goes out is near them on a busy
+ * picture. Measured on a 1440p share at sixty with one viewer at full size
+ * (Chrome 145, 2026-10-14, a synthetic picture busy in every frame): the
+ * original 33.9 Mb/s at sixty frames, the 1080p rung 8.4 at 58 — Chrome allots
+ * a lower layer three quarters of its ceiling while the top is on — and the
+ * 720p rung 2.5 at seventeen, its frames held down by its ceiling on content
+ * that busy. 10.8 for the two rungs, where the ladder of 2026-10-13 measured
+ * 7.4 the same way. With the 1080p rung the most anybody wanted — an ordinary
+ * window — Chrome gave it its whole 11.3, and the viewer received 57 frames a
+ * second where on 2026-10-13 it had received thirty.
  *
- * It is paid once, not once per viewer. That is the part that matters here and
- * it is measured: one viewer 21.8 Mb/s, five 22.3, ten 22.3.
+ * And it is not free on a short uplink. Chrome's simulcast allocator fills the
+ * layers from the bottom, so a line that cannot carry all three gives the
+ * original whatever the rungs leave; for somebody whose line was already short
+ * of the original, the original gets up to 10.8 Mb/s less than it did before
+ * 2026-10-13. Nobody's choice is changed by this, and the hint in
+ * live/strain.ts counts the rungs as part of what the share asks of the line.
+ *
+ * It is paid once, not once per viewer. That was measured on the old ladder and
+ * nothing about it depends on the sizes: one viewer 21.8 Mb/s, five 22.3, ten
+ * 22.3.
  *
  * The sizes are absolute rather than relative — `scaleResolutionDownBy` is
- * worked out from the capture's smaller dimension — so these come out 640x360
- * and 1280x720 whether the screen behind them is 1080p, 1440p or 4K.
+ * worked out from the capture's smaller dimension — so these come out 1280x720
+ * and 1920x1080 whether the screen behind them is 1440p or 4K.
  */
-export const SMALL = new VideoPreset(640, 360, 500_000, 15);
-export const MIDDLE = new VideoPreset(1280, 720, 2_500_000, 30);
+export const SMALL = new VideoPreset(1280, 720, 2_500_000, 30);
+export const MIDDLE = new VideoPreset(1920, 1080, 8_000_000, 30);
+
+/** The share's rate at and above which its middle rung is sent at sixty. */
+const FAST = 60;
+
+/** The middle rung of a share sent at sixty frames or more. See SMALL and MIDDLE. */
+export const MIDDLE_FAST = new VideoPreset(1920, 1080, Math.round(forRate(MIDDLE.encoding.maxBitrate, FAST)), FAST);
 
 /**
- * What goes beneath the top layer, smallest first — the order the SDK sorts
- * presets into, and therefore the order the encodings come back in.
+ * What can go beneath the top layer of a share sent at `frameRate`, smallest
+ * first — the order the SDK sorts presets into, by bitrate, and therefore the
+ * order the encodings come back in.
+ *
+ * `frameRate` is what the top layer is sent at: the setting's, or the
+ * capture's where the capture says it gives fewer. A display that gives thirty
+ * to a share set to sixty has thirty frames for every layer, and a middle rung
+ * priced for sixty would be eleven megabits of ceiling for eight megabits'
+ * worth of picture.
  */
-export const BENEATH = [SMALL, MIDDLE];
+export function ladderAt(frameRate: number): VideoPreset[] {
+	return [SMALL, frameRate >= FAST ? MIDDLE_FAST : MIDDLE];
+}
+
+/**
+ * The rungs a capture of this size is published with: those smaller than it.
+ *
+ * A rung that is not smaller is a copy of the original. The SDK works a rung's
+ * scale out as the capture's shorter side over the rung's and stops at one, so
+ * a 1080p display shared at 1080p would carry the middle rung at 1920x1080 —
+ * the same picture as the top, at eleven megabits where the top might be
+ * nineteen, both at sixty. Whenever anybody watched at full size, dynacast's
+ * prefix would turn it on and the person sharing would pay for it, for nothing.
+ * A 1080p capture is therefore published with SMALL alone, and a window of 720
+ * lines or less with no rung at all.
+ *
+ * Measured against the shorter side, as the SDK scales: a window taller than it
+ * is wide is still 720 across at its smallest.
+ *
+ * Decided once, from the capture as it is when the share is published, because
+ * the number of encodings cannot change without publishing again. That has a
+ * consequence in each direction, and both are accepted rather than overlooked:
+ *
+ *   - Smaller afterwards — from the menu, or by the hint — keeps the rungs it
+ *     was published with, and one that is no longer smaller than the picture
+ *     goes on as a cheaper copy of it until the share is restarted.
+ *   - Larger afterwards has no rung it was not published with. A share that
+ *     started at 1080 lines or less — the menu remembering 1080p, a 1600x900
+ *     window — and is then set to automatic or 1440p, or has its window
+ *     maximised, is the original over SMALL alone: 720p at 2.5 Mb/s and then
+ *     everything, with no 1080p between, which is the gap the ladder of
+ *     2026-10-13 exists to close. A viewer on a 20 to 30 Mb/s line gets 720p,
+ *     and live/freeze.ts can only step them from the original straight to it.
+ *     Found in review on 2026-10-14; the way out is to stop and start the
+ *     share at the larger size, which publishes it with both rungs.
+ *
+ * Publishing again from here would drop every viewer's picture for a keyframe
+ * and change the track under them — their pin, their freeze watch, their
+ * subscription — at the moment somebody adjusted a setting, which is a worse
+ * trade than either of the two above.
+ *
+ * The frame rate is not decided once. Which middle rung a share carries follows
+ * the rate it is sent at, and that can change mid-share without publishing
+ * again: an encoding's bitrate and rate are parameters, and `retune` writes
+ * them.
+ *
+ * Every rung, when the capture will not say how large it is: the SDK scales none
+ * of them above the capture either way.
+ */
+export function rungsBeneath(capture: Capture, frameRate: number): VideoPreset[] {
+	const ladder = ladderAt(sentAt(capture, frameRate));
+	const shorter = Math.min(capture.width ?? 0, capture.height ?? 0);
+	if (!shorter) return ladder;
+
+	return ladder.filter((rung) => Math.min(rung.width, rung.height) < shorter);
+}
+
+/**
+ * The rate a share's top layer goes out at: the setting's, or fewer where the
+ * capture says it gives fewer — never more, by the rule `settle` keeps.
+ */
+function sentAt(capture: Capture, frameRate: number): number {
+	return Math.min(capture.frameRate || frameRate, frameRate);
+}
 
 /**
  * What to ask for, given a size and a rate.
@@ -248,9 +368,19 @@ export const BENEATH = [SMALL, MIDDLE];
  */
 function bitrateFor(width: number, height: number, frameRate: number): number {
 	const perFrame = width * height * BITS_PER_PIXEL_PER_FRAME;
-	const wanted = perFrame * BASE_RATE * Math.sqrt(frameRate / BASE_RATE);
+	const wanted = forRate(perFrame * BASE_RATE, frameRate);
 
 	return Math.round(Math.min(BITRATE_CAP, wanted));
+}
+
+/**
+ * What a picture worth `atBase` at thirty frames is worth at `frameRate`: the
+ * square root above, on its own, so that the middle rung's sixty is priced by
+ * the same curve as the top layer's. Two copies of it would be two curves the
+ * first time one of them changed.
+ */
+function forRate(atBase: number, frameRate: number): number {
+	return atBase * Math.sqrt(frameRate / BASE_RATE);
 }
 
 /**
@@ -274,6 +404,92 @@ function bitrateFor(width: number, height: number, frameRate: number): number {
  */
 export function settingsForTest(frameRate: ShareFrameRate, quality: ShareQuality) {
 	return settingsFor(frameRate, quality);
+}
+
+/** Both choices together, the way a share is started and changed. */
+export interface ShareSetting {
+	quality: ShareQuality;
+	frameRate: ShareFrameRate;
+}
+
+/** What a capture turned out to be, as far as anything has said. */
+export interface Capture {
+	width?: number;
+	height?: number;
+	frameRate?: number;
+}
+
+/**
+ * The ceiling a setting comes to against a capture, by the arithmetic `retune`
+ * applies.
+ *
+ * Shared rather than repeated, because the one other thing that asks this
+ * question — live/strain.ts, which checks whether a setting would fit a line
+ * before offering it — is only right while it gets the answer retune will get.
+ * Two copies of a formula are two formulas the first time one of them changes.
+ *
+ * The capture is clamped to the setting's size before it is priced, which is
+ * what applyConstraints does to it on the way in: a 4K display stepped down to
+ * 1080p is captured at 1080p, and a 1080p display chosen at 1440p stays 1080p.
+ */
+export function askOf(setting: ShareSetting, capture: Capture = {}): number {
+	const profile = settingsFor(setting.frameRate, setting.quality);
+
+	return worthOf(profile, {
+		width: Math.min(capture.width ?? profile.width, profile.width),
+		height: Math.min(capture.height ?? profile.height, profile.height),
+		frameRate: capture.frameRate,
+	});
+}
+
+/** The ceiling for a profile against what the capture says it is. Downward only. */
+function worthOf(profile: ReturnType<typeof settingsFor>, settled: Capture): number {
+	const rate = sentAt(settled, profile.frameRate);
+
+	return Math.min(
+		profile.maxBitrate,
+		bitrateFor(settled.width ?? profile.width, settled.height ?? profile.height, rate),
+	);
+}
+
+/** The picture a setting asks the capture for; automatic asks for what it sends. */
+export function sizeOf(quality: ShareQuality): Size {
+	return quality === "auto" ? { width: AUTOMATIC.width, height: AUTOMATIC.height } : SIZES[quality];
+}
+
+/**
+ * Every setting the menu offers that asks for less than this one in both
+ * directions: never a larger picture and never more frames.
+ *
+ * Largest first, and within a size the most frames first, so that a caller
+ * taking the first of several equal answers takes the one nearest to what was
+ * chosen. Automatic is never among them — it is not a smaller thing, it is a
+ * different question — and counts as what it sends, 1440p at sixty.
+ */
+export function stepsDown(from: ShareSetting): ShareSetting[] {
+	const top =
+		from.quality === "auto"
+			? { width: AUTOMATIC.width, height: AUTOMATIC.height, frameRate: AUTOMATIC.frameRate }
+			: { ...SIZES[from.quality], frameRate: from.frameRate };
+
+	const steps: ShareSetting[] = [];
+	const named = (Object.keys(SIZES) as Exclude<ShareQuality, "auto">[]).sort(
+		(a, b) => SIZES[b].width * SIZES[b].height - SIZES[a].width * SIZES[a].height,
+	);
+
+	for (const quality of named) {
+		const size = SIZES[quality];
+		if (size.width > top.width || size.height > top.height) continue;
+
+		for (const frameRate of [...RATES_FOR[quality]].sort((a, b) => b - a)) {
+			if (frameRate > top.frameRate) continue;
+			if (quality === from.quality && frameRate === from.frameRate) continue;
+
+			steps.push({ quality, frameRate });
+		}
+	}
+
+	return steps;
 }
 
 function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
@@ -309,11 +525,14 @@ function settingsFor(frameRate: ShareFrameRate, quality: ShareQuality) {
 		maxBitrate: bitrateFor(size.width, size.height, capped),
 		// H.264 throughout, including the still picture that used to take VP8.
 		//
-		// VP8 renders text a little more crisply — it has no chroma subsampling
-		// to soften coloured letters — and it is software on essentially every
-		// machine, both to encode and to decode. A share is the one track in a
-		// call that everybody is looking at, so that softness is paid for by one
-		// person's processor and the sharpness is spent on everybody else's.
+		// VP8 was kept for still text because libvpx honours the `text` content
+		// hint with a screen-content mode that a hardware H.264 encoder tuned for
+		// faces does not have. It was not, as this said for a while, because VP8
+		// skips chroma subsampling: it is 4:2:0 exactly as H.264 is (RFC 6386
+		// section 2), so coloured letters soften the same in both. And VP8 is
+		// software on essentially every machine, both to encode and to decode. A
+		// share is the one track in a call that everybody is looking at, so the
+		// cost lands on one person's processor and on everybody else's too.
 		videoCodec: "h264" as VideoCodec,
 		contentHint: (still ? "text" : "motion") as "text" | "motion" | "detail",
 		/*
@@ -370,7 +589,7 @@ export function create(secret: string): Room {
 	// it in.
 	installNoValidate();
 
-	return new Room({
+	const room = new Room({
 		// Measured against the screen's own pixels rather than the layout's.
 		//
 		// The quality a tile asks for is its size multiplied by a pixel density,
@@ -384,6 +603,24 @@ export function create(secret: string): Room {
 		//
 		// The cost is bandwidth, and it buys back the thing the bandwidth was
 		// being spent on in the first place.
+		//
+		// A shared screen is measured this way too, and for a month it was not.
+		// live/sharpness.ts held every share at its source size with an element
+		// of its own that was always visible and always as large as the
+		// capture, so every viewer asked for the original whatever their picture
+		// covered: measured, a 1440p share reached a 1000x700 window and a phone
+		// held upright at 34 Mb/s each, and two devices on one line asked for
+		// it twice. (A share shrunk to its card was never among them: the card
+		// has no picture, and the library unsubscribes a picture it unmounts.)
+		// The owner chose the opposite on
+		// 2026-10-13: a share is asked for at the device pixels it covers, a
+		// share nobody can see is paused, and a stage enlarged or taken full
+		// screen asks for the original again, through the measurement alone.
+		// SurfaceTile fits a share's element to its picture so that what is
+		// measured is the picture rather than the bars beside it. The two
+		// enlargements the measurement cannot see — a pinch, and a window moved
+		// to a denser display, neither of which resizes anything — are
+		// live/lens.ts.
 		adaptiveStream: { pixelDensity: "screen" },
 		dynacast: true,
 		videoCaptureDefaults: {
@@ -461,6 +698,11 @@ export function create(secret: string): Room {
 		// state worth being able to reach.
 		e2ee: sealing(secret),
 	});
+
+	// For as long as the room lives, so that no reconnect can find it unwatched.
+	keepShareSetting(room);
+
+	return room;
 }
 
 /**
@@ -592,108 +834,111 @@ export async function share(
 	// shared on its own, which carries on and is not doubled.
 	const alongside = wanted && listening(room) === undefined;
 
-	const published = await room.localParticipant.setScreenShareEnabled(
-		wanted,
-		{
-			// Captured and sent as music rather than as a voice: stereo, with none
-			// of the processing that helps a voice and damages everything else.
-			// Left to the defaults, a shared video's soundtrack was folded to mono,
-			// gated by DTX and run through noise suppression.
-			audio: alongside ? MUSIC_CAPTURE : false,
-			/*
-			 * The capture, in the one shape the SDK will pass on.
-			 *
-			 * This has been wrong twice, in opposite directions, and both times
-			 * the symptom was the same: every share came out at thirty frames a
-			 * second whatever the menu said, and nothing anywhere reported it.
-			 *
-			 * The first version wrote media constraints into `resolution` —
-			 * `{ width: { max: 1920 } }` — so that the size would be a ceiling,
-			 * with a cast to make it compile. `resolution` is a VideoResolution,
-			 * three plain numbers, and the SDK gates the whole block on
-			 * `resolution.width > 0`. An object is not greater than zero, so
-			 * every constraint was dropped and the browser was asked for
-			 * `video: true`.
-			 *
-			 * The second version moved them to `video`, which is passed through
-			 * untouched — and that is worse, because of this, in
-			 * createLocalScreenTracks:
-			 *
-			 *     if (options.resolution === undefined && !isSafari17Based())
-			 *       options.resolution = ScreenSharePresets.h1080fps30.resolution
-			 *
-			 * Leaving `resolution` out does not mean "no resolution". It means
-			 * 1920x1080 at thirty, which is then written over the `video`
-			 * constraints by the Object.assign below it. Omitting the field is
-			 * how a browser is asked for thirty frames on purpose.
-			 *
-			 * So: the SDK's own shape, always present, with the numbers this file
-			 * chose. The rate arrives intact, which is the whole point.
-			 *
-			 * What is given up is the size as a ceiling. The SDK writes
-			 * `width: { ideal }` for everything but Safari 17, ideal is a target,
-			 * and there is no way to say ceiling through a field that is three
-			 * numbers. So somebody on a 1080p display who picks 1440p has their
-			 * screen scaled up before it is encoded — more pixels carrying
-			 * nothing, at the same bitrate ceiling, so it costs processor and not
-			 * upload.
-			 *
-			 * That was clamped for a while, to `screen.width` — and the clamp was
-			 * worse than the thing it fixed. `screen` describes the display the
-			 * browser window is on, not the surface the picker returns, so
-			 * somebody with a laptop and a 4K monitor who chose 4K and shared the
-			 * monitor was given 1080p of it. Losing a picture the person asked
-			 * for is a worse trade than spending some of their processor on one
-			 * they did not, and it was invisible from both ends. `settle` below
-			 * takes the other half of the problem: the ceiling follows the
-			 * picture that actually arrived.
-			 *
-			 * The rate is the clamped one, not what was asked for — a rate
-			 * remembered from a size that allowed it would otherwise reach a
-			 * capture that cannot do it, and the browser answers by giving
-			 * whatever it likes rather than by saying no.
-			 */
-			resolution: {
-				width: profile.width,
-				height: profile.height,
-				frameRate: profile.frameRate,
-			},
-			// The picker should not offer this tab, which would be a mirror tunnel.
-			selfBrowserSurface: "exclude",
-			surfaceSwitching: "include",
-			contentHint: profile.contentHint,
+	const capture: ScreenShareCaptureOptions = {
+		// Captured and sent as music rather than as a voice: stereo, with none
+		// of the processing that helps a voice and damages everything else.
+		// Left to the defaults, a shared video's soundtrack was folded to mono,
+		// gated by DTX and run through noise suppression.
+		audio: alongside ? MUSIC_CAPTURE : false,
+		/*
+		 * The capture, in the one shape the SDK will pass on.
+		 *
+		 * This has been wrong twice, in opposite directions, and both times
+		 * the symptom was the same: every share came out at thirty frames a
+		 * second whatever the menu said, and nothing anywhere reported it.
+		 *
+		 * The first version wrote media constraints into `resolution` —
+		 * `{ width: { max: 1920 } }` — so that the size would be a ceiling,
+		 * with a cast to make it compile. `resolution` is a VideoResolution,
+		 * three plain numbers, and the SDK gates the whole block on
+		 * `resolution.width > 0`. An object is not greater than zero, so
+		 * every constraint was dropped and the browser was asked for
+		 * `video: true`.
+		 *
+		 * The second version moved them to `video`, which is passed through
+		 * untouched — and that is worse, because of this, in
+		 * createScreenTracks:
+		 *
+		 *     if (options.resolution === undefined && !isSafari17Based())
+		 *       options.resolution = ScreenSharePresets.h1080fps30.resolution
+		 *
+		 * Leaving `resolution` out does not mean "no resolution". It means
+		 * 1920x1080 at thirty, which is then written over the `video`
+		 * constraints by the Object.assign below it. Omitting the field is
+		 * how a browser is asked for thirty frames on purpose.
+		 *
+		 * So: the SDK's own shape, always present, with the numbers this file
+		 * chose. The rate arrives intact, which is the whole point.
+		 *
+		 * What is given up is the size as a ceiling. The SDK writes
+		 * `width: { ideal }` for everything but Safari 17, ideal is a target,
+		 * and there is no way to say ceiling through a field that is three
+		 * numbers. So somebody on a 1080p display who picks 1440p has their
+		 * screen scaled up before it is encoded — more pixels carrying
+		 * nothing, at the same bitrate ceiling, so it costs processor and not
+		 * upload.
+		 *
+		 * That was clamped for a while, to `screen.width` — and the clamp was
+		 * worse than the thing it fixed. `screen` describes the display the
+		 * browser window is on, not the surface the picker returns, so
+		 * somebody with a laptop and a 4K monitor who chose 4K and shared the
+		 * monitor was given 1080p of it. Losing a picture the person asked
+		 * for is a worse trade than spending some of their processor on one
+		 * they did not, and it was invisible from both ends. `settle` below
+		 * takes the other half of the problem: the ceiling follows the
+		 * picture that actually arrived.
+		 *
+		 * The rate is the clamped one, not what was asked for — a rate
+		 * remembered from a size that allowed it would otherwise reach a
+		 * capture that cannot do it, and the browser answers by giving
+		 * whatever it likes rather than by saying no.
+		 */
+		resolution: {
+			width: profile.width,
+			height: profile.height,
+			frameRate: profile.frameRate,
 		},
-		// Given per share rather than left to the room's defaults, which is what
-		// keeps the camera out of this: it goes on being sent the way it always
-		// was, and only the screen follows the choice made about the screen.
+		// The picker should not offer this tab, which would be a mirror tunnel.
+		selfBrowserSurface: "exclude",
+		surfaceSwitching: "include",
+		contentHint: profile.contentHint,
+	};
+
+	// Given per share rather than left to the room's defaults, which is what
+	// keeps the camera out of this: it goes on being sent the way it always
+	// was, and only the screen follows the choice made about the screen.
+	//
+	// This is also where the frame rate finally arrives. Asking the browser to
+	// capture sixty means nothing on its own — the encoder has a ceiling of
+	// its own, and while it stayed at thirty the second option cost a person
+	// twice the capture work to send exactly what the first one sent.
+	const publishing = (captured: Capture): TrackPublishOptions => ({
+		screenShareEncoding: {
+			maxBitrate: profile.maxBitrate,
+			maxFramerate: profile.frameRate,
+		},
+		videoCodec: profile.videoCodec,
+		degradationPreference: profile.degradationPreference,
+
+		// The whole allowance in the top layer, and a ladder beneath it.
 		//
-		// This is also where the frame rate finally arrives. Asking the browser to
-		// capture sixty means nothing on its own — the encoder has a ceiling of
-		// its own, and while it stayed at thirty the second option cost a person
-		// twice the capture work to send exactly what the first one sent.
-		{
-			screenShareEncoding: {
-				maxBitrate: profile.maxBitrate,
-				maxFramerate: profile.frameRate,
-			},
-			videoCodec: profile.videoCodec,
-			degradationPreference: profile.degradationPreference,
+		// Nothing above is reduced by this: the layer everybody able to take
+		// it receives is exactly the one `screenShareEncoding` asks for, and
+		// dynacast pauses the rungs nobody has asked for. What they change is
+		// the answer given to somebody who cannot take the top one — which
+		// was nothing at all. See SMALL and MIDDLE for the measurement that
+		// prompted them and for why the SDK's own default layer is neither.
+		//
+		// An empty list rather than none for a capture too small for any
+		// rung: the SDK reads a missing list as "use mine" and adds its own.
+		simulcast: true,
+		screenShareSimulcastLayers: rungsBeneath(captured, profile.frameRate),
 
-			// The whole allowance in the top layer, and a ladder beneath it.
-			//
-			// Nothing above is reduced by this: the layer everybody able to take
-			// it receives is exactly the one `screenShareEncoding` asks for, and
-			// dynacast pauses the rungs nobody has asked for. What they change is
-			// the answer given to somebody who cannot take the top one — which
-			// was nothing at all. See SMALL and MIDDLE for the measurement that
-			// prompted them and for why the SDK's own default layer is neither.
-			simulcast: true,
-			screenShareSimulcastLayers: BENEATH,
+		// For the sound that comes with the picture; the picture ignores these.
+		...MUSIC_PUBLISH,
+	});
 
-			// For the sound that comes with the picture; the picture ignores these.
-			...MUSIC_PUBLISH,
-		},
-	);
+	const published = wanted ? await start(room, capture, publishing) : await stop(room);
 
 	/*
 	 * Nothing below this narrows what was just asked for.
@@ -725,7 +970,89 @@ export async function share(
 
 	await settle(published, profile);
 
+	// Automatic keeps the rate it was handed rather than the sixty it sends,
+	// because that is the rate the menu goes back to if somebody picks a size
+	// mid-share; the price of automatic does not depend on it either way.
+	if (!wanted) {
+		capturing.delete(room);
+		record(room, undefined);
+	} else if (published) {
+		capturing.set(room, published.videoTrack);
+		record(room, { quality, frameRate: quality === "auto" ? frameRate : (profile.frameRate as ShareFrameRate) }, true);
+	}
+
 	return published;
+}
+
+/**
+ * A share being started, for each room, so that a second press or a stop does
+ * not race it.
+ */
+const starting = new WeakMap<Room, Promise<LocalTrackPublication | undefined>>();
+
+/**
+ * Capture the screen, then publish it with the rungs that capture can carry.
+ *
+ * Two steps rather than `setScreenShareEnabled`, which captures and publishes in
+ * one call and reads the rungs before anything outside it can know how large
+ * the capture is: the picker is where somebody chooses a 4K monitor or an
+ * 800x600 window, and which rungs are smaller than the picture depends entirely
+ * on which. `createScreenTracks` and `publishTrack` are the two halves that call
+ * makes (livekit-client.esm.mjs, setTrackEnabled), so what is captured and how
+ * it is published are exactly what they were; the capture's size is simply read
+ * in between.
+ *
+ * What the one call also did is done here. A share already published is
+ * returned as it is, as the SDK returns it, rather than captured twice; a start
+ * already under way is joined rather than raced, which is what the SDK's
+ * pending set was for; and a publish that fails stops what was captured, so a
+ * refused share does not leave the browser's "sharing this screen" bar up over
+ * nothing.
+ */
+async function start(
+	room: Room,
+	capture: ScreenShareCaptureOptions,
+	publishing: (captured: Capture) => TrackPublishOptions,
+): Promise<LocalTrackPublication | undefined> {
+	const participant = room.localParticipant;
+
+	const already = participant.getTrackPublication(Track.Source.ScreenShare);
+	if (already) return already;
+
+	const under = starting.get(room);
+	if (under) return under;
+
+	const going = (async () => {
+		const tracks = await participant.createScreenTracks(capture);
+		const picture = tracks.find((track) => track.kind === Track.Kind.Video);
+		const options = publishing(picture?.mediaStreamTrack.getSettings() ?? {});
+
+		try {
+			const published = await Promise.all(tracks.map((track) => participant.publishTrack(track, options)));
+			return published.find((publication) => publication.source === Track.Source.ScreenShare);
+		} catch (err) {
+			for (const track of tracks) track.stop();
+			throw err;
+		}
+	})();
+
+	starting.set(room, going);
+	try {
+		return await going;
+	} finally {
+		starting.delete(room);
+	}
+}
+
+/**
+ * Stop sharing, after any start still under way has finished.
+ *
+ * Otherwise a stop pressed while the picker is open finds nothing to stop, and
+ * the share the picker then returns goes out under a menu that says it ended.
+ */
+async function stop(room: Room): Promise<LocalTrackPublication | undefined> {
+	await starting.get(room)?.catch(() => undefined);
+	return room.localParticipant.setScreenShareEnabled(false);
 }
 
 /**
@@ -873,6 +1200,83 @@ export function rememberFrameRate(frameRate: ShareFrameRate): void {
 }
 
 /**
+ * What the share in a room is running at, and since when.
+ *
+ * The menu used to be the only thing that ever changed a share, so the menu's
+ * own state was the truth and nothing else needed to know. The hint in
+ * live/strain.ts changes one too, and from outside the menu — after which the
+ * menu would go on ticking a setting nobody was sending. So the setting is
+ * written down here, by the two functions that apply one, and read by the menu
+ * and the hint alike.
+ *
+ * `started` and `since` are on the page's monotonic clock. The hint ignores what
+ * a share measures for its first moments and for a while after any change,
+ * because the browser's estimate of the line starts low and climbs, and those
+ * figures look exactly like a line that cannot carry the share.
+ *
+ * `id` says which share this is, and it is the only thing that does. The
+ * publication's track sid is not: a full reconnect unpublishes and publishes
+ * the same capture again under a new sid, without anybody pressing anything,
+ * and the hint took that for a new share — so "Not now" was forgotten in the
+ * middle of the share it was said about. A share begins only through `share`,
+ * and that is where the number moves.
+ *
+ * Nothing here is stored. It is the share in front of everybody now, and it
+ * goes when that share does.
+ */
+export interface Running extends ShareSetting {
+	id: number;
+	started: number;
+	since: number;
+}
+
+const running = new WeakMap<Room, Running>();
+const runningListeners = new Set<() => void>();
+
+/** The number the next share is given. Only ever compared for equality. */
+let shares = 0;
+
+/**
+ * The capture each room's share is sending, so that a publication of it can be
+ * told apart from the publication of a new one. See `keepShareSetting`.
+ */
+const capturing = new WeakMap<Room, unknown>();
+
+/** The share a room is sending now, as the last share or retune left it. */
+export function runningShare(room: Room): Running | undefined {
+	return running.get(room);
+}
+
+/** Be told when that changes. Shaped for useSyncExternalStore. */
+export function watchRunning(listener: () => void): () => void {
+	runningListeners.add(listener);
+	return () => runningListeners.delete(listener);
+}
+
+/*
+ * `begun` says whether this is a new share. Without it a share stopped from the
+ * browser's own bar — which never passes through `share(false)` — would leave
+ * its start behind, and the next share would inherit an old one and skip the
+ * quiet time it is owed.
+ */
+function record(room: Room, setting: ShareSetting | undefined, begun = false): void {
+	const was = running.get(room);
+	const now = performance.now();
+
+	if (setting) {
+		const fresh = begun || !was;
+		running.set(room, {
+			...setting,
+			id: fresh ? ++shares : was.id,
+			started: fresh ? now : was.started,
+			since: now,
+		});
+	} else running.delete(room);
+
+	for (const listener of runningListeners) listener();
+}
+
+/**
  * Change a share's settings without asking for the screen again.
  *
  * The obvious way to apply a new size or frame rate is to publish the share
@@ -972,8 +1376,18 @@ export async function retune(
 	 * Same rule as settle: downward only, never above what was chosen, and
 	 * nothing anybody sees changes — a ceiling is a ceiling.
 	 */
-	const rate = Math.min(settled.frameRate || profile.frameRate, profile.frameRate);
-	const worth = Math.min(profile.maxBitrate, bitrateFor(settled.width ?? profile.width, settled.height ?? profile.height, rate));
+	const worth = worthOf(profile, settled);
+
+	/*
+	 * The ladder for the rate the share goes out at now, which is the half of
+	 * a rung that can change without publishing again. A share stepped from
+	 * sixty to thirty — from the menu, or by the hint — would otherwise keep a
+	 * middle rung priced for sixty under a top layer of thirty: eleven megabits
+	 * of ceiling for thirty frames of 1080p, which are worth eight. And the
+	 * other way, a share raised to sixty kept a middle rung of thirty, the
+	 * half-as-smooth picture the rung at sixty exists to end.
+	 */
+	const ladder = ladderAt(sentAt(settled, profile.frameRate));
 
 	parameters.encodings.forEach((encoding, index) => {
 		if (index === top) {
@@ -982,11 +1396,19 @@ export async function retune(
 			return;
 		}
 
-		// Its own rung, not one number for all of them.
-		const beneath = BENEATH[index] ?? SMALL;
+		// Its own rung, not one number for all of them. A share is published
+		// with the first rungs of its ladder and never a later one without an
+		// earlier — rungsBeneath only ever leaves out the larger — so an
+		// encoding's place beneath the top names its rung.
+		const beneath = ladder[index] ?? SMALL;
 
 		encoding.maxBitrate = beneath.encoding.maxBitrate;
-		encoding.maxFramerate = beneath.encoding.maxFramerate;
+
+		// Never more frames than the top, as the SDK has it at publish
+		// (encodingsFromPresets takes the smaller of the two): a share at
+		// fifteen has fifteen frames in every layer, and a rung told thirty
+		// would be a parameter that disagrees with the one the SDK wrote.
+		encoding.maxFramerate = Math.min(beneath.encoding.maxFramerate ?? profile.frameRate, profile.frameRate);
 
 		// And the size, which nothing here used to touch. The SDK works
 		// scaleResolutionDownBy out once, at publish, against the capture as it
@@ -1003,8 +1425,61 @@ export async function retune(
 
 	try {
 		await sender.setParameters(parameters);
-		return true;
 	} catch {
 		return false;
 	}
+
+	// Only once the encoding took. A refused write leaves the share sending
+	// what it sent before, and the menu showing that is the menu telling the
+	// truth. Automatic keeps the rate it was handed, as in share.
+	record(room, { quality, frameRate: quality === "auto" ? frameRate : (profile.frameRate as ShareFrameRate) });
+	return true;
+}
+
+/**
+ * Put a share's setting back on it after the SDK has published it again.
+ *
+ * A full reconnect — the signal connection lost and not resumable, which is
+ * what a saturated uplink does to it — ends with the SDK unpublishing every
+ * local track and publishing it again (`republishAllTracks`, from
+ * `handleSignalRestarted`). The capture is kept; the encoding is not. It is
+ * worked out afresh from the options the share was first published with, so a
+ * share that was changed since — from the menu, or by the hint in
+ * live/strain.ts — goes back to its first ceiling and its first frame rate, and
+ * `settle`'s correction for a smaller capture goes with it. Nothing says so: the
+ * menu goes on showing the change, and the hint goes on reasoning from it while
+ * the encoder sends something else: a share the card had switched to 1440p at
+ * thirty is back at 48.7 Mb/s and 120 under a menu that still says thirty.
+ * Read from livekit-client 2.21's source — republishAllTracks hands
+ * `pub.options` to publishOrRepublishTrack, which builds the encodings from
+ * them — rather than watched happening: a full reconnect cannot be ordered up
+ * from a test page without breaking the server it is talking to.
+ *
+ * A republish is told apart from a new share by the capture: a new share is a
+ * new track, published before `share` has recorded it, and the republish is the
+ * one already recorded. Applied through `retune`, so the encoder, the menu and
+ * the hint agree again by the same path the menu itself takes.
+ *
+ * Returns the unsubscribe, for the tests; the room's own lifetime is the
+ * subscription's otherwise.
+ */
+export function keepShareSetting(room: Room): () => void {
+	const again = (publication: LocalTrackPublication) => {
+		if (publication.source !== Track.Source.ScreenShare) return;
+
+		const setting = running.get(room);
+		const track = publication.videoTrack;
+
+		if (!setting || !track || track !== capturing.get(room)) return;
+
+		// A refusal leaves the share sending its first setting under a menu
+		// that says otherwise; the hint checks for that itself and says
+		// nothing while the two disagree.
+		void retune(room, setting.frameRate, setting.quality);
+	};
+
+	room.on(RoomEvent.LocalTrackPublished, again);
+	return () => {
+		room.off(RoomEvent.LocalTrackPublished, again);
+	};
 }

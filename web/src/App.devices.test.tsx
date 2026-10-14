@@ -44,7 +44,9 @@ vi.mock("@/live/room", () => ({
 	tokenFor: () => "",
 }));
 
-vi.mock("@/live/sharpness", () => ({ sharpShares: () => () => {} }));
+vi.mock("@/live/freeze", () => ({ watchShareFreezes: () => () => {} }));
+vi.mock("@/live/lens", () => ({ magnifyShares: () => () => {} }));
+vi.mock("@/live/delay", () => ({ cushionShares: () => () => {} }));
 
 // The call itself is not what is under test, and a real one wants a real room.
 vi.mock("@/routes/Room", () => ({ Room: () => <p>in the call</p> }));

@@ -1,6 +1,6 @@
 import { BackgroundProcessor, supportsBackgroundProcessors } from "@livekit/track-processors";
 import type { LocalVideoTrack } from "livekit-client";
-import { keep, recall } from "@/lib/storage";
+import { blurWanted, rememberBlur } from "./preferences";
 
 /**
  * Blurring whatever is behind somebody.
@@ -66,9 +66,6 @@ const ASSETS = {
  */
 const RADIUS = 12;
 
-/** Whether this browser was asked to blur, so it does not have to be asked again. */
-const WANTED_KEY = "meet-live.blur";
-
 /**
  * Fetch the runtime and the model before anybody asks for them.
  *
@@ -113,22 +110,15 @@ export function possible(): boolean {
 	}
 }
 
-export function wanted(): boolean {
-	try {
-		return recall(WANTED_KEY) === "on";
-	} catch {
-		return false;
-	}
-}
-
-export function remember(on: boolean): void {
-	try {
-		if (on) keep(WANTED_KEY, "on");
-		else keep(WANTED_KEY, undefined);
-	} catch {
-		// A browser refusing storage costs somebody one press next time.
-	}
-}
+/**
+ * Whether this browser was asked to blur, so it does not have to be asked again.
+ *
+ * Kept in preferences.ts, which the account page also writes, so that the page
+ * offering the setting ahead of a call does not have to load this file — and
+ * with it the segmentation runtime — to learn which key it is.
+ */
+export const wanted = blurWanted;
+export const remember = rememberBlur;
 
 /**
  * Turn it on or off for one camera track.

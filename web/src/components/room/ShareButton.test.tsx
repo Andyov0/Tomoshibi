@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { rememberFrameRate, rememberQuality } from "@/live/room";
 import { ShareButton } from "./ShareButton";
 
 /*
@@ -153,6 +154,66 @@ describe("ShareButton", () => {
 		pick("4K");
 
 		expect(onAdjust).toHaveBeenLastCalledWith(60, "4k");
+	});
+
+	/*
+	 * The menu shows what is being sent, not what it last picked.
+	 *
+	 * Something other than the menu changes a share now — the hint that the line
+	 * cannot carry it — and a menu that kept ticking its own last choice would
+	 * describe a share nobody is sending, and its next press would start from
+	 * that setting rather than from the one on the wire.
+	 */
+	it("shows the setting the share is running at, and adjusts from it", () => {
+		const onAdjust = vi.fn();
+		render(
+			<ShareButton
+				sharing
+				running={{ quality: "1080p", frameRate: 30 }}
+				listening={false}
+				onListen={vi.fn()}
+				onStopListening={vi.fn()}
+				onStart={vi.fn()}
+				onAdjust={onAdjust}
+				onStop={vi.fn()}
+			/>,
+		);
+
+		fireEvent.keyDown(screen.getByRole("button", { name: "Screen sharing settings" }), { key: "Enter" });
+
+		expect(screen.getByRole("menuitemcheckbox", { name: /1080p/ }).getAttribute("aria-checked")).toBe("true");
+		expect(screen.getByRole("menuitemcheckbox", { name: /Automatic/ }).getAttribute("aria-checked")).toBe("false");
+
+		fireEvent.click(screen.getByRole("button", { name: "60" }));
+		expect(onAdjust).toHaveBeenLastCalledWith(60, "1080p");
+	});
+
+	// And the next share starts from what was chosen here: what one line
+	// carried one afternoon is not a choice anybody made.
+	it("goes back to what was chosen here once the share has ended", () => {
+		rememberQuality("4k");
+		rememberFrameRate(15);
+
+		const onStart = vi.fn();
+		render(
+			<ShareButton
+				sharing={false}
+				running={{ quality: "1080p", frameRate: 30 }}
+				listening={false}
+				onListen={vi.fn()}
+				onStopListening={vi.fn()}
+				onStart={onStart}
+				onAdjust={vi.fn()}
+				onStop={vi.fn()}
+			/>,
+		);
+		open();
+
+		expect(screen.getByRole("menuitemcheckbox", { name: /4K/ }).getAttribute("aria-checked")).toBe("true");
+		expect(screen.getByRole("menuitemcheckbox", { name: /1080p/ }).getAttribute("aria-checked")).toBe("false");
+
+		fireEvent.click(screen.getByRole("menuitem", { name: /Share your screen/ }));
+		expect(onStart).toHaveBeenCalledWith(15, "4k");
 	});
 
 	it("still stops, from the menu", () => {

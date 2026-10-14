@@ -14,34 +14,111 @@ import {
 	startTheatre,
 	subscribeShow,
 } from "@/live/watch";
-import { resolveVideo } from "@/live/watch-api";
+import { readTicket, rememberInfo, resolveVideo } from "@/live/watch-api";
 import type { Room } from "livekit-client";
 import { Clapperboard, Loader2, Plus, X } from "lucide-react";
 import { type FormEvent, useState, useSyncExternalStore } from "react";
 
-/** What to say about a link that was not added. */
-export function refusal(why: Refusal): "That link is not a video that can be played here." | "That video cannot be played here." | "The video could not be read. Try again." {
+/**
+ * What to say about a video that was not added.
+ *
+ * The two refusals of a person are said as what the person seeing them was not
+ * given, because by the time one reaches somebody it is about them: a link is
+ * read by whoever adds it wherever they can (see addVideo), a link read on
+ * somebody else's behalf is refused a media server's film whoever they are,
+ * and the holder's own refusal is not passed on as one (see Theatre.add).
+ */
+export function refusal(
+	why: Refusal,
+):
+	| "That link is not a video that can be played here."
+	| "That video cannot be played here."
+	| "That video is for paying members only, and plays only on its own site."
+	| "That video is copy-protected, and plays only on its own site."
+	| "That video is not available in this server's region."
+	| "That episode could not be found: it may have been taken down, or not be offered in this server's region."
+	| "Watching together has not been opened to you."
+	| "The media servers have not been opened to you."
+	| "The video could not be read. Try again." {
 	if (why === "not_a_video") return "That link is not a video that can be played here.";
 	if (why === "unavailable") return "That video cannot be played here.";
+	// Bilibili's shows, today. "Its own site" because that is where it does
+	// play: the deployment's own premium account is given only a preview for a
+	// page elsewhere, so the account is no help and the sentence does not offer it.
+	if (why === "members_only") return "That video is for paying members only, and plays only on its own site.";
+	if (why === "copy_protected") return "That video is copy-protected, and plays only on its own site.";
+	if (why === "region_locked") return "That video is not available in this server's region.";
+	// Both, because which it is cannot be told from here: Bilibili answers a
+	// season it offers only in Hong Kong, Macau and Taiwan, asked from the
+	// mainland, with the same "nothing here" as an episode it took down.
+	if (why === "not_found")
+		return "That episode could not be found: it may have been taken down, or not be offered in this server's region.";
+	if (why === "not_allowed") return "Watching together has not been opened to you.";
+	if (why === "emby_not_allowed") return "The media servers have not been opened to you.";
 	return "The video could not be read. Try again.";
 }
 
+function theatreDeps(t: ReturnType<typeof useT>): TheatreDeps {
+	return {
+		resolve: (text, forOther) => resolveVideo(text, { forOther }),
+		read: readTicket,
+		onRefused: (why) => actionFailed(t(refusal(why))),
+	};
+}
+
 /**
- * Add what a link plays to the show: started here when nobody runs one and
- * this person may, and otherwise asked of whoever runs it. True if it was
- * added, or sent to be.
+ * Add what a link plays to the show. True if it was added, or sent to be.
+ *
+ * Read here by anybody who may read links -- `ready`: signed in, given
+ * watching together, on a deployment with a gateway -- and the show is handed
+ * only the ticket; started here with it when nobody runs one. Somebody who may
+ * not hands the link itself to whoever runs the show, who reads it on their
+ * behalf.
+ *
+ * Read here rather than by the holder because of whose choice a video is. A
+ * film from a media server is relayed only for the person given that who chose
+ * it, and a link the holder reads for somebody else is said to be somebody
+ * else's and refused such a film; so a granted person in somebody else's show,
+ * choosing from the media servers, would be refused their own choice if the
+ * holder read it. Every link rather than only the media servers' choices,
+ * because a media server's film can be pasted as an address too, and because
+ * a refusal then always describes the person who sees it.
  */
 export async function addVideo(room: Room, text: string, ready: boolean, t: ReturnType<typeof useT>): Promise<boolean> {
+	const me = room.localParticipant;
+	const by = me.name || me.identity;
 	const show = seenShow(room)?.show;
-	if (!show && ready) {
-		const deps: TheatreDeps = {
-			resolve: resolveVideo,
-			onRefused: (why) => actionFailed(t(refusal(why))),
-		};
-		const theatre = startTheatre(room, deps);
-		return theatre !== undefined && (await theatre.add(text, room.localParticipant.name || room.localParticipant.identity));
+
+	if (!ready) return command(room, { t: "add", text });
+
+	if (!show) {
+		const theatre = startTheatre(room, theatreDeps(t));
+		return theatre !== undefined && (await theatre.add(text, by));
 	}
-	return command(room, { t: "add", text });
+
+	if (show.holder === me.identity) return command(room, { t: "add", text });
+
+	const found = await resolveVideo(text);
+	if (typeof found === "string") {
+		actionFailed(t(refusal(found)));
+		return false;
+	}
+	rememberInfo(found);
+
+	// The link beside its ticket, for a holder whose page predates tickets: a
+	// call outlives an upgrade of the server that holds its pages, and such a
+	// holder read only the link and so, handed a ticket alone, read "undefined"
+	// and said every link from every newer page was not a video. A current
+	// holder takes the ticket. Never for a media server's film, which an older
+	// holder would read with its own session -- its own choice, on its own
+	// grant -- where a current one reads it as the chooser's.
+	const legacy = found.play.kind === "relay" ? {} : { text: text.slice(0, 2000) };
+	if (command(room, { t: "add", ticket: found.ticket, ...legacy })) return true;
+
+	// The show ended while the link was being read. What was read is still
+	// this person's to play, so it starts the next show rather than being lost.
+	const theatre = startTheatre(room, theatreDeps(t));
+	return theatre !== undefined && (await theatre.addTicket(found.ticket, by));
 }
 
 /**
@@ -49,9 +126,10 @@ export async function addVideo(room: Room, text: string, ready: boolean, t: Retu
  * and coming up.
  *
  * Pasting starts the show here when nobody runs one and this person may
- * resolve links -- they are signed in, on a deployment that has a watch
- * gateway -- and otherwise hands the link to whoever runs it. The video itself
- * plays on the stage; see WatchScreen.
+ * resolve links -- they are signed in and were given watching together, on a
+ * deployment that has a watch gateway -- and otherwise adds it to whoever's
+ * show is running; see addVideo. The video itself plays on the stage; see
+ * WatchScreen.
  */
 export function WatchTab({ room, ready }: { room: Room; ready: boolean }) {
 	const t = useT();
@@ -157,7 +235,14 @@ function VideoRow({
 				<span className="h-9 w-16 shrink-0 rounded bg-surface-hi" />
 			)}
 			<span className="flex min-w-0 flex-1 flex-col">
-				<span className="truncate text-[12.5px]">{known?.title ?? (info === "failed" ? t("The video could not be read. Try again.") : "…")}</span>
+				<span className="truncate text-[12.5px]">
+					{known?.title ??
+						(info === "unavailable"
+							? t("That video cannot be played here.")
+							: info === "failed"
+								? t("The video could not be read. Try again.")
+								: "…")}
+				</span>
 				<span className="truncate text-[10.5px] text-fg-muted">
 					{[playing ? t("Playing") : undefined, t("Added by {name}", { name: video.by }), video.duration ? clock(video.duration) : undefined]
 						.filter(Boolean)

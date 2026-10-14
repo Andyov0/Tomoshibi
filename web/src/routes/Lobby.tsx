@@ -559,6 +559,9 @@ export function Lobby({
 					onServer={setServer}
 					onOpenChange={setScheduling}
 					onSignedOut={onSignedOut}
+					// Absent from a server older than permissions, where every
+					// account could arrange.
+					canArrange={me.can?.includes("arrange") ?? true}
 				/>
 
 				{servers.length > 1 && !scheduling && (

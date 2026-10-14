@@ -15,6 +15,7 @@ import {
 	SHARE_QUALITIES,
 	type ShareFrameRate,
 	type ShareQuality,
+	type ShareSetting,
 	ratesFor,
 	rememberFrameRate,
 	rememberQuality,
@@ -46,6 +47,7 @@ import { useState } from "react";
  */
 export function ShareButton({
 	sharing,
+	running,
 	listening,
 	onStart,
 	onAdjust,
@@ -58,6 +60,18 @@ export function ShareButton({
 	onLossless = () => {},
 }: {
 	sharing: boolean;
+	/**
+	 * What the running share is actually sending, where something says.
+	 *
+	 * Shown in place of the menu's own choice while sharing, because the menu
+	 * is no longer the only thing that changes a share: the hint that the line
+	 * cannot carry it switches the setting from outside, and a menu still ticking
+	 * the old one would be a menu describing a share nobody is sending. Not
+	 * written down as the remembered choice either — the next share starts from
+	 * what was chosen here, since what one afternoon's line could carry is not a
+	 * thing to keep.
+	 */
+	running?: ShareSetting;
 	/** Sound is being shared on its own, without a picture. */
 	listening: boolean;
 	/** Whether sound shared on its own is to be sent losslessly as well. */
@@ -94,8 +108,13 @@ export function ShareButton({
 	const [quality, setQuality] = useState<ShareQuality>(rememberedQuality);
 	const [frameRate, setFrameRate] = useState<ShareFrameRate>(rememberedFrameRate);
 
-	const rates = ratesFor(quality);
-	const rate = rates.includes(frameRate) ? frameRate : (rates[rates.length - 1] ?? 30);
+	// Everything below reads these rather than the state, so that a press
+	// mid-share starts from what is being sent and not from what was last
+	// picked here.
+	const shown = sharing && running ? running : { quality, frameRate };
+
+	const rates = ratesFor(shown.quality);
+	const rate = rates.includes(shown.frameRate) ? shown.frameRate : (rates[rates.length - 1] ?? 30);
 
 	// The rate a size can actually carry. Changing the size mid-share while
 	// 240 was chosen would otherwise ask 4K for 240 frames a second, which the
@@ -138,7 +157,7 @@ export function ShareButton({
 				{SHARE_QUALITIES.map((option) => (
 					<DropdownMenuCheckboxItem
 						key={option}
-						checked={quality === option}
+						checked={shown.quality === option}
 						onSelect={(event) => {
 							// Kept open: this is a setting, and closing the menu would
 							// make somebody reopen it to do the thing they came for.
@@ -162,7 +181,7 @@ export function ShareButton({
 
 				{/* Absent for automatic, which chooses the rate as well. A control
 				    that did nothing would be a control somebody set and believed. */}
-				{quality !== "auto" && (
+				{shown.quality !== "auto" && (
 					<>
 						<DropdownMenuSeparator />
 						<DropdownMenuLabel>{t("Frames a second")}</DropdownMenuLabel>
@@ -175,7 +194,7 @@ export function ShareButton({
 									onClick={() => {
 										setFrameRate(option);
 										rememberFrameRate(option);
-										if (sharing) onAdjust(option, quality);
+										if (sharing) onAdjust(option, shown.quality);
 									}}
 									className={cn(
 										"rounded-md border px-2 py-1 text-[12px] tabular-nums transition-colors",

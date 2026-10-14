@@ -304,6 +304,24 @@ say "Writing the configuration"
     printf '  # Decides the address advertised to clients. False hands out one only\n'
     printf '  # this machine can reach, and calls fail after appearing to connect.\n'
     printf '  use_external_ip: true\n'
+    # How the media server decides what each viewer is sent, and how far back
+    # it can resend. Both are measured rather than guessed, and RELAY.md has the
+    # numbers. Left at the defaults, a viewer whose line could not carry a
+    # full-size screen share was sent all of it anyway and froze for the whole
+    # test, while the receive-side estimate the media server relies on by
+    # default swung between almost nothing and an assumed 100 Mb/s. The
+    # sender-side estimate let the same viewer settle on the 1080p layer. And
+    # 500 packets of history is a tenth of a second of a 1440p share, shorter
+    # than the round trip a resend needs from a sharer behind a tunnel; 4000 is
+    # most of a second.
+    #
+    # Neither asks a sharer to send less. They choose which of the layers a
+    # sharer already sends each viewer receives, and keep packets for longer.
+    printf '  # Sender-side estimate and a longer resend window; RELAY.md says why.\n'
+    printf '  packet_buffer_size_video: 4000\n'
+    printf '  congestion_control:\n'
+    printf '    enabled: true\n'
+    printf '    use_send_side_bwe: true\n'
     if [ -n "$iface" ]; then
         printf '  interfaces:\n    includes: ["%%s"]\n' "$iface"
     fi

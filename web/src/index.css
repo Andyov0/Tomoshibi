@@ -132,37 +132,6 @@
 	}
 
 	/*
-	 * The column notices fall into, and only where there is room beside the
-	 * pictures for one.
-	 *
-	 * It keeps a width so that text has somewhere to lay itself out; each notice
-	 * then shrinks to its own words inside it. Given as a rule rather than as a
-	 * style on the element, because below this width the library lays them
-	 * across the foot of the screen instead — and a width written inline cannot
-	 * be asked to stop applying.
-	 */
-	@media (min-width: 601px) {
-		[data-sonner-toaster] {
-			width: 18rem;
-		}
-	}
-
-	/*
-	 * Notices clear whatever else is along the bottom edge, and what is there
-	 * depends on the screen. A call keeps its controls in an island down there;
-	 * the screen before one keeps the button that gets you in. Both are reached
-	 * for, and a notice covering either is the same fault — the more so on the
-	 * one that says a room would not open, which is an answer about the button
-	 * it would be sitting on.
-	 *
-	 * Written with no specificity, so the library's own inline value is what it
-	 * overrides rather than something a later rule has to fight.
-	 */
-	:where(body[data-island]) [data-sonner-toaster] {
-		--mobile-offset-bottom: calc(env(safe-area-inset-bottom) + 5rem);
-	}
-
-	/*
 	 * How a tile arrives. Everything already in the room slides to its new
 	 * place; only the newcomer lifts in, which is what makes it possible to see
 	 * who just joined without being told.
@@ -361,9 +330,19 @@
  * Up and out rather than a fade in place: what it is saying is "somebody just
  * did this", and a thing that happened reads as motion. Fading would be
  * indistinguishable from the picture behind it changing.
+ *
+ * Its own name, and it was not. It was called rise, the name the cards on an
+ * otherwise empty screen already used for their entrance, and both halves of
+ * the collision lost. The class came out as one rule with the cards' 420
+ * milliseconds, so a reaction was gone in under half a second instead of four;
+ * and these keyframes, being outside every layer, beat the cards' own, so every
+ * card on the lobby and the account page lifted in, flew sixty-four pixels up
+ * and faded out, and then snapped back into place. Sampled frame by frame in a
+ * browser, which is the only place either showed: each rule read correctly on
+ * its own.
  */
-@utility animate-rise {
-	animation: rise 4000ms var(--ease-settle) forwards;
+@utility animate-float {
+	animation: float 4000ms var(--ease-settle) forwards;
 
 	@media (prefers-reduced-motion: reduce) {
 		animation: none;
@@ -371,7 +350,7 @@
 	}
 }
 
-@keyframes rise {
+@keyframes float {
 	0% {
 		opacity: 0;
 		transform: translateY(6px) scale(0.6);
@@ -396,4 +375,56 @@
 	@media (prefers-reduced-motion: reduce) {
 		animation-duration: 1ms;
 	}
+}
+
+/*
+ * The column notices fall into, and only where there is room beside the
+ * pictures for one.
+ *
+ * It keeps a width so that text has somewhere to lay itself out; each notice
+ * then shrinks to its own words inside it. Given as a rule rather than as a
+ * style on the element, because below this width the library lays them across
+ * the foot of the screen instead — and a width written inline cannot be asked
+ * to stop applying.
+ *
+ * Outside every layer, like the rule below and for the reason given there: the
+ * library's own rules are injected outside every layer, and a rule inside one
+ * loses to them whatever its specificity. This one sat in the utilities layer
+ * and lost to the library's `width: var(--width)` — 356 pixels, measured — which
+ * the notices' own max-w-72 happened to hide. And one attribute more specific
+ * than the library's rule, because the library's is injected after this
+ * stylesheet and wins a tie on order.
+ */
+@media (min-width: 601px) {
+	[data-sonner-toaster][data-y-position] {
+		width: 18rem;
+	}
+}
+
+/*
+ * Notices clear the controls during a call, at every width.
+ *
+ * Whatever else is along the bottom edge depends on the screen. The screen
+ * before a call keeps the button that gets you in, and Notices.tsx clears that
+ * through the library's own offset. A call keeps its controls in an island down
+ * there, and a notice covering it is a notice over the button somebody is
+ * reaching for — the hang-up button, the microphone — for up to ten seconds.
+ *
+ * This was a custom property, `--mobile-offset-bottom`, set on the toaster from
+ * inside a layer, and it never once applied. Sonner writes every one of its
+ * offsets as an inline style on that same element (assignOffset, applied with
+ * the list's own style), which beats any stylesheet; and its own rules are
+ * injected outside every layer, which beats anything inside one. So a notice on
+ * a phone in a call sat forty pixels up, across the island; and from 601 pixels
+ * up there was no rule at all, so on a tablet held upright a two-line notice in
+ * the right-hand corner covered the device menu and the hang-up button (found
+ * in review, 2026-10-14, at 375 and 768).
+ *
+ * So the position itself rather than the variable, outside any layer, and more
+ * specific than the library's rule for it (body and three attributes against
+ * two attributes). The arithmetic is CLEAR_OF_CONTROLS in routes/Room.tsx: the
+ * island's own offset from the edge, then its height and a gap.
+ */
+body[data-island] [data-sonner-toaster][data-y-position="bottom"] {
+	bottom: calc(max(1.25rem, env(safe-area-inset-bottom) + 0.5rem) + 4rem);
 }

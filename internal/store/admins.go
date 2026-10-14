@@ -56,6 +56,13 @@ type Admin struct {
 
 	// Added is when somebody put them here, for a page that wants to say so.
 	Added time.Time `json:"added"`
+
+	// Perms is what they may use beyond what every administrator holds — in
+	// practice the Emby grant, which is withheld from administrators exactly as
+	// it is from everybody else. See perms.go.
+	//
+	// Written only by SetAdminPerms, for the reason given there.
+	Perms map[string]bool `json:"perms,omitempty"`
 }
 
 // What an administrator can be wrong in.
@@ -63,7 +70,7 @@ var (
 	ErrAdminNoTrip   = errors.New("an administrator needs a signature")
 	ErrAdminBadTrip  = errors.New("a signature is ten lowercase letters and digits")
 	ErrAdminLongName = errors.New("an administrator name is at most 64 characters")
-	ErrAdminBadCan   = errors.New("an administrator may observe or moderate, and nothing else")
+	ErrAdminBadCan   = errors.New("that is not something an administrator can be allowed")
 	ErrAdminExists   = errors.New("somebody with that signature is already an administrator")
 	ErrNoSuchAdmin   = errors.New("nobody with that signature is an administrator here")
 
@@ -91,12 +98,12 @@ func (a Admin) Valid() error {
 	}
 
 	for _, can := range a.Can {
-		if can != config.Observe && can != config.Moderate {
+		if !config.Known(can) {
 			return ErrAdminBadCan
 		}
 	}
 
-	return nil
+	return knownPerms(a.Perms)
 }
 
 func alphanumeric(s string) bool {
@@ -152,6 +159,7 @@ func (s *Store) AddAdmin(admin Admin) error {
 
 	admin.Trip = strings.TrimSpace(admin.Trip)
 	admin.Name = strings.TrimSpace(admin.Name)
+	admin.Perms = adminPerms(admin.Perms)
 
 	if admin.Added.IsZero() {
 		admin.Added = time.Now().UTC()
@@ -181,7 +189,18 @@ func (s *Store) AddAdmin(admin Admin) error {
 // The signature is the key and cannot be changed: it is not a label but the
 // thing being recognised, and changing it would be removing one administrator
 // and adding another under cover of an edit.
+//
+// Added, Avatar and Perms are carried over from the stored record inside the
+// transaction, whatever the caller passed. Only Added was, and the role editor
+// builds an administrator from what the page sent — a name and a role — so every
+// change of role quietly took the person's picture away. Perms is carried for
+// the reason UpdateAccount carries it: a whole record handed back from an older
+// read must not restore a grant that was revoked in between. The picture has
+// SetAdminAvatar and the grants have SetAdminPerms.
 func (s *Store) UpdateAdmin(admin Admin) error {
+	// Replaced below, so not validated as passed.
+	admin.Perms = nil
+
 	if err := admin.Valid(); err != nil {
 		return err
 	}
@@ -200,9 +219,15 @@ func (s *Store) UpdateAdmin(admin Admin) error {
 		}
 
 		var existing Admin
-		if err := json.Unmarshal(raw, &existing); err == nil {
-			admin.Added = existing.Added
+		if err := json.Unmarshal(raw, &existing); err != nil {
+			// Refused rather than written over, for the reason UpdateAccount
+			// refuses: nothing could be carried across from it.
+			return err
 		}
+
+		admin.Added = existing.Added
+		admin.Avatar = existing.Avatar
+		admin.Perms = existing.Perms
 
 		// Losing the last owner is checked here rather than at the API, because
 		// the store is what the running deployment reads and this is the one
@@ -220,6 +245,67 @@ func (s *Store) UpdateAdmin(admin Admin) error {
 
 		return bucket.Put([]byte(admin.Trip), encoded)
 	})
+}
+
+// ChangeAdminCan gives or takes away the finer capabilities named, and leaves
+// the rest of what somebody may do as it is stored. It answers with what they may
+// do afterwards, as written.
+//
+// What a capability's box sends, one box at a time. The page sent the whole list
+// as it last drew it once, and UpdateAdmin replaced the stored list with that —
+// so an administrator ticking Relays on a page polled a minute ago also sent back
+// the list as it stood then, and took away the Settings another administrator
+// had given in between, with nothing on either page to say so. Merged here,
+// inside the transaction, so that two people pressing different boxes for the
+// same administrator both have what they pressed.
+//
+// The four finer capabilities and nothing else. Moderate and observe are ends of
+// the role control, which writes the whole list through UpdateAdmin and is
+// where the guard against losing the last moderator lives. A box pressed for
+// somebody who has since been made a moderator changes nothing: moderate holds
+// every box already, and the four written beside it would be four words nobody
+// chose (see clean in internal/admin/roster.go).
+func (s *Store) ChangeAdminCan(trip string, changes map[string]bool) ([]string, error) {
+	for capability := range changes {
+		switch capability {
+		case config.ManageRooms, config.ManageAccounts, config.ManageRelays, config.ManageSettings:
+		default:
+			return nil, ErrAdminBadCan
+		}
+	}
+
+	var written []string
+
+	err := s.changeAdmin(trip, func(admin *Admin) error {
+		if admin.Allows(config.Moderate) {
+			written = admin.Can
+			return nil
+		}
+
+		held := make(map[string]bool, len(admin.Can)+len(changes))
+		for _, one := range admin.Can {
+			held[one] = true
+		}
+
+		for capability, on := range changes {
+			held[capability] = on
+		}
+
+		// In the order a page lists them, each once, so the record says the
+		// same thing however the boxes were pressed.
+		can := []string{}
+		for _, one := range config.Capabilities() {
+			if held[one] {
+				can = append(can, one)
+			}
+		}
+
+		admin.Can, written = can, can
+
+		return nil
+	})
+
+	return written, err
 }
 
 // ReplaceAdminTrip moves an administrator to a new signature.
@@ -284,11 +370,52 @@ func (s *Store) ReplaceAdminTrip(from, to string) error {
 	})
 }
 
+// SetAdminAvatar changes an administrator's picture, and nothing else.
+//
+// Its own transaction for the reason SetAdminPerms is: the picture is changed by
+// the person from the account page, holding a copy of their record from when
+// they signed in, and handing that copy back whole would restore whatever about
+// them had changed since.
+func (s *Store) SetAdminAvatar(trip, avatar string) error {
+	// The same bound as an account's, in the same place: a limit the server
+	// does not enforce is a suggestion.
+	if len(avatar) > maxAvatar {
+		return ErrAvatarTooLarge
+	}
+
+	return s.db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket(adminsBucket)
+		if bucket == nil {
+			return ErrNoSuchAdmin
+		}
+
+		raw := bucket.Get([]byte(trip))
+		if raw == nil {
+			return ErrNoSuchAdmin
+		}
+
+		var admin Admin
+		if err := json.Unmarshal(raw, &admin); err != nil {
+			return err
+		}
+
+		admin.Avatar = avatar
+
+		encoded, err := json.Marshal(admin)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put([]byte(trip), encoded)
+	})
+}
+
 // RemoveAdmin forgets somebody.
 //
-// Their open session is not ended here — sessions are held in memory by whoever
-// keeps them — but it expires within the half hour and cannot be renewed,
-// because renewing asks this list again.
+// Their open session is not ended here — the management sessions are held by
+// whoever keeps them, and this list does not know where — but it ends within a
+// minute: a session asks this list again at most once a minute, and one whose
+// signature is no longer on it is dropped there. See Sessions.Of.
 func (s *Store) RemoveAdmin(trip string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket(adminsBucket)

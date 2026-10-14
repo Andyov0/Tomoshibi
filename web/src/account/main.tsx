@@ -13,14 +13,18 @@ import { Account } from "./Account";
  * nothing here at all rather than a route that refuses.
  *
  * Not the management pages, and it matters that it cannot become them. What
- * somebody does here is change their own passphrase and their own picture.
- * Everything else on this deployment belongs to whoever runs it.
+ * somebody does here is about their own account and their own browser: their
+ * passphrase and picture, the links into their own scopes, what they have been
+ * allowed to use — read, never changed — and how their calls start on this
+ * machine. Everything that belongs to the deployment belongs to whoever runs it,
+ * and is changed from there.
  */
 // The management pages deliberately do not do this. This page is not them: it
 // is where somebody who was handed an account goes to change the passphrase
 // they were handed, which is the first thing they ever do here and the one page
-// they arrive at without having chosen anything. Without this its thirty-odd
-// translated phrases, and the document's own lang, stayed at the initial "en".
+// they arrive at without having chosen anything. Without this its phrases, and
+// the document's own lang, stayed at the initial "en". It now has a language
+// picker of its own as well, for the reader the browser guessed wrongly.
 start();
 
 const root = document.getElementById("root");

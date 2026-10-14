@@ -49,6 +49,19 @@ var (
 var openedBy = []byte("rooms.opened_by")
 var joinedBy = []byte("rooms.joined_by")
 
+// embyRelay is where settings keeps whether a media server's films may be
+// relayed at all. "on" or "off"; see EmbyRelay.
+var embyRelay = []byte("watch.emby_relay")
+
+// youtubeRelay is where settings keeps whether YouTube is relayed for the
+// viewers who cannot reach it. "on" or "off"; see YouTubeRelay.
+var youtubeRelay = []byte("watch.youtube_relay")
+
+// bangumiRelay is where settings keeps whether Bilibili's bangumi are relayed
+// for everybody. "on" or "off", and on where nothing is written; see
+// BangumiRelay.
+var bangumiRelay = []byte("watch.bangumi_relay")
+
 // ErrNotOpen refuses a name nobody has used to somebody who may not open one.
 var ErrNotOpen = errors.New("that room has not been opened")
 
@@ -451,6 +464,164 @@ func (s *Store) SetJoining(joining room.Joining) error {
 
 		return bucket.Put(joinedBy, []byte(joining))
 	})
+}
+
+// EmbyRelay reports whether a film chosen from a media server may be relayed
+// through this deployment, for the people who were granted that.
+//
+// The switch above every individual grant, and off unless somebody turned it on
+// from the management pages: absent, unreadable, or anything but "on" reads as
+// off. That is the opposite of how the room policies fail, and on purpose. A
+// room policy that cannot be read and fails closed turns people away from their
+// own meetings; this one failing closed means a film plays from where each
+// viewer is, or does not play, and nobody's bandwidth is spent on a setting
+// nobody can see.
+//
+// In the store and not the configuration file, so that an old binary — which
+// refuses a file holding a key it does not know — still starts on a deployment
+// that has turned this on.
+func (s *Store) EmbyRelay() bool {
+	on := false
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		if bucket := tx.Bucket(settings); bucket != nil {
+			on = string(bucket.Get(embyRelay)) == "on"
+		}
+
+		return nil
+	})
+
+	return on
+}
+
+// SetEmbyRelay turns the media server relay on or off for the whole deployment.
+//
+// Written as a word rather than a byte, so that somebody reading the file with
+// a bolt browser while working out why films stopped playing can read it.
+func (s *Store) SetEmbyRelay(on bool) error {
+	value := []byte("off")
+	if on {
+		value = []byte("on")
+	}
+
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(settings)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(embyRelay, value)
+	})
+
+	if err != nil {
+		return fmt.Errorf("set whether the media server relay is on: %w", err)
+	}
+
+	return nil
+}
+
+// YouTubeRelay reports whether a YouTube video may be relayed through this
+// deployment, for whoever in the call cannot reach YouTube: in practice, the
+// people watching from mainland China.
+//
+// The second exception a deployment that relays nothing can make, beside
+// EmbyRelay and kept the same way: off unless somebody turned it on, and off
+// for anything but "on", so that a key nobody can read spends nothing. Unlike
+// the Emby relay it stands above no grant. Nobody chooses to need it — a viewer
+// is behind a border or is not — so there is nobody to give it to, and the
+// switch is the whole of the decision.
+func (s *Store) YouTubeRelay() bool {
+	on := false
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		if bucket := tx.Bucket(settings); bucket != nil {
+			on = string(bucket.Get(youtubeRelay)) == "on"
+		}
+
+		return nil
+	})
+
+	return on
+}
+
+// SetYouTubeRelay turns the YouTube relay on or off for the whole deployment,
+// written as a word for the reason SetEmbyRelay's is.
+func (s *Store) SetYouTubeRelay(on bool) error {
+	value := []byte("off")
+	if on {
+		value = []byte("on")
+	}
+
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(settings)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(youtubeRelay, value)
+	})
+
+	if err != nil {
+		return fmt.Errorf("set whether the YouTube relay is on: %w", err)
+	}
+
+	return nil
+}
+
+// BangumiRelay reports whether Bilibili's bangumi -- the series, films and
+// documentaries it licenses -- may be relayed through this deployment, for
+// everybody in the call.
+//
+// The third exception a deployment that relays nothing can make, and the one
+// that starts on. The owner chose it (2026-10-14): an episode for members plays
+// whole, and anything above 720p plays at all, only through the relay, so a
+// series not relayed is mostly a series not watched. On, therefore, where the
+// switch was never moved, and off only where somebody turned it off. A value
+// that is neither reads as off, as an unreadable one does for the other two,
+// so that a damaged key spends nothing.
+//
+// Starting on spends nothing by itself either. An episode is read to be relayed
+// only by a gateway started with RELAY_BANGUMI, which is the deployment's own
+// decision on the machine; a gateway without it reads bangumi as before, and
+// nothing here relays an episode that gateway did not read as one.
+func (s *Store) BangumiRelay() bool {
+	on := true
+
+	_ = s.db.View(func(tx *bolt.Tx) error {
+		if bucket := tx.Bucket(settings); bucket != nil {
+			if value := bucket.Get(bangumiRelay); value != nil {
+				on = string(value) == "on"
+			}
+		}
+
+		return nil
+	})
+
+	return on
+}
+
+// SetBangumiRelay turns the bangumi relay on or off for the whole deployment,
+// written as a word for the reason SetEmbyRelay's is.
+func (s *Store) SetBangumiRelay(on bool) error {
+	value := []byte("off")
+	if on {
+		value = []byte("on")
+	}
+
+	err := s.db.Update(func(tx *bolt.Tx) error {
+		bucket, err := tx.CreateBucketIfNotExists(settings)
+		if err != nil {
+			return err
+		}
+
+		return bucket.Put(bangumiRelay, value)
+	})
+
+	if err != nil {
+		return fmt.Errorf("set whether the bangumi relay is on: %w", err)
+	}
+
+	return nil
 }
 
 // SetOpening changes who may open a room.

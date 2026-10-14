@@ -60,6 +60,10 @@ type Session struct {
 	// Written is when the renewal was last written down, so that a page polling
 	// every five seconds does not write to disk every five seconds.
 	Written time.Time
+	// Checked is when Can and Name were last read from the roster rather than
+	// from the moment of signing in. Zero for a session brought back from the
+	// store, so the first request after a restart asks at once.
+	Checked time.Time
 }
 
 // Allows reports whether this session holds a capability.
@@ -67,15 +71,9 @@ func (s Session) Allows(capability string) bool {
 	return config.Admin{Trip: s.Trip, Can: s.Can}.Allows(capability)
 }
 
-// Sessions is everybody currently signed in.
-//
-// Held in memory and nowhere else, so restarting the server signs everybody
-// out. That is the honest behaviour for a process that keeps no other state
-// about people, and it means a session cannot outlive the configuration that
-// authorised it.
 // Kept is where sessions survive a restart.
 //
-// An interface of four methods rather than the store, so that the sign-in can
+// An interface of three methods rather than the store, so that the sign-in can
 // be tested without one — and nil, on a deployment that has no store, which
 // falls back to memory alone exactly as this always worked.
 type Kept interface {
@@ -84,13 +82,15 @@ type Kept interface {
 	DropSession(token string) error
 }
 
+// Sessions is everybody currently signed in, held in memory and, where there is
+// a store, written down there too so that a restart does not sign anybody out.
 type Sessions struct {
 	// admins is asked each time rather than captured once.
 	//
 	// Because the list changes while the deployment runs: somebody added on a
-	// page can sign in without a restart, and somebody removed cannot sign in
-	// again — their open session lasts out its half hour and then asks this
-	// same question and is refused. A captured slice would have made both of
+	// page can sign in without a restart, and somebody removed or demoted loses
+	// what they held within a minute — an open session asks this same question
+	// again once a minute; see Of. A captured slice would have made both of
 	// those a restart, which ends every call in progress.
 	admins  func() []config.Admin
 	tripKey []byte
@@ -142,6 +142,7 @@ func (s *Sessions) Open(name string, passphrase room.Passphrase) (Session, strin
 		Can:     found.Can,
 		Opened:  now,
 		Expires: now.Add(sessionIdle),
+		Checked: now,
 	}
 
 	token := secret()
@@ -212,6 +213,44 @@ func (s *Sessions) Of(r *http.Request) (Session, bool) {
 		return Session{}, false
 	}
 
+	// What the roster says about them now, rather than what it said when they
+	// signed in.
+	//
+	// The session used to carry the capabilities it was opened with for as long
+	// as it lasted, which is up to a week of renewals. The comments beside the
+	// roster said removing somebody took effect on the next request, and the
+	// code never asked: an administrator removed or demoted kept every power
+	// they had in the tab they already had open, and one given a capability
+	// could not use it until they signed out and in again. With capabilities
+	// cut finer and ticked from a page, the second half is a checkbox that
+	// visibly does nothing, and the first half is the one that matters.
+	//
+	// Once a minute rather than on every request, because the pages poll every
+	// five seconds per open tab and the roster is a read of the store. A minute
+	// is what the store's RemoveAdmin says it takes, and the tests hold it.
+	//
+	// Gone from the roster is gone. Where the store will not answer, the roster
+	// falls back to the configuration file and somebody added from a page is
+	// not on that — so an outage of the store signs them out. That is the
+	// direction to be wrong in for a list that decides who may act, and every
+	// page they could have reached would be failing to read the store anyway.
+	if now.Sub(session.Checked) > rosterRecheck {
+		current, listed := s.listed(session.Trip)
+		if !listed {
+			delete(s.open, cookie.Value)
+
+			if s.kept != nil {
+				_ = s.kept.DropSession(cookie.Value)
+			}
+
+			return Session{}, false
+		}
+
+		session.Can = current.Can
+		session.Name = current.Name
+		session.Checked = now
+	}
+
 	// Pushed forward by being used. Written back rather than only returned, or
 	// the renewal would last exactly as long as this request.
 	session.Expires = now.Add(sessionIdle)
@@ -229,6 +268,21 @@ func (s *Sessions) Of(r *http.Request) (Session, bool) {
 	}
 
 	return session, true
+}
+
+// rosterRecheck is how long a session's capabilities are trusted before the
+// roster is asked again. See Of.
+const rosterRecheck = time.Minute
+
+// listed finds a signature on the roster as it stands now.
+func (s *Sessions) listed(trip string) (config.Admin, bool) {
+	for _, one := range s.admins() {
+		if one.Trip == trip {
+			return one, true
+		}
+	}
+
+	return config.Admin{}, false
 }
 
 // What a management session is written down as.

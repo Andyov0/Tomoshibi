@@ -54,23 +54,58 @@ var gatewayClient = &http.Client{
 // The query is passed on unread. The gateway is the party that knows what its
 // parameters mean, and it refuses what it does not; reading them here as well
 // would be two lists of the same thing kept in step by hand.
+//
+// Except where this server has decided something about the query: then the
+// question asked is built from what it decided about, by passOnAsking. See
+// ticketQuery for the paths that do.
 func passOn(w http.ResponseWriter, r *http.Request, g gateway, what string, streamed bool) {
+	passOnAsking(w, r, g, what, r.URL.RawQuery, streamed)
+}
+
+// passOnAsking is passOn with the query this server chose to ask, rather than
+// the one that came.
+func passOnAsking(w http.ResponseWriter, r *http.Request, g gateway, what, query string, streamed bool) {
+	response, done := consult(w, r, g, what, query, streamed)
+	if response == nil {
+		return
+	}
+	defer done()
+
+	describeAnswer(w, g, response, streamed)
+	w.WriteHeader(response.StatusCode)
+
+	// Copied as it arrives rather than read whole: a track or a video is tens
+	// of megabytes, and the browser plays it while it comes.
+	_, _ = io.Copy(w, response.Body)
+}
+
+// consult puts a question to the gateway and hands back its answer, unread.
+//
+// Split from passOn for the one answer this server has to read before passing
+// it on — what a resolved link plays, which decides whether this deployment
+// will relay it; see watch.go. Everything about reaching the gateway is the
+// same for both, and two copies of it would be two places for the token
+// handling to drift apart.
+//
+// Where it returns nil it has already written the failure. Otherwise the caller
+// runs done when it has finished with the body.
+func consult(w http.ResponseWriter, r *http.Request, g gateway, what, query string, streamed bool) (*http.Response, func()) {
 	target := strings.TrimRight(g.url, "/") + "/" + what
-	if r.URL.RawQuery != "" {
-		target += "?" + r.URL.RawQuery
+	if query != "" {
+		target += "?" + query
 	}
 
 	ctx := r.Context()
+	cancel := context.CancelFunc(func() {})
 	if !streamed {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, 100*time.Second)
-		defer cancel()
 	}
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
+		cancel()
 		fail(w, http.StatusInternalServerError, reasonServerError)
-		return
+		return nil, nil
 	}
 
 	request.Header.Set(g.header, g.token)
@@ -91,10 +126,10 @@ func passOn(w http.ResponseWriter, r *http.Request, g gateway, what string, stre
 			}
 			slog.Warn("a gateway did not answer", "gateway", g.name, "path", what, "error", err)
 		}
+		cancel()
 		fail(w, http.StatusBadGateway, reasonServerError)
-		return
+		return nil, nil
 	}
-	defer response.Body.Close()
 
 	// The gateway refusing this server is a configuration that does not match,
 	// not a thing the person pressing play did or can do anything about. A
@@ -103,11 +138,23 @@ func passOn(w http.ResponseWriter, r *http.Request, g gateway, what string, stre
 	// reported a stale ticket in somebody's queue as this deployment's
 	// misconfiguration, at error level.
 	if response.StatusCode == http.StatusForbidden {
+		response.Body.Close()
+		cancel()
 		slog.Error("a gateway refused this server's token: " + g.key + " does not match the gateway's")
 		fail(w, http.StatusBadGateway, reasonServerError)
-		return
+		return nil, nil
 	}
 
+	return response, func() {
+		response.Body.Close()
+		cancel()
+	}
+}
+
+// describeAnswer sets what the browser is told about a gateway's answer: the
+// few headers that describe it, what it may be taken for, and how long it may
+// be kept.
+func describeAnswer(w http.ResponseWriter, g gateway, response *http.Response, streamed bool) {
 	for _, name := range gatewayHeaders {
 		if value := response.Header.Get(name); value != "" {
 			w.Header().Set(name, value)
@@ -125,11 +172,6 @@ func passOn(w http.ResponseWriter, r *http.Request, g gateway, what string, stre
 		cache = response.Header.Get("Cache-Control")
 	}
 	w.Header().Set("Cache-Control", cache)
-	w.WriteHeader(response.StatusCode)
-
-	// Copied as it arrives rather than read whole: a track or a video is tens
-	// of megabytes, and the browser plays it while it comes.
-	_, _ = io.Copy(w, response.Body)
 }
 
 func hasPrefix(value string, prefixes []string) bool {

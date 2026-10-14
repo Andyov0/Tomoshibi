@@ -57,6 +57,7 @@ export function Schedule({
 	onServer,
 	onOpenChange,
 	onSignedOut,
+	canArrange = true,
 }: {
 	servers: Relay[];
 	server: string;
@@ -66,6 +67,15 @@ export function Schedule({
 	onOpenChange: (open: boolean) => void;
 	/** The way back to signing in, for a session that has lapsed. */
 	onSignedOut?: () => void;
+	/**
+	 * Whether this account may arrange a meeting, as the account page was told
+	 * (Me.can). Without it the card still lists and cancels what was arranged
+	 * before the permission was taken away — the server still allows both —
+	 * and says why there is nothing to fill in, rather than offering a form
+	 * whose every press would be refused. It authorises nothing: the server
+	 * asks for itself, and a refusal it sends anyway has a sentence below.
+	 */
+	canArrange?: boolean;
 }) {
 	const t = useT();
 	const [open, setOpen] = useState(false);
@@ -287,54 +297,64 @@ export function Schedule({
 					}}
 					className={cn("flex flex-col gap-4 px-4 pb-4", leaving ? "animate-depart" : "animate-arrive")}
 				>
-					<label className="flex flex-col gap-1.5">
-						<span className="text-[11px] text-fg-muted">{t("Room name")}</span>
-						<Input
-							value={planning}
-							onChange={(event) => setPlanning(event.target.value)}
-							placeholder={t("Room name")}
-							aria-label={t("Name for the new room")}
-							maxLength={64}
-							className="bg-surface-hi"
-						/>
-						<span className="text-[11.5px] text-fg-muted leading-snug">
-							{t("Name it yourself, or leave it blank for one nobody has used.")}
-						</span>
-					</label>
+					{!canArrange && (
+						<p className="text-[12.5px] text-fg-muted leading-snug">
+							{t("Arranging meetings has not been opened to you.")}
+						</p>
+					)}
 
-					<div className="flex flex-col gap-1.5">
-						<span className="text-[11px] text-fg-muted">{t("Day")}</span>
-						<DayGrid value={day} onChange={setDay} />
-					</div>
+					{canArrange && (
+						<>
+							<label className="flex flex-col gap-1.5">
+								<span className="text-[11px] text-fg-muted">{t("Room name")}</span>
+								<Input
+									value={planning}
+									onChange={(event) => setPlanning(event.target.value)}
+									placeholder={t("Room name")}
+									aria-label={t("Name for the new room")}
+									maxLength={64}
+									className="bg-surface-hi"
+								/>
+								<span className="text-[11.5px] text-fg-muted leading-snug">
+									{t("Name it yourself, or leave it blank for one nobody has used.")}
+								</span>
+							</label>
 
-					<div className="flex flex-col gap-1.5">
-						<span className="text-[11px] text-fg-muted">{t("Time")}</span>
-						<div className="flex items-center gap-2">
-							<Clock value={hour} onChange={setHour} count={24} label={t("Hour")} />
-							<span className="text-fg-muted">:</span>
-							<Clock value={minute} onChange={setMinute} count={60} step={15} label={t("Minute")} />
-						</div>
-					</div>
+							<div className="flex flex-col gap-1.5">
+								<span className="text-[11px] text-fg-muted">{t("Day")}</span>
+								<DayGrid value={day} onChange={setDay} />
+							</div>
 
-					{/* The same list the lobby shows for starting and joining, brought
-					    in here so the machine is chosen where the meeting is arranged
-					    rather than somewhere below it. */}
-					{servers.length > 1 && <ServerList relays={servers} value={server} onChange={onServer} />}
+							<div className="flex flex-col gap-1.5">
+								<span className="text-[11px] text-fg-muted">{t("Time")}</span>
+								<div className="flex items-center gap-2">
+									<Clock value={hour} onChange={setHour} count={24} label={t("Hour")} />
+									<span className="text-fg-muted">:</span>
+									<Clock value={minute} onChange={setMinute} count={60} step={15} label={t("Minute")} />
+								</div>
+							</div>
 
-					<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-						<span className="min-w-0 text-[12.5px] text-fg-muted leading-snug">
-							{at
-								? past
-									? t("That time has already gone.")
-									: tooFar
-										? t("That is more than sixty days away.")
-										: t("Arranged for {when}", { when: whenSaid(at.toISOString()) })
-								: t("Choose a day.")}
-						</span>
-						<Button type="submit" variant="primary" disabled={!at || past || tooFar || arranging} className="shrink-0">
-							{arranging ? <Loader2 className="size-4 animate-spin" /> : t("Arrange")}
-						</Button>
-					</div>
+							{/* The same list the lobby shows for starting and joining, brought
+							    in here so the machine is chosen where the meeting is arranged
+							    rather than somewhere below it. */}
+							{servers.length > 1 && <ServerList relays={servers} value={server} onChange={onServer} />}
+
+							<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+								<span className="min-w-0 text-[12.5px] text-fg-muted leading-snug">
+									{at
+										? past
+											? t("That time has already gone.")
+											: tooFar
+												? t("That is more than sixty days away.")
+												: t("Arranged for {when}", { when: whenSaid(at.toISOString()) })
+										: t("Choose a day.")}
+								</span>
+								<Button type="submit" variant="primary" disabled={!at || past || tooFar || arranging} className="shrink-0">
+									{arranging ? <Loader2 className="size-4 animate-spin" /> : t("Arrange")}
+								</Button>
+							</div>
+						</>
+					)}
 
 					{list.status === "signed out" && (
 						<div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2">
@@ -362,7 +382,9 @@ export function Schedule({
 						</div>
 					)}
 
-					{list.status === "ready" && mine.length === 0 && (
+					{/* Not beside the sentence that says arranging was not opened to
+					    them: that already says why there is nothing here. */}
+					{canArrange && list.status === "ready" && mine.length === 0 && (
 						<p className="px-1 text-[12.5px] text-fg-muted">{t("No meetings arranged yet.")}</p>
 					)}
 
@@ -643,6 +665,11 @@ function explainArranging(whatever: unknown, t: ReturnType<typeof useT>): string
 			return t("Access denied. That server is for administrators.");
 		case "not_signed_in":
 			return t("Your session has expired. Sign in again.");
+		// The permission taken away while the lobby was open: the form was
+		// offered by what the page was told when it loaded. Trying again can
+		// never work, which is what the sentence below would have invited.
+		case "not_allowed":
+			return t("Arranging meetings has not been opened to you.");
 		default:
 			return t("Something went wrong. Try again.");
 	}

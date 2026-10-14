@@ -328,6 +328,17 @@ type Watch struct {
 	// For a deployment that pays for what leaves it. A relayed film is every
 	// byte of it, for every viewer who needed the relay, through whatever is
 	// in front of this server.
+	//
+	// With three exceptions, each decided in the store rather than here by a
+	// switch on the management pages: a media server's film chosen by
+	// somebody given the Emby permission, while watch.emby_relay is on;
+	// YouTube, for every viewer who cannot reach it, while
+	// watch.youtube_relay is on; and Bilibili's bangumi, for everybody, while
+	// watch.bangumi_relay is on. The first two start off. The third starts on,
+	// the owner's choice, and relays nothing unless the gateway was started
+	// with RELAY_BANGUMI to read bangumi for the relay; with all three off,
+	// or the last never read, this means exactly what it says. See
+	// internal/app/watchledger.go.
 	DirectOnly bool `yaml:"direct_only"`
 }
 
@@ -452,19 +463,85 @@ type Rooms struct {
 
 // What an administrator is allowed to do.
 //
-// Two levels rather than one, because the two halves of this differ by more
-// than degree. Watching costs nothing and answers the question anybody debugging
-// a call actually has; removing somebody from a room changes what another person
-// is experiencing, at once and without warning. Bound together, the choice
-// becomes give everybody the dangerous half or give nobody the useful one.
+// Observe and Moderate were the whole of it, because the two halves differ by
+// more than degree. Watching costs nothing and answers the question anybody
+// debugging a call actually has; removing somebody from a room changes what
+// another person is experiencing, at once and without warning. Bound together,
+// the choice becomes give everybody the dangerous half or give nobody the
+// useful one.
+//
+// The acting half has since been cut along the lines of what it acts on —
+// meetings, accounts, relays, deployment-wide switches — because "somebody who
+// looks after the accounts" and "somebody who runs the fleet" are different
+// people, and the only way to give either of them their job was to give both of
+// them everything. Moderate stays, and holds all four: every administrator
+// written down before the split keeps exactly what they had, without anybody
+// rewriting a file or a store. What Moderate holds that none of the four do is
+// the roster itself — appointing administrators — and the Emby grant, which
+// spends the deployment's bandwidth on somebody's behalf.
 const (
 	// Observe reads: what is happening now, which rooms exist, who is in them
 	// and what they are sending, whether the server is healthy.
 	Observe = "observe"
 
-	// Moderate acts: remove a participant, mute a track, close a room.
+	// ManageRooms acts on meetings: close one, remove or mute somebody, move a
+	// call to another machine, forget a name. It is also what lets an
+	// administrator host any room from the meeting pages, since those are the
+	// same acts reached from a different door.
+	ManageRooms = "rooms"
+
+	// ManageAccounts makes, changes and removes the ways in that are not
+	// administrators — except the Emby grant, which is Moderate's.
+	ManageAccounts = "accounts"
+
+	// ManageRelays adds, edits, orders and removes the machines meetings are
+	// held on, and hands out the install line, which carries the enrolment
+	// secret.
+	ManageRelays = "relays"
+
+	// ManageSettings changes the deployment-wide switches: who may open and
+	// enter rooms, and whether the Emby relay is on at all.
+	ManageSettings = "settings"
+
+	// Moderate is all of the above, and the roster.
 	Moderate = "moderate"
 )
+
+// capabilities is every one of them, in the order a page lists them.
+//
+// One list rather than a comparison repeated wherever a capability is read,
+// because there were four such comparisons — the startup check, the store, the
+// page handler and the two places that spell capabilities back out — and a
+// capability added to three of them is one that the fourth silently drops.
+var capabilities = []string{Observe, ManageRooms, ManageAccounts, ManageRelays, ManageSettings, Moderate}
+
+// Capabilities lists every capability an administrator can be given.
+//
+// A copy, so that no caller can grow the list for everybody else.
+func Capabilities() []string {
+	return append([]string(nil), capabilities...)
+}
+
+// Known reports whether a word is a capability this build understands.
+func Known(capability string) bool {
+	for _, one := range capabilities {
+		if one == capability {
+			return true
+		}
+	}
+
+	return false
+}
+
+// moderating reports whether Moderate carries a capability with it.
+func moderating(capability string) bool {
+	switch capability {
+	case ManageRooms, ManageAccounts, ManageRelays, ManageSettings:
+		return true
+	}
+
+	return false
+}
 
 // Admin is somebody who may open the management pages.
 //
@@ -487,6 +564,12 @@ type Admin struct {
 }
 
 // Allows reports whether this administrator holds a capability.
+//
+// Observe is held by everybody listed, and Moderate holds the four finer ones.
+// The second is what keeps an entry written as ["moderate"] — which is every
+// entry that could act before the finer ones existed — meaning what it meant:
+// without it, binding a route to ManageRooms would have quietly taken the rooms
+// away from every moderator on the deployment.
 func (a Admin) Allows(capability string) bool {
 	if capability == Observe {
 		return true
@@ -494,6 +577,10 @@ func (a Admin) Allows(capability string) bool {
 
 	for _, held := range a.Can {
 		if held == capability {
+			return true
+		}
+
+		if held == Moderate && moderating(capability) {
 			return true
 		}
 	}
@@ -906,10 +993,10 @@ func checkAdmins(admins []Admin) error {
 		}
 
 		for _, capability := range admin.Can {
-			if capability != Observe && capability != Moderate {
+			if !Known(capability) {
 				return fmt.Errorf(
-					"%s: %q is not something an administrator can be allowed. The two are %q and %q",
-					where, capability, Observe, Moderate)
+					"%s: %q is not something an administrator can be allowed. The ones there are: %s",
+					where, capability, strings.Join(capabilities, ", "))
 			}
 		}
 

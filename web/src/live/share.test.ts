@@ -16,19 +16,23 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { Room } from "livekit-client";
+import { type Room, RoomEvent, Track } from "livekit-client";
 
 import {
-	BENEATH,
 	MIDDLE,
+	MIDDLE_FAST,
 	SMALL,
+	ladderAt,
+	rungsBeneath,
 	SHARE_FRAME_RATES,
 	SHARE_QUALITIES,
 	type ShareFrameRate,
 	type ShareQuality,
+	keepShareSetting,
 	offers,
 	ratesFor,
 	retune,
+	runningShare,
 	settingsForTest,
 	share,
 } from "./room";
@@ -212,19 +216,25 @@ So both halves are held here: that the top layer still asks for everything, and
 that something smaller goes with it.
 */
 describe("the small copy that goes with a share", () => {
-	/** A room that records what it was asked to publish and does nothing else. */
-	function watching() {
+	/**
+	 * A room that records what it was asked to capture and publish, and whose
+	 * capture comes back at `size`.
+	 */
+	function watching(size: { width: number; height: number; frameRate?: number } = { width: 2560, height: 1440 }) {
 		const asked: { capture?: unknown; publish?: unknown } = {};
 
 		const room = {
 			localParticipant: {
 				// Nothing published yet, so no sound is being shared on its own.
 				trackPublications: new Map(),
-				setScreenShareEnabled: async (_on: boolean, capture: unknown, publish: unknown) => {
+				getTrackPublication: () => undefined,
+				createScreenTracks: async (capture: unknown) => {
 					asked.capture = capture;
+					return [{ kind: Track.Kind.Video, mediaStreamTrack: { getSettings: () => size }, stop: () => {} }];
+				},
+				publishTrack: async (_track: unknown, publish: unknown) => {
 					asked.publish = publish;
-
-					return undefined;
+					return { source: Track.Source.ScreenShare };
 				},
 			},
 		} as unknown as Room;
@@ -244,7 +254,7 @@ describe("the small copy that goes with a share", () => {
 		};
 
 		expect(publish.simulcast).toBe(true);
-		expect(publish.screenShareSimulcastLayers).toEqual(BENEATH);
+		expect(publish.screenShareSimulcastLayers).toEqual([SMALL, MIDDLE_FAST]);
 
 		// The half that matters most: nothing was taken off the top to pay for
 		// them. What somebody chose is still what somebody able to receive it
@@ -252,29 +262,83 @@ describe("the small copy that goes with a share", () => {
 		expect(publish.screenShareEncoding.maxBitrate).toBe(settingsForTest(120, "1080p").maxBitrate);
 	});
 
-	it("keeps the bottom rung under what any real stage will ask for", () => {
-		// The server picks by height: `requestedSize = height * 0.9`, then the
-		// smallest layer at least that tall. A rung at 540 lines is therefore
-		// chosen for an element between about 400 and 640 device pixels — a
-		// maximised 1366x768 laptop, a phone held sideways — and those people
-		// were handed the starved-path picture while having the bandwidth and
-		// the pixels for the real one.
-		//
-		// 400 device pixels is below any stage this draws, so the bottom rung is
-		// reached by congestion and not by a tile.
-		expect(SMALL.height / 0.9).toBeLessThanOrEqual(400);
+	it("is the ladder the owner chose", () => {
+		// 2026-10-13, after the old one — 360p at half a megabit, 720p at two
+		// and a half — left everybody whose line could not carry the original
+		// reading 720p at best, fourteen to nineteen times below the top; and
+		// settled on 2026-10-14, after the bottom rung at fifteen frames came out
+		// at six to ten under moving content and the middle one at thirty halved
+		// a sixty-frame share for everybody watching in an ordinary window. These
+		// numbers are a decision, not a tuning: changing one is a conversation
+		// with the person who made it, and this is what makes it one.
+		const said = (rung: typeof SMALL) => [rung.width, rung.height, rung.encoding.maxBitrate, rung.encoding.maxFramerate];
+
+		expect(said(SMALL)).toEqual([1280, 720, 2_500_000, 30]);
+		expect(said(MIDDLE)).toEqual([1920, 1080, 8_000_000, 30]);
+		expect(said(MIDDLE_FAST)).toEqual([1920, 1080, 11_313_708, 60]);
 	});
 
-	it("keeps the bottom rung inside a path that carries nothing else", () => {
-		// The leg this was measured on carried two megabits a second and lost a
-		// tenth of its packets. A rung that does not fit through that is not a
-		// fallback; the SDK's own default for a share is a quarter of the top
-		// layer, which for an ordinary ask is several megabits.
-		expect(SMALL.encoding.maxBitrate).toBeLessThan(1_000_000);
+	it("prices the middle rung's sixty by the top layer's own curve", () => {
+		// Eight megabits at thirty, scaled to sixty the way a share's own
+		// ceiling is scaled for its rate. A figure of its own here would be a
+		// second curve, and the first change to either would part them.
+		const curve = settingsForTest(60, "1080p").maxBitrate / settingsForTest(30, "1080p").maxBitrate;
 
+		expect(MIDDLE_FAST.encoding.maxBitrate / MIDDLE.encoding.maxBitrate).toBeCloseTo(curve, 6);
+	});
+
+	/*
+	 * Which middle rung a share carries, by the rate it is sent at.
+	 *
+	 * At thirty for every share, the middle rung is what an ordinary window is
+	 * sent — a 2560x1440 window covers 1925x1083 device pixels of a 1440p
+	 * share — and a share at sixty arrived there at thirty, measured on
+	 * 2026-10-13. At sixty for every share, a share at thirty would carry a copy
+	 * priced for frames that do not exist.
+	 */
+	it("sends the middle rung at sixty for a share sent at sixty or more, and at thirty otherwise", async () => {
+		for (const [rate, quality, middle] of [
+			[15, "1440p", MIDDLE],
+			[30, "1440p", MIDDLE],
+			[60, "1440p", MIDDLE_FAST],
+			[120, "1440p", MIDDLE_FAST],
+			[60, "4k", MIDDLE_FAST],
+			// Automatic sends sixty, whatever rate it was handed.
+			[30, "auto", MIDDLE_FAST],
+		] as const) {
+			const { room, asked } = watching({ width: 3840, height: 2160 });
+			await share(room, true, rate, quality);
+
+			const publish = asked.publish as { screenShareSimulcastLayers?: unknown };
+			expect(publish.screenShareSimulcastLayers, `${quality} at ${rate}`).toEqual([SMALL, middle]);
+		}
+	});
+
+	it("goes by the frames the capture gives, where it gives fewer than were asked for", async () => {
+		// Sixty chosen on a source that answers thirty: every layer has thirty
+		// frames, and eleven megabits of ceiling for them is upload reserved for
+		// nothing. Never the other way: a source reporting more than was asked
+		// for does not raise the rung.
+		const slow = watching({ width: 2560, height: 1440, frameRate: 30 });
+		await share(slow.room, true, 60, "1440p");
+		expect((slow.asked.publish as { screenShareSimulcastLayers?: unknown }).screenShareSimulcastLayers).toEqual([SMALL, MIDDLE]);
+
+		const eager = watching({ width: 2560, height: 1440, frameRate: 120 });
+		await share(eager.room, true, 30, "1440p");
+		expect((eager.asked.publish as { screenShareSimulcastLayers?: unknown }).screenShareSimulcastLayers).toEqual([SMALL, MIDDLE]);
+	});
+
+	it("keeps the bottom rung a fraction of any picture it stands in for", () => {
+		// It was held under two megabits, for the leg the first ladder was built
+		// on — two a second, a tenth of its packets lost. The owner set it at
+		// two and a half on 2026-10-14, above that leg; what is left to hold is
+		// that it is still a fallback and not a second share: under a third of
+		// the cheapest top layer anything offered can ask for, which is 1080p
+		// at fifteen's 9.7. The SDK's own default for a share is a quarter of
+		// the top layer, which for an ordinary ask is several megabits.
 		for (const quality of SHARE_QUALITIES) {
 			for (const rate of ratesFor(quality)) {
-				expect(SMALL.encoding.maxBitrate * 5).toBeLessThan(
+				expect(SMALL.encoding.maxBitrate * 3).toBeLessThan(
 					settingsForTest(rate, quality).maxBitrate,
 				);
 			}
@@ -285,13 +349,149 @@ describe("the small copy that goes with a share", () => {
 		// The middle rung is what an element too small for the top layer should
 		// get. It has to be bigger in every dimension that decides a selection,
 		// or it is not a rung.
-		expect(MIDDLE.height).toBeGreaterThan(SMALL.height);
-		expect(MIDDLE.encoding.maxBitrate).toBeGreaterThan(SMALL.encoding.maxBitrate);
-		expect(MIDDLE.encoding.maxFramerate ?? 0).toBeGreaterThan(SMALL.encoding.maxFramerate ?? 0);
+		for (const middle of [MIDDLE, MIDDLE_FAST]) {
+			expect(middle.height).toBeGreaterThan(SMALL.height);
+			expect(middle.encoding.maxBitrate).toBeGreaterThan(SMALL.encoding.maxBitrate);
+			expect(middle.encoding.maxFramerate ?? 0).toBeGreaterThanOrEqual(SMALL.encoding.maxFramerate ?? 0);
+		}
 
-		// And smallest first: the SDK sorts presets ascending and hands the
-		// encodings back in that order, which is the order retune walks.
-		expect(BENEATH).toEqual([SMALL, MIDDLE]);
+		// And smallest first by bitrate, which is how the SDK sorts presets
+		// (sortPresets) and so the order the encodings come back in — the order
+		// retune walks, naming each encoding's rung by its place.
+		for (const rate of [15, 30, 60, 120, 240]) {
+			const ladder = ladderAt(rate);
+			const sorted = [...ladder].sort((a, b) => a.encoding.maxBitrate - b.encoding.maxBitrate);
+			expect(ladder).toEqual(sorted);
+		}
+	});
+
+	/*
+	 * The rung that would be a second copy of the original.
+	 *
+	 * The SDK scales a rung by the capture's shorter side over the rung's and
+	 * stops at one, so a 1080p capture published with MIDDLE carries MIDDLE at
+	 * 1920x1080 — the original's picture at eight megabits and thirty frames —
+	 * and dynacast turns it on with the original whenever anybody watches at
+	 * full size. Nothing looks wrong from either end; the person sharing simply
+	 * uploads eight megabits more than anybody needs. Most displays are 1080p.
+	 */
+	it("publishes a capture only with the rungs smaller than it", async () => {
+		for (const [width, height, rungs] of [
+			[3840, 2160, [SMALL, MIDDLE]],
+			[2560, 1440, [SMALL, MIDDLE]],
+			[1920, 1200, [SMALL, MIDDLE]],
+			[1920, 1080, [SMALL]],
+			[1366, 768, [SMALL]],
+			// Taller than wide: the shorter side is what the SDK scales by.
+			[1080, 1920, [SMALL]],
+			[1280, 720, []],
+			[800, 600, []],
+		] as const) {
+			const { room, asked } = watching({ width, height });
+			await share(room, true, 30, "4k");
+
+			const publish = asked.publish as { screenShareSimulcastLayers?: unknown };
+			expect(publish.screenShareSimulcastLayers, `${width}x${height}`).toEqual(rungs);
+
+			// The same sizes at sixty, with the middle rung at sixty.
+			const fast = watching({ width, height });
+			await share(fast.room, true, 60, "4k");
+
+			const sixty = rungs.map((rung) => (rung === MIDDLE ? MIDDLE_FAST : rung));
+			const published = fast.asked.publish as { screenShareSimulcastLayers?: unknown };
+			expect(published.screenShareSimulcastLayers, `${width}x${height} at sixty`).toEqual(sixty);
+		}
+	});
+
+	it("says none rather than nothing for a capture too small for any rung", () => {
+		// An absent list is the SDK's cue to add a rung of its own choosing, a
+		// quarter of the top layer's bitrate at the same size as the original.
+		expect(rungsBeneath({ width: 1280, height: 720 }, 60)).toEqual([]);
+	});
+
+	it("keeps every rung when the capture will not say how large it is", () => {
+		// The SDK scales none of them above the capture either way, and leaving
+		// them out would leave a starved viewer nothing smaller to be sent.
+		expect(rungsBeneath({}, 30)).toEqual([SMALL, MIDDLE]);
+		expect(rungsBeneath({}, 60)).toEqual([SMALL, MIDDLE_FAST]);
+	});
+});
+
+/*
+Capturing first and publishing second.
+
+`share` used to hand both halves to setScreenShareEnabled, which reads the rungs
+before the picker has returned a picture to measure. Doing the two halves
+itself means doing what that call also did, and these are the parts that would
+fail without a sound: a capture left running after its publish failed keeps the
+browser's "you are sharing" bar up over nothing, and a stop pressed while the
+picker is open stops nothing and lets the share go out after it.
+*/
+describe("starting a share in two steps", () => {
+	function starting(publish: () => Promise<unknown>) {
+		const stopped = vi.fn();
+		let resolve: (() => void) | undefined;
+		const picked = new Promise<void>((done) => {
+			resolve = done;
+		});
+
+		const room = {
+			localParticipant: {
+				trackPublications: new Map(),
+				getTrackPublication: () => undefined,
+				createScreenTracks: async () => {
+					await picked;
+					return [{ kind: Track.Kind.Video, mediaStreamTrack: { getSettings: () => ({ width: 2560, height: 1440 }) }, stop: stopped }];
+				},
+				publishTrack: vi.fn(publish),
+				setScreenShareEnabled: vi.fn(async () => undefined),
+			},
+		} as unknown as Room;
+
+		return { room, stopped, pick: () => resolve?.() };
+	}
+
+	it("stops what it captured when the publish fails", async () => {
+		const { room, stopped, pick } = starting(async () => {
+			throw new Error("refused");
+		});
+
+		const going = share(room, true, 30, "1080p");
+		pick();
+
+		await expect(going).rejects.toThrow("refused");
+		expect(stopped).toHaveBeenCalled();
+	});
+
+	it("stops a share whose picker was still open when stop was pressed", async () => {
+		const order: string[] = [];
+		const { room, pick } = starting(async () => {
+			order.push("published");
+			return { source: Track.Source.ScreenShare };
+		});
+		(room.localParticipant.setScreenShareEnabled as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			order.push("stopped");
+			return undefined;
+		});
+
+		const going = share(room, true, 30, "1080p");
+		const stopping = share(room, false, 30, "1080p");
+		pick();
+		await Promise.all([going, stopping]);
+
+		expect(order).toEqual(["published", "stopped"]);
+	});
+
+	it("captures once when asked twice", async () => {
+		const { room, pick } = starting(async () => ({ source: Track.Source.ScreenShare }));
+		const capture = vi.spyOn(room.localParticipant, "createScreenTracks");
+
+		const one = share(room, true, 30, "1080p");
+		const two = share(room, true, 30, "1080p");
+		pick();
+		await Promise.all([one, two]);
+
+		expect(capture).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -302,7 +502,7 @@ Both produced the same silence: every share ran at thirty frames a second
 whatever the menu said, and nothing reported it. The first version wrote media
 constraints into `resolution`, which takes three plain numbers, so the SDK's
 `resolution.width > 0` gate dropped everything. The second moved them to `video`
-and left `resolution` out — and createLocalScreenTracks fills an absent
+and left `resolution` out — and createScreenTracks fills an absent
 resolution with ScreenSharePresets.h1080fps30, which is then written over the
 `video` constraints. Omitting the field is how a browser is asked for thirty
 frames on purpose.
@@ -318,11 +518,12 @@ describe("what the browser is actually asked to capture", () => {
 			localParticipant: {
 				// Nothing published yet, so no sound is being shared on its own.
 				trackPublications: new Map(),
-				setScreenShareEnabled: async (_on: boolean, asked: unknown) => {
+				getTrackPublication: () => undefined,
+				createScreenTracks: async (asked: unknown) => {
 					capture = asked;
-
-					return undefined;
+					return [];
 				},
+				publishTrack: async () => undefined,
 			},
 		} as unknown as Room;
 
@@ -338,7 +539,7 @@ describe("what the browser is actually asked to capture", () => {
 	it("names a resolution at all, because leaving it out means thirty", async () => {
 		const asked = await captured(120, "1080p");
 
-		// createLocalScreenTracks: `if (options.resolution === undefined &&
+		// createScreenTracks: `if (options.resolution === undefined &&
 		// !isSafari17Based()) options.resolution = h1080fps30.resolution`.
 		expect(asked.resolution).toBeDefined();
 	});
@@ -418,7 +619,9 @@ describe("the ceiling after the capture", () => {
 			localParticipant: {
 				// Nothing published yet, so no sound is being shared on its own.
 				trackPublications: new Map(),
-				setScreenShareEnabled: async () => publication,
+				getTrackPublication: () => undefined,
+				createScreenTracks: async () => [{ kind: Track.Kind.Video, ...publication.videoTrack, stop: () => {} }],
+				publishTrack: async () => ({ source: Track.Source.ScreenShare, ...publication }),
 			},
 		} as unknown as Room;
 
@@ -497,12 +700,19 @@ describe("the ceiling follows the picture, not the request", () => {
 			},
 		};
 
+		// Published once share() has published it, as the SDK has it.
+		let published: unknown;
+
 		const room = {
 			localParticipant: {
 				// Nothing published yet, so no sound is being shared on its own.
 				trackPublications: new Map(),
-				setScreenShareEnabled: async () => ({ videoTrack: track }),
-				getTrackPublication: () => ({ videoTrack: track }),
+				createScreenTracks: async () => [{ kind: Track.Kind.Video, ...track, stop: () => {} }],
+				publishTrack: async () => {
+					published = { source: Track.Source.ScreenShare, videoTrack: track };
+					return published;
+				},
+				getTrackPublication: () => published,
 			},
 		} as unknown as Room;
 
@@ -559,5 +769,192 @@ describe("the ceiling follows the picture, not the request", () => {
 
 		expect(encodings[1]?.maxBitrate).toBeLessThan(8_000_000);
 		expect(encodings[1]?.maxBitrate).toBeLessThanOrEqual(Math.max(afterShare, 3_000_000));
+	});
+});
+
+/*
+The middle rung after a change of rate.
+
+A share's rungs are fixed when it is published, but what each is sent at is a
+parameter, and which middle rung is right depends on the share's rate. What
+these guard is a share changed part way through keeping the middle rung of the
+rate it started at: priced for sixty under a share of thirty, eleven megabits of
+ceiling for thirty frames that are worth eight; or at thirty under a share
+raised to sixty, the half-as-smooth picture the rung at sixty was chosen to end.
+Nothing at either end shows it — the picture is right, and only the upload or
+the smoothness of somebody watching in an ordinary window is wrong.
+*/
+describe("the middle rung after a change of rate", () => {
+	/** A 1440p share at sixty, published with both rungs, whose capture takes the rate it is asked for. */
+	function sharing() {
+		const encodings: RTCRtpEncodingParameters[] = [
+			{ maxBitrate: SMALL.encoding.maxBitrate, maxFramerate: 30, scaleResolutionDownBy: 2 },
+			{ maxBitrate: MIDDLE_FAST.encoding.maxBitrate, maxFramerate: 60, scaleResolutionDownBy: 4 / 3 },
+			{ maxBitrate: settingsForTest(60, "1440p").maxBitrate, maxFramerate: 60, scaleResolutionDownBy: 1 },
+		];
+		let rate = 60;
+
+		const track = {
+			sender: {
+				getParameters: () => ({ encodings }),
+				setParameters: vi.fn(async () => undefined),
+			},
+			mediaStreamTrack: {
+				contentHint: "",
+				getSettings: () => ({ width: 2560, height: 1440, frameRate: rate }),
+				applyConstraints: async (asked: { frameRate?: { ideal?: number } }) => {
+					rate = asked.frameRate?.ideal ?? rate;
+				},
+			},
+		};
+
+		const room = {
+			localParticipant: { getTrackPublication: () => ({ source: Track.Source.ScreenShare, videoTrack: track }) },
+		} as unknown as Room;
+
+		return { room, small: () => encodings[0], middle: () => encodings[1] };
+	}
+
+	it("follows the share down to thirty and back up to sixty", async () => {
+		const { room, middle } = sharing();
+
+		expect(await retune(room, 30, "1440p")).toBe(true);
+		expect([middle()?.maxBitrate, middle()?.maxFramerate]).toEqual([MIDDLE.encoding.maxBitrate, 30]);
+
+		expect(await retune(room, 60, "1440p")).toBe(true);
+		expect([middle()?.maxBitrate, middle()?.maxFramerate]).toEqual([MIDDLE_FAST.encoding.maxBitrate, 60]);
+	});
+
+	it("never gives a rung more frames than the share", async () => {
+		// As the SDK has it at publish: each rung's rate is the smaller of its
+		// own and the top layer's.
+		const { room, small, middle } = sharing();
+
+		await retune(room, 15, "1440p");
+
+		expect(small()?.maxFramerate).toBe(15);
+		expect(middle()?.maxFramerate).toBe(15);
+		expect(middle()?.maxBitrate).toBe(MIDDLE.encoding.maxBitrate);
+	});
+});
+
+/*
+A share published again by the SDK, not by anybody.
+
+A full reconnect unpublishes every local track and publishes it again, and the
+encodings are built afresh from the options the share was first published with.
+A share changed since — from the menu, or by the hint in live/strain.ts — went
+back to its first ceiling and rate while the menu went on showing the change.
+What these guard is the setting coming back, and only to the share it belongs
+to: a new share's first publication is the one moment a recorded setting is
+somebody else's.
+*/
+describe("a share published again after a reconnect", () => {
+	const first = (): RTCRtpEncodingParameters[] => [
+		{ maxBitrate: SMALL.encoding.maxBitrate, maxFramerate: 15 },
+		{ maxBitrate: MIDDLE.encoding.maxBitrate, maxFramerate: 30 },
+		{ maxBitrate: settingsForTest(120, "1440p").maxBitrate, maxFramerate: 120 },
+	];
+
+	function reconnecting() {
+		const heard = new Set<(publication: unknown) => void>();
+		let encodings = first();
+
+		const capture = () => ({
+			sender: {
+				getParameters: () => ({ encodings }),
+				setParameters: vi.fn(async () => undefined),
+			},
+			mediaStreamTrack: {
+				contentHint: "",
+				getSettings: () => ({ width: 2560, height: 1440, frameRate: 120 }),
+				applyConstraints: async () => undefined,
+			},
+		});
+
+		const publication = { trackSid: "TR_1", source: Track.Source.ScreenShare, videoTrack: capture() };
+
+		// What the SDK has published now. A share that ended is unpublished by
+		// the SDK itself, which is what `ended` stands for.
+		let live: typeof publication | undefined;
+
+		const room = {
+			on: (event: string, listener: (publication: unknown) => void) => {
+				if (event === RoomEvent.LocalTrackPublished) heard.add(listener);
+			},
+			off: (_event: string, listener: (publication: unknown) => void) => heard.delete(listener),
+			localParticipant: {
+				trackPublications: new Map(),
+				createScreenTracks: async () => [{ kind: Track.Kind.Video, ...capture(), stop: () => {} }],
+				// As the SDK does it: the publication is announced before the
+				// call that asked for it returns.
+				publishTrack: async () => {
+					publication.trackSid = `TR_${Math.random()}`;
+					publication.videoTrack = capture();
+					encodings = first();
+					live = publication;
+					for (const listener of heard) listener(publication);
+					return publication;
+				},
+				setScreenShareEnabled: async () => {
+					live = undefined;
+					return undefined;
+				},
+				getTrackPublication: () => live,
+			},
+		} as unknown as Room;
+
+		const ended = () => {
+			live = undefined;
+		};
+
+		// The SDK's republish: the same capture, a new sid, the first options.
+		const republish = async () => {
+			encodings = first();
+			publication.trackSid = "TR_after_reconnect";
+			for (const listener of heard) listener(publication);
+			await new Promise((done) => setTimeout(done, 0));
+		};
+
+		return { room, top: () => encodings[2], republish, ended };
+	}
+
+	it("comes back to the setting the share was changed to", async () => {
+		const { room, top, republish } = reconnecting();
+		const stop = keepShareSetting(room);
+
+		await share(room, true, 120, "1440p");
+		await retune(room, 30, "1440p");
+		const changed = runningShare(room);
+
+		await republish();
+
+		expect(top()?.maxFramerate).toBe(30);
+		expect(top()?.maxBitrate).toBe(settingsForTest(30, "1440p").maxBitrate);
+		// The same share, at the same setting, changed again just now.
+		expect(runningShare(room)).toMatchObject({ id: changed?.id, quality: "1440p", frameRate: 30 });
+		expect(runningShare(room)?.since).toBeGreaterThanOrEqual(changed?.since ?? Number.POSITIVE_INFINITY);
+
+		stop();
+	});
+
+	it("leaves a new share's first publication to the new share", async () => {
+		const { room, top, ended } = reconnecting();
+		const stop = keepShareSetting(room);
+
+		// One share, changed to thirty, and stopped from the browser's own bar,
+		// which never passes through share(false) — so its setting is still on
+		// record when the next one starts.
+		await share(room, true, 120, "1440p");
+		await retune(room, 30, "1440p");
+		ended();
+
+		await share(room, true, 120, "1440p");
+		await new Promise((done) => setTimeout(done, 0));
+
+		expect(top()?.maxFramerate).toBe(120);
+		expect(runningShare(room)).toMatchObject({ quality: "1440p", frameRate: 120 });
+
+		stop();
 	});
 });

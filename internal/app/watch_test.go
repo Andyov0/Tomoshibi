@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"tomoshibi/internal/config"
+	"tomoshibi/internal/store"
 )
 
 /*
@@ -161,20 +162,37 @@ func TestAGuestMayReadWhatATicketPlays(t *testing.T) {
 	}
 }
 
-func TestOnlySomebodySignedInMayBrowseTheLibrary(t *testing.T) {
+func TestOnlySomebodyGrantedEmbyMayBrowseTheLibrary(t *testing.T) {
 	reached := false
-	mux, cookie := watchApp(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reached = true
 		w.Header().Set("Content-Type", "image/svg+xml")
 		_, _ = io.WriteString(w, "<svg/>")
 	}))
+	t.Cleanup(upstream.Close)
+
+	mux, app, cookie := signedInApp(t)
+	app.conf.Meet.Watch = config.Watch{URL: upstream.URL, Token: watchToken}
 
 	if got := musicGet(mux, "/api/watch/library?op=servers", nil).Code; got != http.StatusUnauthorized || reached {
 		t.Fatalf("a guest browsing the library got %d and reached the gateway: %v", got, reached)
 	}
+
+	// Signed in is no longer enough: every item in the library plays only
+	// through the relay, and the relay is the grant's.
+	if got := musicGet(mux, "/api/watch/library?op=servers", cookie); got.Code != http.StatusForbidden ||
+		refusal(t, got) != "not_allowed" || reached {
+		t.Fatalf("somebody signed in and not granted Emby got %d %s and reached the gateway: %v",
+			got.Code, got.Body.String(), reached)
+	}
+
+	if err := app.store.SetAccountPerms("listener", map[string]bool{store.PermEmby: true}); err != nil {
+		t.Fatal(err)
+	}
+
 	got := musicGet(mux, "/api/watch/library?op=image&server=a&id=1", cookie)
 	if got.Code != http.StatusOK {
-		t.Fatalf("somebody signed in got %d", got.Code)
+		t.Fatalf("somebody granted Emby got %d", got.Code)
 	}
 	if kind := got.Header().Get("Content-Type"); kind != "application/octet-stream" {
 		t.Errorf("an SVG poster came back as %q; it is a document that can carry script", kind)

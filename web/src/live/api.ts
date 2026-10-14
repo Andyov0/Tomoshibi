@@ -143,6 +143,13 @@ export interface Join {
 	/** What to call the machine this call was sent to. */
 	relay?: string;
 	/**
+	 * The deployment's region for the relay this browser chose, where it was
+	 * given that relay — not the one the join sent it to instead, nor the one
+	 * holding the meeting. Absent where the choice was not this browser's, and
+	 * absent means unknown, not abroad. See internal/app/app.go.
+	 */
+	region?: string;
+	/**
 	 * What to call the machine the meeting is actually on, where that is not the
 	 * one that was dialled.
 	 *

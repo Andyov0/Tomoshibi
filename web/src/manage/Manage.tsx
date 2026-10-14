@@ -9,6 +9,7 @@ import { RoomsPanel } from "./RoomsPanel";
 import { RuntimePanel } from "./RuntimePanel";
 import { SignIn } from "./SignIn";
 import { type Panel, PANELS, Shell } from "./Shell";
+import { powers } from "./grants";
 
 /**
  * The management pages.
@@ -84,6 +85,14 @@ export function Manage() {
 	if (asking) return <div className="min-h-full bg-bg" />;
 	if (!who) return <SignIn onIn={identify} />;
 
+	// What this administrator may change, a flag per kind of thing, handed to
+	// the panel that draws it. One flag used to be enough because there was one
+	// kind of administrator who could act; a page still drawing from it would
+	// offer somebody given only the accounts every switch on the relays page,
+	// and the server would refuse each press. The server checks every one
+	// regardless — these decide what is offered, not what is allowed.
+	const can = powers(who.can);
+
 	return (
 		<Shell
 			who={who}
@@ -100,17 +109,17 @@ export function Manage() {
 		>
 			{panel === "Now" && <NowPanel now={load} onSignedOut={signedOut} />}
 			{panel === "Rooms" && (
-				<RoomsPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
+				<RoomsPanel canRooms={can.rooms} canSettings={can.settings} onSignedOut={signedOut} />
 			)}
 			{panel === "Accounts" && (
-				<AccountsPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
+				<AccountsPanel
+					canAccounts={can.accounts}
+					canModerate={can.moderate}
+					onSignedOut={signedOut}
+				/>
 			)}
-			{panel === "Relays" && (
-				<RelaysPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
-			)}
-			{panel === "Admins" && (
-				<AdminsPanel canModerate={who.can.includes("moderate")} onSignedOut={signedOut} />
-			)}
+			{panel === "Relays" && <RelaysPanel canRelays={can.relays} onSignedOut={signedOut} />}
+			{panel === "Admins" && <AdminsPanel canModerate={can.moderate} onSignedOut={signedOut} />}
 			{panel === "Runtime" && <RuntimePanel onSignedOut={signedOut} />}
 		</Shell>
 	);

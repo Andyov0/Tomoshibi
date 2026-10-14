@@ -1,22 +1,76 @@
+import { LanguagePicker } from "@/components/room/LanguagePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useLingering } from "@/hooks/useLingering";
+import { useT } from "@/hooks/useT";
 import { cn } from "@/lib/utils";
-import { t } from "@/live/i18n";
+import { type Placement, placement, remember as rememberPlacement } from "@/live/controls";
+import { rememberedDucking, setDucking, subscribeDuck } from "@/live/duck";
+import { locale, t as say } from "@/live/i18n";
 import { whenSaid } from "@/live/meeting";
 import { MAX_SCOPE, normaliseRoomName, validRoomName, validScope } from "@/live/names";
 import { actionDone, actionFailed } from "@/live/notices";
-import { ArrowLeft, Camera, Check, Copy, Link2, Link2Off, Loader2, LogOut, Shield, Trash2, UserRound } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	type MusicQuality,
+	WATCH_QUALITIES,
+	type WatchQuality,
+	blurWanted,
+	deviceChoice,
+	forgetDeviceChoice,
+	rememberBlur,
+	rememberDevices,
+	rememberMusicQuality,
+	rememberWatchQuality,
+	rememberedDevices,
+	rememberedMusicQuality,
+	watchQuality,
+} from "@/live/preferences";
+import { DEFAULTS, PERMISSIONS, PERMISSION_NAMES, type Permission } from "@/manage/grants";
+import {
+	ArrowLeft,
+	CalendarClock,
+	Camera,
+	Check,
+	ChevronDown,
+	Clapperboard,
+	Copy,
+	DoorOpen,
+	Film,
+	Link2,
+	Link2Off,
+	Loader2,
+	LogOut,
+	type LucideIcon,
+	Music,
+	Shield,
+	Trash2,
+	UserRound,
+} from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /**
- * Somebody's own account: their passphrase, their picture, and the links they
- * may make into their scopes' rooms.
+ * Somebody's own account: who they are here, what they may use, how their calls
+ * start, their picture, their passphrase, and the links they may make into their
+ * scopes' rooms.
  *
- * Nothing else, and that is the design rather than the current state of it.
- * Everything else on this deployment — the relays, the rooms, who else may be
- * here — belongs to whoever runs it, and a page that grew a second column for
- * some people and not others would be one mistake away from showing the wrong
- * person the wrong thing.
+ * This page used to say it held a passphrase, a picture and links and nothing
+ * else, and that the restraint was the design. The argument for it still holds
+ * and still draws the line; what moved is what falls on this side of it.
+ * Everything that belongs to the deployment — the relays, the rooms, who else
+ * may be here, who may use what — belongs to whoever runs it, and a page that
+ * grew a second column for some people and not others would be one mistake away
+ * from showing the wrong person the wrong thing. Nothing here changes any of
+ * that, for anybody, and nothing here shows anybody else.
+ *
+ * Two things came across it. What an account may use stopped being the same for
+ * everybody, and somebody whose music button has gone deserves to be able to
+ * find out why without asking — so the page reads it back to them, from the
+ * same answer that tells it who they are. It is read-only and it is only theirs.
+ * And the choices that shape a call — which devices start on, where the
+ * controls sit, how sharp a film may get — could only be made from inside one,
+ * at the moment they were wrong. They are this browser's rather than the
+ * account's (see live/preferences.ts for why), so the page writes them where the
+ * call reads them, and the server never sees them.
  *
  * The links are the one thing here that reaches past the account, and they are
  * here because they are the account's: being in a scope is what lets somebody
@@ -37,9 +91,22 @@ interface Me {
 	admin?: boolean;
 	/** The groups they belong to, whose rooms they may send links into. */
 	scopes?: string[];
+	/**
+	 * What they may use, so the page can say so and not offer what would be
+	 * refused. Like the two above it authorises nothing: every endpoint it
+	 * names asks the store again. Absent only from a server older than
+	 * permissions, which gave everybody what an account now starts with.
+	 */
+	can?: string[];
+}
+
+/** Whether they hold a permission, by what the server said. */
+function holds(me: Me, permission: Permission): boolean {
+	return me.can ? me.can.includes(permission) : DEFAULTS[permission];
 }
 
 export function Account() {
+	const t = useT();
 	const [me, setMe] = useState<Me>();
 	const [asking, setAsking] = useState(true);
 
@@ -71,6 +138,11 @@ export function Account() {
 			 * was the browser's own back button, which is not where anybody looks
 			 * on a page that has its own address. A page with no exit reads as a
 			 * place you have been sent rather than one you visited.
+			 *
+			 * The language beside it, as on every other page that has a header.
+			 * This one went without, so somebody handed an account in a language
+			 * the browser guessed wrongly had nowhere to correct it short of
+			 * joining a call.
 			 */}
 			<nav className="animate-rise flex items-center gap-2">
 				<a
@@ -84,18 +156,25 @@ export function Account() {
 					{t("Back to meetings")}
 				</a>
 
-				{me.admin && (
-					<a
-						href="/admin"
-						className={cn(
-							"ml-auto flex items-center gap-1.5 rounded-md border border-tally/30 bg-tally/10 px-2.5 py-1.5",
-							"text-[12px] text-fg transition-colors hover:bg-tally/20",
-						)}
-					>
-						<Shield className="size-3.5 text-tally" />
-						{t("Admin console")}
-					</a>
-				)}
+				<div className="ml-auto flex items-center gap-1">
+					{me.admin && (
+						<a
+							href="/admin"
+							aria-label={t("Admin console")}
+							className={cn(
+								"flex items-center gap-1.5 rounded-md border border-tally/30 bg-tally/10 px-2.5 py-1.5",
+								"text-[12px] text-fg transition-colors hover:bg-tally/20",
+							)}
+						>
+							<Shield className="size-3.5 text-tally" />
+							{/* The shield alone on the narrowest phones, where the
+							    three of these together are wider than the screen. */}
+							<span className="max-[400px]:hidden">{t("Admin console")}</span>
+						</a>
+					)}
+
+					<LanguagePicker />
+				</div>
 			</nav>
 
 			<div className="animate-rise [animation-delay:60ms]">
@@ -106,21 +185,30 @@ export function Account() {
 				<Picture me={me} onChanged={setMe} />
 			</div>
 
-			{/* Only for somebody who can use it. An administrator belongs to
+			<div className="animate-rise [animation-delay:180ms]">
+				<Abilities me={me} />
+			</div>
+
+			<div className="animate-rise [animation-delay:240ms]">
+				<Settings me={me} />
+			</div>
+
+			{/* Only for somebody who can use it: an account given standing links,
+			    and in a scope to send them into. An administrator belongs to
 			    every scope and may type any; anybody else is offered the ones on
 			    their account, and an account with none has no rooms to send
-			    anybody into. */}
-			{(me.admin || (me.scopes?.length ?? 0) > 0) && (
-				<div className="animate-rise [animation-delay:180ms]">
+			    anybody into. The server asks both questions again. */}
+			{holds(me, "invite") && (me.admin || (me.scopes?.length ?? 0) > 0) && (
+				<div className="animate-rise [animation-delay:300ms]">
 					<GuestLinks me={me} />
 				</div>
 			)}
 
-			<div className="animate-rise [animation-delay:240ms]">
+			<div className="animate-rise [animation-delay:360ms]">
 				<Passphrase />
 			</div>
 
-			<p className="animate-rise [animation-delay:300ms] px-1 text-fg-muted text-[11.5px] leading-relaxed">
+			<p className="animate-rise [animation-delay:420ms] px-1 text-fg-muted text-[11.5px] leading-relaxed">
 				{t("Your passphrase is not stored here and cannot be sent to you. If you lose it, an administrator sets a new one.")}
 			</p>
 		</main>
@@ -128,6 +216,7 @@ export function Account() {
 }
 
 function SignIn({ onIn }: { onIn: () => void }) {
+	const t = useT();
 	const [name, setName] = useState("");
 	const [passphrase, setPassphrase] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -162,7 +251,13 @@ function SignIn({ onIn }: { onIn: () => void }) {
 	};
 
 	return (
-		<main className="grid min-h-full place-items-center bg-bg p-6 text-fg">
+		<main className="relative grid min-h-full place-items-center bg-bg p-6 text-fg">
+			{/* Before signing in as well as after: somebody handed an account in
+			    a language the browser guessed wrongly meets this form first. */}
+			<div className="animate-rise absolute top-4 right-4">
+				<LanguagePicker />
+			</div>
+
 			<form onSubmit={submit} className="animate-rise flex w-full max-w-sm flex-col gap-4">
 				<header className="flex flex-col items-center gap-2 text-center">
 					<UserRound className="size-8 text-fg-muted" />
@@ -200,6 +295,8 @@ function SignIn({ onIn }: { onIn: () => void }) {
 }
 
 function Header({ me, onChanged }: { me: Me; onChanged: (me: Me | undefined) => void }) {
+	const t = useT();
+
 	return (
 		<header className="flex items-center gap-3">
 			<Face me={me} />
@@ -251,6 +348,7 @@ function Face({ me }: { me: Me }) {
  * it up forever for a picture nobody will ever see at that size.
  */
 function Picture({ me, onChanged }: { me: Me; onChanged: (me: Me) => void }) {
+	const t = useT();
 	const file = useRef<HTMLInputElement>(null);
 	const [busy, setBusy] = useState(false);
 
@@ -280,7 +378,10 @@ function Picture({ me, onChanged }: { me: Me; onChanged: (me: Me) => void }) {
 
 	return (
 		<section className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
-			<h2 className="font-medium text-fg text-sm">{t("Picture")}</h2>
+			{/* Not "Picture", which is the share menu's word for the picture's
+			    quality and is translated as that: this card read 画質 in
+			    Japanese and 画面 in Chinese. */}
+			<h2 className="font-medium text-fg text-sm">{t("Profile picture")}</h2>
 			<p className="text-fg-muted text-[11.5px]">
 				{t("Shown beside your name in a call. Scaled down before it is sent.")}
 			</p>
@@ -331,7 +432,419 @@ function Picture({ me, onChanged }: { me: Me; onChanged: (me: Me) => void }) {
 	);
 }
 
+/** The icon beside each permission, chosen to match the button it opens in a call. */
+const PERMISSION_ICONS: Record<Permission, LucideIcon> = {
+	watch: Clapperboard,
+	emby: Film,
+	music: Music,
+	arrange: CalendarClock,
+	invite: Link2,
+	open: DoorOpen,
+};
+
+/**
+ * What this account may use, read back to the person holding it.
+ *
+ * Read-only, and from the same answer that says who they are, which is a
+ * courtesy and not an authority: every feature it names asks again on its own.
+ * The names are the ones the management pages tick, so that "an administrator
+ * gave me Music" and what this page says are the same word.
+ *
+ * What they were not given is listed too, apart, because a button that is
+ * missing in a call reads as a fault until somebody can see it was a decision.
+ * Except Emby. It is the one permission that spends the deployment's money and
+ * is given to people one at a time, and a page listing it to everybody who does
+ * not have it would be an advertisement for asking.
+ */
+function Abilities({ me }: { me: Me }) {
+	const t = useT();
+	const held = PERMISSIONS.filter((one) => holds(me, one));
+	const withheld = PERMISSIONS.filter((one) => one !== "emby" && !holds(me, one));
+	const scopes = me.scopes ?? [];
+	const since = me.created ? dateSaid(me.created) : "";
+
+	return (
+		<section className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-4">
+			<h2 className="font-medium text-fg text-sm">{t("What you can use")}</h2>
+			<p className="text-fg-muted text-[11.5px]">{t("Set by whoever runs this deployment.")}</p>
+
+			{held.length > 0 && (
+				<ul aria-label={t("What you can use")} className="mt-1 flex flex-wrap gap-1.5">
+					{held.map((one) => (
+						<Ability key={one} permission={one} />
+					))}
+				</ul>
+			)}
+
+			{withheld.length > 0 && (
+				<div className="mt-1 flex flex-col gap-1.5">
+					<span className="text-fg-muted text-[11px]">{t("Not opened to this account")}</span>
+					<ul aria-label={t("Not opened to this account")} className="flex flex-wrap gap-1.5">
+						{withheld.map((one) => (
+							<Ability key={one} permission={one} withheld />
+						))}
+					</ul>
+				</div>
+			)}
+
+			{/* The account's own facts, which the server always sent and this
+			    page never showed: the scopes only appeared as the choices in
+			    the link form below, and not at all to somebody who may not make
+			    links. */}
+			{(scopes.length > 0 || since) && (
+				<dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-3 gap-y-2 border-border border-t pt-3 text-[12px]">
+					{scopes.length > 0 && (
+						<>
+							<dt className="text-fg-muted">{t("Your scopes")}</dt>
+							<dd className="flex flex-wrap gap-1">
+								{scopes.map((scope) => (
+									<span key={scope} className="readout rounded bg-surface-hi px-1.5 py-0.5 text-[11px]">
+										@{scope}
+									</span>
+								))}
+							</dd>
+						</>
+					)}
+
+					{since && (
+						<>
+							<dt className="text-fg-muted">{t("Account created")}</dt>
+							<dd className="text-fg">{since}</dd>
+						</>
+					)}
+				</dl>
+			)}
+		</section>
+	);
+}
+
+function Ability({ permission, withheld = false }: { permission: Permission; withheld?: boolean }) {
+	const t = useT();
+	const Icon = PERMISSION_ICONS[permission];
+
+	return (
+		<li
+			className={cn(
+				"flex items-center gap-1.5 rounded-md border px-2 py-1 text-[12px]",
+				withheld
+					? "border-border border-dashed text-fg-muted"
+					: permission === "emby"
+						? "border-tally/40 bg-tally/10 text-fg"
+						: "border-border bg-surface-hi text-fg",
+			)}
+		>
+			<Icon className={cn("size-3.5", withheld ? "text-fg-muted/60" : permission === "emby" ? "text-tally" : "text-fg-muted")} />
+			{t(PERMISSION_NAMES[permission])}
+		</li>
+	);
+}
+
+/** A day, in the reader's language, or nothing for something that is not one. */
+function dateSaid(at: string): string {
+	const when = new Date(at);
+	if (Number.isNaN(when.getTime())) return "";
+
+	return when.toLocaleDateString(locale(), { year: "numeric", month: "long", day: "numeric" });
+}
+
+/**
+ * How this browser's calls start and look.
+ *
+ * Folded away until opened. Most visits to this page are for the passphrase or
+ * the picture, and five groups of switches between the top of the page and the
+ * passphrase form put it below the fold on a phone for everybody, to save a
+ * press for somebody who comes here to change a setting once.
+ *
+ * Every switch writes as it is pressed. These are the same keys the call reads,
+ * and a save button would be a second place for the page and the call to
+ * disagree. Nothing is sent anywhere: see live/preferences.ts.
+ */
+function Settings({ me }: { me: Me }) {
+	const t = useT();
+	const [open, setOpen] = useState(false);
+	const body = useLingering(open);
+
+	return (
+		<section className="flex flex-col rounded-lg border border-border bg-surface">
+			<button
+				type="button"
+				aria-expanded={open}
+				aria-controls="account-settings"
+				onClick={() => setOpen(!open)}
+				className="flex items-start gap-3 rounded-lg p-4 text-left outline-none transition-colors hover:bg-surface-hi/40 focus-visible:ring-2 focus-visible:ring-fg/40"
+			>
+				<span className="flex min-w-0 flex-1 flex-col gap-1">
+					<span className="font-medium text-fg text-sm">{t("Settings")}</span>
+					<span className="text-fg-muted text-[11.5px]">
+						{t("How your calls start and look, in this browser. Another browser or device keeps its own.")}
+					</span>
+				</span>
+				<ChevronDown
+					aria-hidden
+					className={cn("mt-0.5 size-4 shrink-0 text-fg-muted transition-transform duration-200", open && "rotate-180")}
+				/>
+			</button>
+
+			{body.mounted && (
+				<div
+					id="account-settings"
+					className={cn(
+						"flex flex-col gap-5 border-border border-t px-4 pt-4 pb-4",
+						body.leaving ? "animate-depart" : "animate-arrive",
+					)}
+				>
+					<WhenJoining />
+					<WhereControls />
+					<MusicSettings me={me} />
+					<WatchSettings />
+				</div>
+			)}
+		</section>
+	);
+}
+
+function WhenJoining() {
+	const t = useT();
+	const [devices, setDevices] = useState(rememberedDevices);
+	const [blurring, setBlurring] = useState(blurWanted);
+	const [picked, setPicked] = useState(() => Object.keys(deviceChoice()).length > 0);
+	const forgettable = useLingering(picked);
+
+	const change = (next: typeof devices) => {
+		setDevices(next);
+		rememberDevices(next);
+	};
+
+	return (
+		<Group label={t("When you join")}>
+			<Tick checked={devices.microphone} onChange={(on) => change({ ...devices, microphone: on })}>
+				{t("Start with the microphone on")}
+			</Tick>
+			<Tick checked={devices.camera} onChange={(on) => change({ ...devices, camera: on })}>
+				{t("Start with the camera on")}
+			</Tick>
+			<Tick
+				checked={blurring}
+				onChange={(on) => {
+					setBlurring(on);
+					rememberBlur(on);
+				}}
+			>
+				{t("Blur my background")}
+			</Tick>
+
+			{/* Only while there is something to forget. The devices are picked in
+			    a call, where they are listed by name; here there is nothing to
+			    pick them from without asking for the camera, so the page offers
+			    only the way back to the browser's own defaults. */}
+			{forgettable.mounted && (
+				<div
+					className={cn(
+						"mt-1 flex items-center gap-3 rounded-md bg-surface-hi px-3 py-2",
+						forgettable.leaving ? "animate-depart" : "animate-arrive",
+					)}
+				>
+					<p className="min-w-0 flex-1 text-fg-muted text-[11.5px] leading-snug">
+						{t("Calls start on the microphone, camera and speakers you last picked in one, while they are plugged in.")}
+					</p>
+					<button
+						type="button"
+						onClick={() => {
+							forgetDeviceChoice();
+							setPicked(false);
+						}}
+						className="shrink-0 rounded-md border border-border px-2.5 py-1 text-[12px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+					>
+						{t("Forget")}
+					</button>
+				</div>
+			)}
+		</Group>
+	);
+}
+
+function WhereControls() {
+	const t = useT();
+	const [where, setWhere] = useState<Placement>(placement);
+
+	return (
+		<Group label={t("Controls")}>
+			<Options<Placement>
+				label={t("Controls")}
+				value={where}
+				options={[
+					["always", t("Always shown")],
+					["idle", t("Hide when nothing is happening")],
+					["side", t("At the side")],
+				]}
+				onChange={(next) => {
+					setWhere(next);
+					rememberPlacement(next);
+				}}
+			/>
+		</Group>
+	);
+}
+
+/**
+ * Music in a call.
+ *
+ * Lowering it under speech is the listener's choice, and somebody who may not
+ * open the library still hears whatever another person plays, so it is offered
+ * to everybody. The library's quality is only ever used by somebody fetching
+ * from it, and is offered only to them.
+ */
+function MusicSettings({ me }: { me: Me }) {
+	const t = useT();
+	const ducks = useSyncExternalStore(subscribeDuck, rememberedDucking, rememberedDucking);
+	const [quality, setQuality] = useState<MusicQuality>(rememberedMusicQuality);
+	const large = useLingering(quality === "best");
+
+	return (
+		<Group label={t("Music")}>
+			<Tick checked={ducks} onChange={setDucking}>
+				{t("Lower the music while anybody talks")}
+			</Tick>
+
+			{holds(me, "music") && (
+				<>
+					<div className="flex flex-wrap items-center gap-2">
+						<span className="text-fg-muted text-[11.5px]">{t("Quality")}</span>
+						<Options<MusicQuality>
+							label={t("Quality")}
+							value={quality}
+							options={[
+								["lossless", t("Lossless")],
+								["best", t("Highest")],
+							]}
+							onChange={(next) => {
+								setQuality(next);
+								rememberMusicQuality(next);
+							}}
+						/>
+					</div>
+
+					{large.mounted && (
+						<p
+							className={cn(
+								"text-fg-muted text-[11px]",
+								large.leaving ? "animate-depart" : "animate-arrive",
+							)}
+						>
+							{t("Hi-Res and masters are large, and take longer to start.")}
+						</p>
+					)}
+				</>
+			)}
+		</Group>
+	);
+}
+
+/**
+ * How sharp a video watched together may get, here.
+ *
+ * Offered to everybody, whether or not they may start a showing: it is about
+ * what this screen fetches, and everybody in the room is a viewer.
+ */
+function WatchSettings() {
+	const t = useT();
+	const [quality, setQuality] = useState<WatchQuality>(watchQuality);
+	const capped = useLingering(quality !== "auto");
+
+	const said: Record<WatchQuality, string> = {
+		auto: t("Automatic"),
+		"1080p": t("1080p"),
+		"720p": t("720p"),
+	};
+
+	return (
+		<Group label={t("Watch together")}>
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="text-fg-muted text-[11.5px]">{t("Picture quality")}</span>
+				<Options<WatchQuality>
+					label={t("Picture quality")}
+					value={quality}
+					options={WATCH_QUALITIES.map((one) => [one, said[one]] as const)}
+					onChange={(next) => {
+						setQuality(next);
+						rememberWatchQuality(next);
+					}}
+				/>
+			</div>
+
+			{capped.mounted && (
+				<p className={cn("text-fg-muted text-[11px]", capped.leaving ? "animate-depart" : "animate-arrive")}>
+					{t("Where a video comes in several qualities, it is never fetched sharper than this here. It applies from the next video you open.")}
+				</p>
+			)}
+		</Group>
+	);
+}
+
+/** A heading and what is under it, as one group for a screen reader. */
+function Group({ label, children }: { label: string; children: ReactNode }) {
+	return (
+		<div role="group" aria-label={label} className="flex flex-col gap-2">
+			<h3 className="font-medium text-[11px] text-fg-muted uppercase tracking-wide">{label}</h3>
+			{children}
+		</div>
+	);
+}
+
+function Tick({
+	checked,
+	onChange,
+	children,
+}: { checked: boolean; onChange: (on: boolean) => void; children: ReactNode }) {
+	return (
+		<label className="flex cursor-pointer items-start gap-2 text-[12.5px] text-fg leading-snug">
+			<input
+				type="checkbox"
+				checked={checked}
+				onChange={(event) => onChange(event.target.checked)}
+				className="mt-0.5 size-3.5 shrink-0 accent-tally"
+			/>
+			{children}
+		</label>
+	);
+}
+
+/** One of a few, pressed rather than picked from a list, as in the music panel. */
+function Options<T extends string>({
+	label,
+	value,
+	options,
+	onChange,
+}: {
+	label: string;
+	value: T;
+	options: readonly (readonly [T, string])[];
+	onChange: (next: T) => void;
+}) {
+	return (
+		<div role="group" aria-label={label} className="flex flex-wrap gap-1.5">
+			{options.map(([which, said]) => (
+				<button
+					key={which}
+					type="button"
+					aria-pressed={value === which}
+					onClick={() => onChange(which)}
+					className={cn(
+						"rounded-md border px-2.5 py-1 text-[12px] transition-colors",
+						value === which
+							? "border-tally/50 bg-tally/15 text-fg"
+							: "border-border text-fg-muted hover:bg-surface-hi hover:text-fg",
+					)}
+				>
+					{said}
+				</button>
+			))}
+		</div>
+	);
+}
+
 function Passphrase() {
+	const t = useT();
 	const [current, setCurrent] = useState("");
 	const [next, setNext] = useState("");
 	const [busy, setBusy] = useState(false);
@@ -436,6 +949,7 @@ function Passphrase() {
  * what the button says.
  */
 function GuestLinks({ me }: { me: Me }) {
+	const t = useT();
 	const mine = me.scopes ?? [];
 
 	const [typed, setTyped] = useState("");
@@ -691,21 +1205,32 @@ function GuestLinks({ me }: { me: Me }) {
 	);
 }
 
+/*
+ * The two below are said at the moment a press fails rather than drawn, so they
+ * read the language as it is then through the plain translator. Everything
+ * drawn on this page subscribes instead (useT), which is what makes the
+ * language picker above take effect without a reload.
+ */
+
 /** What a link could not be made for, in the reader's language. */
 function explainLink(reason: string | undefined): string {
 	switch (reason) {
 		case "not_yours":
-			return t("You can make links only into rooms of your own scopes.");
+			return say("You can make links only into rooms of your own scopes.");
 		case "name_too_long":
-			return t("That name is too long.");
+			return say("That name is too long.");
 		case "bad_time":
-			return t("That window cannot be used. It has to end after it starts, and after now.");
+			return say("That window cannot be used. It has to end after it starts, and after now.");
 		case "invalid_room":
-			return t("Room names can only use lowercase letters, numbers and dashes.");
+			return say("Room names can only use lowercase letters, numbers and dashes.");
 		case "rate_limited":
-			return t("Too many attempts. Try again in a moment.");
+			return say("Too many attempts. Try again in a moment.");
+		// Guest links taken away while this page was open, which offered the
+		// form by what it was told when it loaded.
+		case "not_allowed":
+			return say("Guest links have not been opened to you.");
 		default:
-			return t("That link could not be made. Try again.");
+			return say("That link could not be made. Try again.");
 	}
 }
 
@@ -713,15 +1238,15 @@ function explainLink(reason: string | undefined): string {
 function explain(reason: string | undefined): string {
 	switch (reason) {
 		case "not_yours":
-			return t("That is not your current passphrase.");
+			return say("That is not your current passphrase.");
 		case "passphrase_too_short":
-			return t("At least eight characters.");
+			return say("At least eight characters.");
 		case "passphrase_unchanged":
-			return t("That is the passphrase you already have.");
+			return say("That is the passphrase you already have.");
 		case "passphrase_in_use":
-			return t("Somebody else already uses that passphrase. Choose another.");
+			return say("Somebody else already uses that passphrase. Choose another.");
 		default:
-			return t("That could not be changed. Try again.");
+			return say("That could not be changed. Try again.");
 	}
 }
 

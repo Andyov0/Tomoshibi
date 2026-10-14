@@ -5,11 +5,12 @@ import { useRoomForSide } from "@/hooks/useRoomFor";
 import { useLingering } from "@/hooks/useLingering";
 import { useT } from "@/hooks/useT";
 import type { Placement } from "@/live/controls";
-import { retune, share } from "@/live/room";
+import { retune, runningShare, share, watchRunning } from "@/live/room";
 import type { Room } from "livekit-client";
 import { Clapperboard, ListMusic, MessageSquare, Mic, MicOff, Video, VideoOff, Volume2 } from "lucide-react";
 import { Leaving } from "./Leaving";
-import { useState } from "react";
+import { useRef, useState, useSyncExternalStore } from "react";
+import { useIslandReserve } from "@/hooks/useIslandReserve";
 import { DeviceMenu } from "./DeviceMenu";
 import type { Reaction } from "@/live/hands";
 import { HandButton } from "./HandButton";
@@ -53,6 +54,7 @@ export function ControlBar({
 	host,
 	where,
 	onPlace,
+	onReserve,
 }: {
 	room: Room;
 	/* Raised here and drawn on the tiles, so both come from one place: a
@@ -82,6 +84,11 @@ export function ControlBar({
 	/** Where these sit, and whether they step aside. See live/controls.ts. */
 	where: Placement;
 	onPlace: (where: Placement) => void;
+	/**
+	 * Told how much of the foot of the room these take, so the pictures are laid
+	 * out clear of them. See hooks/useIslandReserve.ts.
+	 */
+	onReserve?: (reserve: number) => void;
 }) {
 	const t = useT();
 	// The music button comes and goes with the music, so it arrives and
@@ -89,6 +96,9 @@ export function ControlBar({
 	const musicButton = useLingering(music?.available === true, 180);
 	const watchButton = useLingering(watch?.available === true, 180);
 	const local = useLocalState(room);
+	// What the share is actually sending, which the menu shows while it runs:
+	// the hint in live/strain.ts can change it without the menu being opened.
+	const running = useSyncExternalStore(watchRunning, () => runningShare(room));
 	const [busy, setBusy] = useState(false);
 	const [lossless, setLossless] = useState(rememberedLossless);
 
@@ -140,6 +150,18 @@ export function ControlBar({
 	// the screen and cannot be pressed.
 	const side = where === "side" && roomy;
 
+	const drawn = useRef<HTMLElement>(null);
+	useIslandReserve(drawn, side, onReserve);
+
+	// How many buttons the bar carries past the five every phone has, which is
+	// what its narrow steps are measured against; see the classes below. From
+	// what is drawn, the share included wherever the browser offers one, and a
+	// button on its way out still counted until it has gone.
+	const extra =
+		(canShareScreen() ? 1 : 0) +
+		(musicButton.mounted && onMusic ? 1 : 0) +
+		(watchButton.mounted && onWatchPanel ? 1 : 0);
+
 	// Every toggle is awaited and guarded, because each one asks the browser for
 	// a device and a second click while that prompt is open leaves the button
 	// and the device disagreeing about what is on.
@@ -168,6 +190,7 @@ export function ControlBar({
 
 	return (
 		<footer
+			ref={drawn}
 			className={cn(
 				// An island rather than a bar. A full-width strip with a rule
 				// above it divides the window into a room and a chrome, and the
@@ -197,39 +220,60 @@ export function ControlBar({
 				"max-[372px]:[&_.rounded-r-full]:h-[34px] max-[372px]:[&_.rounded-r-full]:pr-1.5 max-[372px]:[&_.rounded-r-full]:pl-0.5",
 				"max-[372px]:[&>span.w-px]:hidden",
 				/*
-				 * The music button is one more, 46 pixels -- as is the watch button,
-				 * and these rules are for either -- and the same two steps
-				 * come a width sooner while it is there: the bar is then 414 pixels
-				 * on a phone, which a 414-pixel phone held with nothing to spare
-				 * and a 390-pixel one could not. Below 340 the buttons come down
-				 * once more, to 32, and the gaps nearly close, which leaves a
-				 * 320-pixel phone the same margin it has without music; at 34 the
-				 * bar fitted there with three pixels either side. Measured on a
-				 * phone's set of buttons, without the screen share no phone
-				 * browser offers. Without music nothing here changes, so a call
-				 * with none keeps the larger buttons it had.
+				 * Every button past the five a phone always has, counted rather than
+				 * named: the screen share, the music and watching together are 46
+				 * pixels each at full size, and the steps below are taken a width
+				 * sooner for each one there is.
+				 *
+				 * They were named, and the share was left out of the count. Each step
+				 * was measured "on a phone's set of buttons, without the screen share
+				 * no phone browser offers" -- true of a phone, and not of the browsers
+				 * that do offer it at the same width: a desktop window narrowed to a
+				 * phone's size, and a phone emulated in one. There the bar carried
+				 * the share as well, 414 pixels with nothing else, and at 375 hung ten
+				 * pixels off each side with the page scrolling sideways under it; at
+				 * 320 four. Nothing had been added to the bar since the narrow-phone
+				 * fix of 10-08 -- built from that commit, it overflowed the same --
+				 * the steps had simply been worked out for one button fewer. And the
+				 * music rules matched any marked button while the watch rules
+				 * matched only music and watch together, so a share beside either
+				 * fell between them.
+				 *
+				 * One extra: below 430 the spacing tightens, below 410 the buttons
+				 * come to 34, below 345 to 32 with the gaps nearly closed. Two: the
+				 * same from 476 and 454, 32 below 384, and 28 below 350. Three, 506
+				 * pixels at full size: from 522 and 500, 32 below 440, 28 below 384
+				 * and no gaps below 350 -- small targets, and every one on the screen.
+				 * Worked out so the bar leaves at least eight pixels either side at
+				 * every width, and measured at 320, 360, 375, 390 and 414 with every
+				 * count. Exact counts rather than "at least", so each group is whole
+				 * on its own and a later step never depends on an earlier one still
+				 * matching.
 				 */
-				"has-[[data-control]]:max-[430px]:gap-1 has-[[data-control]]:max-[430px]:p-1",
-				"has-[[data-control]]:max-[405px]:[&_.size-10]:size-[34px] has-[[data-control]]:max-[405px]:[&_.size-11]:size-[38px]",
-				"has-[[data-control]]:max-[405px]:[&_.rounded-r-full]:h-[34px] has-[[data-control]]:max-[405px]:[&_.rounded-r-full]:pr-1.5 has-[[data-control]]:max-[405px]:[&_.rounded-r-full]:pl-0.5",
-				"has-[[data-control]]:max-[405px]:[&>span.w-px]:hidden",
-				"has-[[data-control]]:max-[340px]:gap-0.5",
-				"has-[[data-control]]:max-[340px]:[&_.size-10]:size-8 has-[[data-control]]:max-[340px]:[&_.size-11]:size-9",
-				"has-[[data-control]]:max-[340px]:[&_.rounded-r-full]:h-8",
-				/*
-				 * Both, music and watching together: 460 pixels at full size on a
-				 * phone, which no phone held. The same steps again, sooner, and a
-				 * last one below 350 that brings the buttons to 28 pixels -- small,
-				 * and still on the screen, which a 32-pixel row on a 320-pixel
-				 * phone was not. Measured as before, on a phone's set of buttons.
-				 */
-				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[476px]:gap-1 has-[[data-control=music]]:has-[[data-control=watch]]:max-[476px]:p-1",
-				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[454px]:[&_.size-10]:size-[34px] has-[[data-control=music]]:has-[[data-control=watch]]:max-[454px]:[&_.size-11]:size-[38px]",
-				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[454px]:[&_.rounded-r-full]:h-[34px] has-[[data-control=music]]:has-[[data-control=watch]]:max-[454px]:[&>span.w-px]:hidden",
-				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[384px]:gap-0.5 has-[[data-control=music]]:has-[[data-control=watch]]:max-[384px]:[&_.size-10]:size-8 has-[[data-control=music]]:has-[[data-control=watch]]:max-[384px]:[&_.size-11]:size-9",
-				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[384px]:[&_.rounded-r-full]:h-8",
-				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[350px]:p-0.5 has-[[data-control=music]]:has-[[data-control=watch]]:max-[350px]:[&_.size-10]:size-7 has-[[data-control=music]]:has-[[data-control=watch]]:max-[350px]:[&_.size-11]:size-8",
-				"has-[[data-control=music]]:has-[[data-control=watch]]:max-[350px]:[&_.rounded-r-full]:h-7",
+				"data-[extra=1]:max-[430px]:gap-1 data-[extra=1]:max-[430px]:p-1",
+				"data-[extra=1]:max-[410px]:[&_.size-10]:size-[34px] data-[extra=1]:max-[410px]:[&_.size-11]:size-[38px]",
+				"data-[extra=1]:max-[410px]:[&_.rounded-r-full]:h-[34px] data-[extra=1]:max-[410px]:[&_.rounded-r-full]:pr-1.5 data-[extra=1]:max-[410px]:[&_.rounded-r-full]:pl-0.5",
+				"data-[extra=1]:max-[410px]:[&>span.w-px]:hidden",
+				"data-[extra=1]:max-[345px]:gap-0.5",
+				"data-[extra=1]:max-[345px]:[&_.size-10]:size-8 data-[extra=1]:max-[345px]:[&_.size-11]:size-9",
+				"data-[extra=1]:max-[345px]:[&_.rounded-r-full]:h-8",
+				"data-[extra=2]:max-[476px]:gap-1 data-[extra=2]:max-[476px]:p-1",
+				"data-[extra=2]:max-[454px]:[&_.size-10]:size-[34px] data-[extra=2]:max-[454px]:[&_.size-11]:size-[38px]",
+				"data-[extra=2]:max-[454px]:[&_.rounded-r-full]:h-[34px] data-[extra=2]:max-[454px]:[&_.rounded-r-full]:pr-1.5 data-[extra=2]:max-[454px]:[&_.rounded-r-full]:pl-0.5",
+				"data-[extra=2]:max-[454px]:[&>span.w-px]:hidden",
+				"data-[extra=2]:max-[384px]:gap-0.5 data-[extra=2]:max-[384px]:[&_.size-10]:size-8 data-[extra=2]:max-[384px]:[&_.size-11]:size-9",
+				"data-[extra=2]:max-[384px]:[&_.rounded-r-full]:h-8",
+				"data-[extra=2]:max-[350px]:p-0.5 data-[extra=2]:max-[350px]:[&_.size-10]:size-7 data-[extra=2]:max-[350px]:[&_.size-11]:size-8",
+				"data-[extra=2]:max-[350px]:[&_.rounded-r-full]:h-7",
+				"data-[extra=3]:max-[522px]:gap-1 data-[extra=3]:max-[522px]:p-1",
+				"data-[extra=3]:max-[500px]:[&_.size-10]:size-[34px] data-[extra=3]:max-[500px]:[&_.size-11]:size-[38px]",
+				"data-[extra=3]:max-[500px]:[&_.rounded-r-full]:h-[34px] data-[extra=3]:max-[500px]:[&_.rounded-r-full]:pr-1.5 data-[extra=3]:max-[500px]:[&_.rounded-r-full]:pl-0.5",
+				"data-[extra=3]:max-[500px]:[&>span.w-px]:hidden",
+				"data-[extra=3]:max-[440px]:gap-0.5 data-[extra=3]:max-[440px]:[&_.size-10]:size-8 data-[extra=3]:max-[440px]:[&_.size-11]:size-9",
+				"data-[extra=3]:max-[440px]:[&_.rounded-r-full]:h-8",
+				"data-[extra=3]:max-[384px]:p-0.5 data-[extra=3]:max-[384px]:[&_.size-10]:size-7 data-[extra=3]:max-[384px]:[&_.size-11]:size-8",
+				"data-[extra=3]:max-[384px]:[&_.rounded-r-full]:h-7",
+				"data-[extra=3]:max-[350px]:gap-0",
 				side
 					? // Down the right edge, vertically centred. Costs width,
 						// which a wide window has and a tall one does not.
@@ -250,6 +294,7 @@ export function ControlBar({
 				away && "pointer-events-none opacity-0",
 				away && (side ? "translate-x-24" : "translate-y-24"),
 			)}
+			data-extra={extra}
 			onPointerEnter={() => setNear(true)}
 			onPointerLeave={() => setNear(false)}
 			onFocusCapture={(event) => {
@@ -295,6 +340,7 @@ export function ControlBar({
 			{canShareScreen() && (
 				<ShareButton
 					sharing={local.screen}
+					running={running}
 					listening={local.listening}
 					lossless={lossless}
 					losslessUnavailable={losslessUnavailable(room)}
@@ -360,7 +406,6 @@ export function ControlBar({
 					onLabel={t("Hide music")}
 					offLabel={t("Show music")}
 					onClick={onMusic}
-					control="music"
 					className={musicButton.leaving ? "animate-depart" : "animate-arrive"}
 				>
 					<ListMusic />
@@ -378,7 +423,6 @@ export function ControlBar({
 					onLabel={t("Hide watch together")}
 					offLabel={t("Show watch together")}
 					onClick={onWatchPanel}
-					control="watch"
 					className={watchButton.leaving ? "animate-depart" : "animate-arrive"}
 				>
 					<Clapperboard />
@@ -422,7 +466,6 @@ function Toggle({
 	onClick,
 	children,
 	signal,
-	control,
 	className,
 }: {
 	on: boolean;
@@ -431,8 +474,6 @@ function Toggle({
 	onClick: () => void;
 	children: React.ReactNode;
 	signal?: boolean;
-	/** Named for the bar's own layout rules, which make room for some buttons. */
-	control?: string;
 	className?: string;
 }) {
 	return (
@@ -442,7 +483,6 @@ function Toggle({
 			aria-label={on ? onLabel : offLabel}
 			aria-pressed={on}
 			onClick={onClick}
-			data-control={control}
 			className={cn("relative", !on && "text-fg-muted", className)}
 		>
 			{children}

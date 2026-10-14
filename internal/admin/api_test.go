@@ -103,7 +103,15 @@ func mountAudited(t *testing.T, admins []config.Admin) (*API, http.Handler, *kep
 	return api, mux, written
 }
 
-/** Everything the management surface answers, and which capability it wants. */
+/*
+ * Everything the management surface answers, and which capability it wants.
+ *
+ * Every route Mount registers, and not a sample of them. The table held nine
+ * once, so a route bound to the wrong gate anywhere among the other thirty was
+ * caught by nothing — and once the acting half was cut into four, binding a
+ * relay route to the accounts capability is exactly the mistake that compiles,
+ * runs, and hands somebody the enrolment secret.
+ */
 var endpoints = []struct {
 	method string
 	path   string
@@ -113,11 +121,41 @@ var endpoints = []struct {
 	{http.MethodGet, "/api/admin/history", config.Observe},
 	{http.MethodGet, "/api/admin/rooms", config.Observe},
 	{http.MethodGet, "/api/admin/rooms/x/participants", config.Observe},
+	{http.MethodGet, "/api/admin/rooms/x/visits", config.Observe},
 	{http.MethodGet, "/api/admin/runtime", config.Observe},
+	{http.MethodGet, "/api/admin/policy", config.Observe},
+	{http.MethodGet, "/api/admin/settings", config.Observe},
+	{http.MethodGet, "/api/admin/relays", config.Observe},
 	{http.MethodGet, "/api/admin/relays/x/check", config.Observe},
-	{http.MethodDelete, "/api/admin/rooms/x", config.Moderate},
-	{http.MethodDelete, "/api/admin/rooms/x/participants/y", config.Moderate},
-	{http.MethodPost, "/api/admin/rooms/x/participants/y/mute", config.Moderate},
+	{http.MethodGet, "/api/admin/admins", config.Observe},
+	{http.MethodGet, "/api/admin/accounts", config.Observe},
+	{http.MethodPost, "/api/admin/admins/me/passphrase", config.Observe},
+
+	{http.MethodDelete, "/api/admin/rooms/x", config.ManageRooms},
+	{http.MethodDelete, "/api/admin/rooms/x/participants/y", config.ManageRooms},
+	{http.MethodPost, "/api/admin/rooms/x/participants/y/mute", config.ManageRooms},
+	{http.MethodPut, "/api/admin/rooms/x/relay", config.ManageRooms},
+	{http.MethodDelete, "/api/admin/rooms/x/relay", config.ManageRooms},
+	{http.MethodDelete, "/api/admin/rooms/x/record", config.ManageRooms},
+	{http.MethodPut, "/api/admin/rooms/x/participants/y/relay", config.ManageRooms},
+
+	{http.MethodPost, "/api/admin/accounts", config.ManageAccounts},
+	{http.MethodPatch, "/api/admin/accounts/x", config.ManageAccounts},
+	{http.MethodDelete, "/api/admin/accounts/x", config.ManageAccounts},
+
+	{http.MethodPost, "/api/admin/relays", config.ManageRelays},
+	{http.MethodPatch, "/api/admin/relays/x", config.ManageRelays},
+	{http.MethodDelete, "/api/admin/relays/x", config.ManageRelays},
+	{http.MethodGet, "/api/admin/relays/script", config.ManageRelays},
+	{http.MethodGet, "/api/admin/relays/command", config.ManageRelays},
+	{http.MethodPut, "/api/admin/relays/order", config.ManageRelays},
+
+	{http.MethodPut, "/api/admin/policy", config.ManageSettings},
+	{http.MethodPut, "/api/admin/settings", config.ManageSettings},
+
+	{http.MethodPost, "/api/admin/admins", config.Moderate},
+	{http.MethodPatch, "/api/admin/admins/x", config.Moderate},
+	{http.MethodDelete, "/api/admin/admins/x", config.Moderate},
 }
 
 func TestNothingIsReachableWithoutASession(t *testing.T) {
@@ -169,7 +207,7 @@ func TestWatchingIsNotActing(t *testing.T) {
 		recorder := httptest.NewRecorder()
 		mux.ServeHTTP(recorder, request)
 
-		if endpoint.needs == config.Moderate {
+		if endpoint.needs != config.Observe {
 			if recorder.Code != http.StatusForbidden {
 				t.Errorf("%s %s answered %d for somebody who may only watch, want 403",
 					endpoint.method, endpoint.path, recorder.Code)

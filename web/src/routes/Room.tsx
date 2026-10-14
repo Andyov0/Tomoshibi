@@ -12,6 +12,8 @@ import { RoomMenu } from "@/components/room/RoomMenu";
 import { Signal } from "@/components/room/Signal";
 import { useConnectionQuality } from "@/live/connection";
 import { ShareCard } from "@/components/room/ShareCard";
+import { ShareStrain } from "@/components/room/ShareStrain";
+import { useShareStrain } from "@/live/strain";
 import { SoundPanel } from "@/components/room/SoundPanel";
 import { MusicPanel } from "@/components/room/MusicPanel";
 import { WatchPanel } from "@/components/room/WatchPanel";
@@ -24,6 +26,7 @@ import { closeTheatre, hearShows, seenShow, subscribeShow } from "@/live/watch";
 import { watchReady } from "@/live/watch-api";
 import { useLingering } from "@/hooks/useLingering";
 import { type Library, libraries as askLibraries } from "@/live/music";
+import { mainland } from "@/live/relays";
 import { closeDesk, deskState, hearDesks, subscribeDesk } from "@/live/jukebox";
 import { isMusic } from "@/live/sound";
 import { SaidInCorner } from "@/components/room/Said";
@@ -42,7 +45,9 @@ import { watch } from "@/live/notices";
 import { impersonating } from "@/live/name";
 import {
 	ALONE_TOGETHER,
+	ISLAND,
 	TILES_PER_PAGE,
+	clearOf,
 	planClose,
 	planFocus,
 	planGrid,
@@ -56,7 +61,7 @@ import { ConnectionState, type Room as LiveRoom } from "livekit-client";
 import { useRoomForSide } from "@/hooks/useRoomFor";
 import { placement, remember as rememberPlacement } from "@/live/controls";
 import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 export interface RoomProps {
 	room: LiveRoom;
@@ -64,6 +69,8 @@ export interface RoomProps {
 	relay?: string;
 	/** The machine holding the meeting, where the call is being forwarded to it. */
 	carrying?: string;
+	/** The region of the relay this browser chose, where known; see live/api.ts and live/relays.ts, mainland. */
+	entry?: string;
 	onLeave: () => void;
 }
 
@@ -74,15 +81,38 @@ export interface RoomProps {
  * The island's own offset, plus its height, plus a gap — spelled out rather
  * than rounded to a class, because the offset is a safe-area expression and a
  * phone with a home indicator moves the whole island up by a third of an inch.
- * plan.ts holds the same number as ISLAND for the picture grid; this is the
- * same idea for the things drawn over it.
+ * plan.ts holds the same idea as ISLAND for the picture grid, measured from the
+ * bar where it is drawn; this is the same arithmetic for the things drawn over
+ * it, in CSS, and index.css repeats it for the notices.
  */
 const CLEAR_OF_CONTROLS = "bottom-[calc(max(1.25rem,env(safe-area-inset-bottom)+0.5rem)+4rem)]";
 
 /** The same room with the controls out of the way at the bottom. */
 const NOTHING_TO_CLEAR = "bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.5rem))]";
 
-export function Room({ room, relay, carrying, onLeave }: RoomProps) {
+/*
+ * Where the share-strain card's lane ends while a panel is open beside it.
+ *
+ * From sm up a panel is a card at the right of the room, at the same z-20 and
+ * drawn after the strain card, so over it: at 768 wide with Messages open the
+ * chat card covered the whole of Switch and left only "Not now" to press, and
+ * the wider panels did the same up to about 1050. So the card is centred in
+ * what the panel leaves rather than under it — the panel's width plus the
+ * right-3 it sits at, with the lane's own px-3 as the gap between them. Below
+ * sm a panel is a sheet up the bottom edge, and covers the card as it covers
+ * everything else in that half of the room until it is closed; lifted over the
+ * sheet instead, the card would sit on the box somebody is typing in.
+ *
+ * Spelled out per panel, because the classes have to appear whole for the
+ * stylesheet to have them.
+ */
+const BESIDE_PANEL = {
+	messages: "sm:right-[17.25rem]", // ChatPanel, w-66
+	sound: "sm:right-[18.75rem]", // SoundPanel, w-72
+	wide: "sm:right-[20.75rem]", // MusicPanel and WatchPanel, w-80
+} as const;
+
+export function Room({ room, relay, carrying, entry, onLeave }: RoomProps) {
 	// Both here, because both are drawn in two places: the bar sends them and
 	// the tiles show them. A reaction is an event, so holding it in each would
 	// be two lists that drift apart; a hand is state on the roster, and reading
@@ -153,6 +183,10 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 	// and a hook that comes and goes takes the room down with it.
 	const roomy = useRoomForSide();
 	const aside = where === "side" && roomy;
+
+	// How much of the foot of the room the controls take, as drawn; the bar
+	// measures itself and says. See hooks/useIslandReserve.ts and ISLAND.
+	const [island, setIsland] = useState(ISLAND);
 	const chat = useChat(room, panel === "messages");
 	const screen = useFullscreen<HTMLDivElement>();
 
@@ -214,6 +248,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				reactions={reactions}
 				relay={relay}
 				carrying={carrying}
+				entry={entry}
 				standing={standing}
 				chat={chat}
 				chatting={chatting}
@@ -228,6 +263,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 				watching={show?.show.holder}
 				onOpenWatch={openWatch}
 				aside={aside}
+				island={island}
 			/>
 			<ControlBar
 				room={room}
@@ -267,6 +303,7 @@ export function Room({ room, relay, carrying, onLeave }: RoomProps) {
 					setWhere(chosen);
 					rememberPlacement(chosen);
 				}}
+				onReserve={setIsland}
 			/>
 			{/* Outside the stage on purpose: what people can hear must not depend
 			    on what the layout happens to be drawing. */}
@@ -285,8 +322,10 @@ function Stage({
 	screen,
 	relay,
 	carrying,
+	entry,
 	standing,
 	aside,
+	island,
 	onClosePanel,
 	onOpenSound,
 	music,
@@ -304,9 +343,12 @@ function Stage({
 	reactions: ReturnType<typeof useReactions>;
 	relay?: string;
 	carrying?: string;
+	entry?: string;
 	standing: Standing;
 	/** The controls are down the side, so nothing has to clear the bottom. */
 	aside: boolean;
+	/** How much of the foot of the room the controls take; see ISLAND. */
+	island: number;
 	chat: ReturnType<typeof useChat>;
 	chatting: boolean;
 	listening: boolean;
@@ -389,10 +431,10 @@ function Stage({
 
 
 	const plan = pinned
-		? planFocus(size, pinned.id, screen.active ? [] : shown, { fullscreen: screen.active })
+		? planFocus(size, pinned.id, screen.active ? [] : shown, { fullscreen: screen.active, island })
 		: alone
-			? planClose(size, alone.id, self ? [self.id] : [])
-			: planGrid(size, shown);
+			? planClose(size, alone.id, self ? [self.id] : [], island)
+			: planGrid(size, shown, island);
 
 	// Somebody sharing their screen is two pictures. Whichever is not on the
 	// stage is what the switch on the stage offers, and finding it here is the
@@ -424,6 +466,18 @@ function Stage({
 	// And, when we are the one sharing, everybody who says so.
 	const sharing = all.some((surface) => surface.kind === "screen" && surface.local);
 	const watchers = useWatchers(room, sharing);
+
+	// Whether the line can carry that share. Read from this browser's own
+	// sender, so it is only ever said to the person sharing. Held for its exit,
+	// with the last thing it said, so it leaves rather than vanishing.
+	const strain = useShareStrain(room, sharing);
+	const strainCard = useLingering(strain.hint !== undefined, 180);
+	const said = useRef(strain.hint);
+	if (strain.hint) said.current = strain.hint;
+
+	// Where the filmstrip begins, where there is one: the card goes above it
+	// rather than above the controls, which is on top of it. See clearOf.
+	const aboveStrip = pinned && !screen.active ? clearOf(plan, shown, size) : undefined;
 
 
 	/**
@@ -463,7 +517,7 @@ function Stage({
 						)
 					}
 				>
-					<WatchScreen room={room} onStage={onStage} onOpenPanel={onOpenWatch} />
+					<WatchScreen room={room} onStage={onStage} onOpenPanel={onOpenWatch} mainland={mainland(entry)} />
 				</Tile>
 			);
 		}
@@ -614,6 +668,47 @@ function Stage({
 			{sharing && (
 				<div className="pointer-events-none absolute top-16 right-3 bottom-24 flex items-start">
 					<Watchers watchers={watchers} />
+				</div>
+			)}
+
+			{/*
+			  * That our share is more than our line carries, with one setting
+			  * that would fit.
+			  *
+			  * Above the controls, beside the button that owns the setting, and
+			  * clear of them the way the empty-room card is — and above the
+			  * filmstrip as well where there is one, which begins where the
+			  * controls end and which this used to cover whole, so nobody in it
+			  * could be pressed. Never over the middle of the screen: the person
+			  * reading it is presenting, and what is in front of them is what
+			  * everybody else is looking at. Over the foot of the stage is the
+			  * least of it, and the stage is their own share.
+			  */}
+			{strainCard.mounted && said.current && (
+				<div
+					className={cn(
+						"pointer-events-none absolute inset-x-0 z-20 flex justify-center px-3",
+						// Moved aside with the panel, and up and down with the
+						// strip, rather than jumping, both ways.
+						"transition-[right,bottom] duration-200 ease-out",
+						aboveStrip === undefined && (aside ? NOTHING_TO_CLEAR : CLEAR_OF_CONTROLS),
+						chatting
+							? BESIDE_PANEL.messages
+							: listening
+								? BESIDE_PANEL.sound
+								: musicPanel.mounted || watchingPanel.mounted
+									? BESIDE_PANEL.wide
+									: undefined,
+					)}
+					style={aboveStrip === undefined ? undefined : { bottom: aboveStrip }}
+				>
+					<ShareStrain
+						hint={said.current}
+						leaving={strainCard.leaving}
+						busy={strain.busy}
+						onSwitch={() => void strain.accept()}
+						onDismiss={strain.decline}
+					/>
 				</div>
 			)}
 

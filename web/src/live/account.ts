@@ -26,6 +26,13 @@ export interface Me {
 	 * typed. Like `admin`, it authorises nothing: the join asks the store.
 	 */
 	scopes?: string[];
+	/**
+	 * What this account may use — watching together, the music library, and
+	 * the rest (store/perms.go). Said so a page can leave out what would be
+	 * refused, and like the two above it authorises nothing: every endpoint
+	 * asks for itself. Absent only from a server older than permissions.
+	 */
+	can?: string[];
 }
 
 /** The account this browser is signed in to, if any. */

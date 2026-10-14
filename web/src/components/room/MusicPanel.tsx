@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useRoster } from "@/hooks/useRoomState";
 import { rememberedDucking, setDucking, subscribeDuck } from "@/live/duck";
 import { useT } from "@/hooks/useT";
-import { keep, recall } from "@/lib/storage";
+import { rememberMusicQuality, rememberedMusicQuality } from "@/live/preferences";
 import { cn } from "@/lib/utils";
 import {
 	type DeskDeps,
@@ -67,21 +67,10 @@ import { type FormEvent, type SetStateAction, useCallback, useMemo, useState, us
  * shared sound, so muting here stops it at the media server and the lossless
  * stream is not even asked for; for whoever is playing it, it is their own
  * speakers alone, and what everybody else hears is untouched.
- */
-
-const QUALITY_KEY = "meet-live.music-quality";
-
-/**
- * Lossless by default, and the highest tier only when asked for.
  *
- * The highest is a master where there is one -- 24-bit at 192 kHz on one of the
- * libraries this was built against -- which is two hundred megabytes to fetch,
- * four hundred to hold decoded, and several megabits a second to every listener.
- * A 24-bit file at the CD's rate is lossless and a tenth of that.
+ * The library's quality is this browser's, and is kept in live/preferences.ts
+ * because the account page offers it too, ahead of any call.
  */
-export function rememberedQuality(): Quality {
-	return recall(QUALITY_KEY) === "best" ? "best" : "lossless";
-}
 
 type Tab = "desk" | "search" | "playlist";
 
@@ -161,7 +150,7 @@ export function MusicPanel({
 				stop: () => stopMusic(room),
 				pause: (paused) => pauseMusic(room, paused),
 				describeAudio,
-				quality: rememberedQuality,
+				quality: rememberedMusicQuality,
 				onSkipped: (entry) => actionFailed(t("Skipped {title}: the library's account cannot play it.", { title: entry.title })),
 				onProgress: () => {},
 			},
@@ -504,7 +493,7 @@ function SearchTab({ room, libraries, onAdd }: { room: Room; libraries: Library[
 	const [searching, setSearching] = useState(false);
 	const [problem, setProblem] = useState<string>();
 	const [added, setAdded] = useRemembered<Set<string>>(room, "search.added", () => new Set());
-	const [quality, setQuality] = useState<Quality>(rememberedQuality);
+	const [quality, setQuality] = useState<Quality>(rememberedMusicQuality);
 	const library = libraries.find((one) => one.id === source);
 
 	const search = async (event?: FormEvent) => {
@@ -560,7 +549,7 @@ function SearchTab({ room, libraries, onAdd }: { room: Room; libraries: Library[
 							aria-pressed={quality === option}
 							onClick={() => {
 								setQuality(option);
-								keep(QUALITY_KEY, option === "best" ? "best" : undefined);
+								rememberMusicQuality(option);
 							}}
 							className={cn(
 								"rounded-md border px-2 py-0.5 text-[11.5px] transition-colors",

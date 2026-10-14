@@ -100,6 +100,60 @@ type Roster interface {
 	UpdateAdmin(admin store.Admin) error
 	RemoveAdmin(trip string) error
 	ReplaceAdminTrip(from, to string) error
+
+	// ChangeAdminPerms changes the grants it is given, leaves the rest as
+	// stored, and touches nothing else; UpdateAdmin carries the stored grants
+	// over rather than writing them.
+	ChangeAdminPerms(trip string, changes map[string]bool) error
+
+	// ChangeAdminCan gives or takes away the finer capabilities it is given
+	// and leaves the rest of the list as stored, answering with the list as
+	// written. What one box of a custom role sends; see roster.go.
+	ChangeAdminCan(trip string, changes map[string]bool) ([]string, error)
+}
+
+// Settings is the deployment-wide switches for what a deployment that relays
+// nothing relays anyway: a media server's films, YouTube, and Bilibili's
+// bangumi.
+//
+// Its own interface, apart from the room policies in Names, because it is read
+// and written behind its own capability and a test of that gate should not have
+// to stand up a record of every room ever used to hold two booleans.
+type Settings interface {
+	EmbyRelay() bool
+	SetEmbyRelay(on bool) error
+	YouTubeRelay() bool
+	SetYouTubeRelay(on bool) error
+	BangumiRelay() bool
+	SetBangumiRelay(on bool) error
+}
+
+// Spent is what the media server relay has carried on each grantor's behalf.
+//
+// Keyed by the grantor's signature, counted in memory by whatever relays the
+// films, and shown beside the grant on the accounts and administrators pages.
+// Since this process started and no further back: the figure is there to show
+// who is spending the deployment's bandwidth now, and a total that survived
+// restarts would need a bucket of its own and a decision about when it resets.
+type Spent interface {
+	EmbySpent() map[string]uint64
+
+	// YouTubeSpent is what the YouTube relay has carried, for everybody
+	// together, since the same start. One figure rather than one per person:
+	// most of a video is pieces the gateway signed, which cannot be traced to
+	// whoever resolved it, and a figure per person made of the rest would say
+	// everybody had spent next to nothing.
+	YouTubeSpent() uint64
+
+	// BangumiSpent is what the bangumi relay has carried, for everybody
+	// together, since the same start: the figure shown beside its switch, as
+	// YouTube's is beside its own.
+	BangumiSpent() uint64
+
+	// MoveSpent carries a person's figure across when their passphrase, and
+	// so their signature, changes; without it the page put them back to
+	// nought.
+	MoveSpent(from, to string)
 }
 
 // API is the management surface.
@@ -112,6 +166,11 @@ type API struct {
 	roster   Roster
 	ledger   Ledger
 	relays   Relays
+	// settings is the media server relay switch. Nil where there is no store.
+	settings Settings
+	// spent says what the relay has carried for each grantor. Nil until
+	// something that relays is attached; the pages then show no figure.
+	spent Spent
 	// placing is where a room is held and where one person comes in. Nil where
 	// there is no store, which is a relay: it decides nothing about where
 	// anything goes.
@@ -170,6 +229,7 @@ func New(conf *config.Config, media *rtc.Server, st *store.Store, tripKey []byte
 		api.roster = st
 		api.ledger = st
 		api.placing = st
+		api.settings = st
 
 		// So that restarting the process does not sign everybody out. It used
 		// to, and during an afternoon of deployments that reads as the sign-in
@@ -340,6 +400,33 @@ func (a *API) OnRelaysChanged(fn func()) {
 	a.onRelaysChanged = fn
 }
 
+// UseSpent lets the pages show what the media server relay has carried for
+// each person granted it.
+func (a *API) UseSpent(spent Spent) {
+	if a == nil {
+		return
+	}
+
+	a.spent = spent
+}
+
+// moveSpent carries somebody's figure to their new signature, where there is a
+// relay counting at all.
+func (a *API) moveSpent(from, to string) {
+	if a.spent != nil && from != to {
+		a.spent.MoveSpent(from, to)
+	}
+}
+
+// spending reads the relay's figures once for a page.
+func (a *API) spending() map[string]uint64 {
+	if a.spent == nil {
+		return nil
+	}
+
+	return a.spent.EmbySpent()
+}
+
 // Configured reports whether this deployment has a management surface at all.
 func (a *API) Configured() bool {
 	return a.sessions.Configured()
@@ -438,21 +525,23 @@ func (a *API) Mount(mux *http.ServeMux) {
 	// more than the list it comes from does.
 	mux.HandleFunc("GET /api/admin/relays/{relay}/check", a.observe(a.checkRelay))
 
-	// Adding a relay decides where other people's calls are held, which is the
-	// same kind of authority as closing a room rather than the same kind as
-	// reading a figure.
-	mux.HandleFunc("POST /api/admin/relays", a.moderate(a.addRelay))
-	mux.HandleFunc("PATCH /api/admin/relays/{relay}", a.moderate(a.editRelay))
-	mux.HandleFunc("DELETE /api/admin/relays/{relay}", a.moderate(a.dropRelay))
+	// Adding a relay decides where other people's calls are held, which is
+	// authority over the fleet rather than the same kind as reading a figure.
+	mux.HandleFunc("POST /api/admin/relays", a.need(config.ManageRelays, a.addRelay))
+	mux.HandleFunc("PATCH /api/admin/relays/{relay}", a.need(config.ManageRelays, a.editRelay))
+	mux.HandleFunc("DELETE /api/admin/relays/{relay}", a.need(config.ManageRelays, a.dropRelay))
 	// The install script, served to somebody signed in because it carries the
-	// enrolment secret.
-	mux.HandleFunc("GET /api/admin/relays/script", a.moderate(a.installScript))
-	mux.HandleFunc("GET /api/admin/relays/command", a.moderate(a.installCommand))
-	mux.HandleFunc("PUT /api/admin/relays/order", a.moderate(a.orderRelays))
+	// enrolment secret — which is a relay of one's own, and so the same
+	// capability as adding one, and not a reading despite being a GET.
+	mux.HandleFunc("GET /api/admin/relays/script", a.need(config.ManageRelays, a.installScript))
+	mux.HandleFunc("GET /api/admin/relays/command", a.need(config.ManageRelays, a.installCommand))
+	mux.HandleFunc("PUT /api/admin/relays/order", a.need(config.ManageRelays, a.orderRelays))
 
 	// Who else may open these pages. Reading the list needs observe; changing
-	// it needs moderate, because being able to grant an ability is that
-	// ability — an observer who could appoint a moderator would be one.
+	// it needs moderate and nothing finer, because being able to grant an
+	// ability is that ability — anybody who could appoint a moderator would be
+	// one. The administrators' Emby grants are edited here too, and so share
+	// the gate.
 	mux.HandleFunc("GET /api/admin/admins", a.observe(a.roles))
 	mux.HandleFunc("POST /api/admin/admins", a.moderate(a.addRole))
 	mux.HandleFunc("PATCH /api/admin/admins/{trip}", a.moderate(a.changeRole))
@@ -465,20 +554,28 @@ func (a *API) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/admins/me/passphrase", a.observe(a.changeOwnPassphrase))
 
 	// The accounts an administrator hands out. Reading needs observe; making
-	// and changing one needs moderate, because an account is a way in.
+	// and changing one needs the accounts capability, because an account is a
+	// way in. Ticking somebody's Emby asks for moderate on top, inside the
+	// handler, because it is a field of a request this gate has already let
+	// through.
 	mux.HandleFunc("GET /api/admin/accounts", a.observe(a.accounts))
-	mux.HandleFunc("POST /api/admin/accounts", a.moderate(a.addAccount))
-	mux.HandleFunc("PATCH /api/admin/accounts/{name}", a.moderate(a.changeAccount))
-	mux.HandleFunc("DELETE /api/admin/accounts/{name}", a.moderate(a.dropAccount))
+	mux.HandleFunc("POST /api/admin/accounts", a.need(config.ManageAccounts, a.addAccount))
+	mux.HandleFunc("PATCH /api/admin/accounts/{name}", a.need(config.ManageAccounts, a.changeAccount))
+	mux.HandleFunc("DELETE /api/admin/accounts/{name}", a.need(config.ManageAccounts, a.dropAccount))
 
-	mux.HandleFunc("PUT /api/admin/policy", a.moderate(a.setPolicy))
-	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.moderate(a.closeRoom))
-	mux.HandleFunc("DELETE /api/admin/rooms/{room}/participants/{identity}", a.moderate(a.removeOne))
-	mux.HandleFunc("POST /api/admin/rooms/{room}/participants/{identity}/mute", a.moderate(a.muteOne))
-	mux.HandleFunc("PUT /api/admin/rooms/{room}/relay", a.moderate(a.placeRoom))
-	mux.HandleFunc("DELETE /api/admin/rooms/{room}/relay", a.moderate(a.freeRoom))
-	mux.HandleFunc("DELETE /api/admin/rooms/{room}/record", a.moderate(a.forgetRoom))
-	mux.HandleFunc("PUT /api/admin/rooms/{room}/participants/{identity}/relay", a.moderate(a.placePerson))
+	// The deployment-wide switches: who may open and enter rooms, and whether
+	// a media server's films are relayed at all.
+	mux.HandleFunc("PUT /api/admin/policy", a.need(config.ManageSettings, a.setPolicy))
+	mux.HandleFunc("GET /api/admin/settings", a.observe(a.readSettings))
+	mux.HandleFunc("PUT /api/admin/settings", a.need(config.ManageSettings, a.setSettings))
+
+	mux.HandleFunc("DELETE /api/admin/rooms/{room}", a.need(config.ManageRooms, a.closeRoom))
+	mux.HandleFunc("DELETE /api/admin/rooms/{room}/participants/{identity}", a.need(config.ManageRooms, a.removeOne))
+	mux.HandleFunc("POST /api/admin/rooms/{room}/participants/{identity}/mute", a.need(config.ManageRooms, a.muteOne))
+	mux.HandleFunc("PUT /api/admin/rooms/{room}/relay", a.need(config.ManageRooms, a.placeRoom))
+	mux.HandleFunc("DELETE /api/admin/rooms/{room}/relay", a.need(config.ManageRooms, a.freeRoom))
+	mux.HandleFunc("DELETE /api/admin/rooms/{room}/record", a.need(config.ManageRooms, a.forgetRoom))
+	mux.HandleFunc("PUT /api/admin/rooms/{room}/participants/{identity}/relay", a.need(config.ManageRooms, a.placePerson))
 }
 
 // MountEnrolment registers the endpoint a new relay claims its configuration
@@ -565,23 +662,30 @@ type whoami struct {
 	Can  []string `json:"can"`
 }
 
+// capabilities spells out what a session may do, including what it holds by
+// default and what moderate carries with it, so a page can ask for the one it
+// wants by name rather than knowing which others imply it.
 func capabilities(session Session) []string {
-	can := []string{config.Observe}
-	if session.Allows(config.Moderate) {
-		can = append(can, config.Moderate)
-	}
-
-	return can
+	return capabilitiesOf(config.Admin{Trip: session.Trip, Can: session.Can})
 }
 
-// observe and moderate are the two gates.
+// observe, need and moderate are the gates.
 //
-// Separate because the halves differ by more than degree: watching answers the
-// question somebody debugging a call has, and acting changes what another
-// person is experiencing, at once and with no warning. Bound together, the
-// choice becomes give everybody the second or nobody the first.
+// Observe and the rest are separate because the halves differ by more than
+// degree: watching answers the question somebody debugging a call has, and
+// acting changes what another person is experiencing, at once and with no
+// warning. Bound together, the choice becomes give everybody the second or
+// nobody the first. The acting half is cut further by what it acts on; see
+// config.ManageRooms and its neighbours.
 func (a *API) observe(next func(Session, http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	return a.gate(config.Observe, next)
+}
+
+func (a *API) need(
+	capability string,
+	next func(Session, http.ResponseWriter, *http.Request),
+) http.HandlerFunc {
+	return a.gate(capability, next)
 }
 
 func (a *API) moderate(next func(Session, http.ResponseWriter, *http.Request)) http.HandlerFunc {
@@ -1004,6 +1108,12 @@ func (a *API) runtime(_ Session, w http.ResponseWriter, _ *http.Request) {
 			// against. Sent rather than assumed: it was a constant in the client
 			// and therefore right on exactly one kind of link.
 			"linkMbits": a.conf.Meet.LinkMbits,
+			// Watching together, and what this deployment will relay of it.
+			// Read-only here: direct_only is the file's, and the switch beside
+			// it is changed from the settings rather than from this panel. Sent
+			// because whether a deployment relays video at all was, until
+			// now, a question answered only by reading a file on the host.
+			"watch": a.watching(),
 		},
 		"rooms": a.currentPolicy(),
 		"rtc": map[string]any{
@@ -1085,10 +1195,11 @@ func (a *API) readPolicy(_ Session, w http.ResponseWriter, _ *http.Request) {
 
 // setPolicy changes who may open a room.
 //
-// Under moderation rather than observation, and by some distance the furthest
-// reaching thing behind that gate. Closing a room ends one meeting; this decides
-// whether anybody outside a short list can start one at all, and it goes on
-// deciding after whoever set it has signed out and forgotten.
+// Under the settings capability rather than observation, and by some distance
+// the furthest reaching thing behind any gate here. Closing a room ends one
+// meeting; this decides whether anybody outside a short list can start one at
+// all, and it goes on deciding after whoever set it has signed out and
+// forgotten.
 func (a *API) setPolicy(session Session, w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		OpenedBy room.Opening `json:"openedBy"`
@@ -1145,6 +1256,136 @@ func (a *API) setPolicy(session Session, w http.ResponseWriter, r *http.Request)
 	}
 
 	respond(w, a.currentPolicy())
+}
+
+// watching is the state of watching together, as the runtime panel and the
+// settings page both show it.
+type watching struct {
+	// Configured is whether there is a gateway at all. Without one there is
+	// no watching together and the other two mean nothing.
+	Configured bool `json:"configured"`
+
+	// DirectOnly is the file's meet.watch.direct_only: every viewer plays a
+	// video from where they are, and nothing is relayed — except, with the
+	// switches below on, films chosen by somebody granted Emby, YouTube for
+	// whoever cannot reach it, and Bilibili's bangumi for everybody.
+	DirectOnly bool `json:"directOnly"`
+
+	// EmbyRelay is the switch in the store.
+	EmbyRelay bool `json:"embyRelay"`
+
+	// YouTubeRelay is the other switch in the store.
+	YouTubeRelay bool `json:"youtubeRelay"`
+
+	// YouTubeSpent is what has been relayed of YouTube since this process
+	// started, in bytes: shown beside its switch, because a switch that
+	// relays for everybody with no grant to withdraw is one somebody will
+	// want to see the cost of.
+	YouTubeSpent uint64 `json:"youtubeSpent"`
+
+	// BangumiRelay is the third switch in the store, and the one that is on
+	// until somebody turns it off.
+	BangumiRelay bool `json:"bangumiRelay"`
+
+	// BangumiSpent is what has been relayed of bangumi since this process
+	// started, in bytes, beside its switch for the reason YouTube's is: every
+	// episode is relayed for every viewer, on nobody's grant.
+	BangumiSpent uint64 `json:"bangumiSpent"`
+}
+
+func (a *API) watching() watching {
+	read := watching{
+		Configured: a.conf.Meet.Watch.URL != "",
+		DirectOnly: a.conf.Meet.Watch.DirectOnly,
+	}
+
+	if a.settings != nil {
+		read.EmbyRelay = a.settings.EmbyRelay()
+		read.YouTubeRelay = a.settings.YouTubeRelay()
+		read.BangumiRelay = a.settings.BangumiRelay()
+	}
+
+	if a.spent != nil {
+		read.YouTubeSpent = a.spent.YouTubeSpent()
+		read.BangumiSpent = a.spent.BangumiSpent()
+	}
+
+	return read
+}
+
+// readSettings answers what the deployment-wide switches are.
+func (a *API) readSettings(_ Session, w http.ResponseWriter, _ *http.Request) {
+	if a.settings == nil {
+		a.detached(w)
+		return
+	}
+
+	respond(w, a.watching())
+}
+
+// setSettings turns the media server relay, the YouTube relay or the bangumi
+// relay on or off.
+//
+// Behind the settings capability, beside who may open a room, because it is the
+// same kind of decision: it goes on deciding after whoever made it has signed
+// out, and it decides for everybody. Turning the media server relay on relays
+// nothing by itself — nobody holds the Emby grant until somebody ticks it, and
+// every grant starts unticked — so that switch is the one place a deployment
+// can stop all of it at once without finding and unticking each person. The
+// YouTube relay has no grant under it: on, it relays YouTube for everybody who
+// cannot reach it, at once. Nor has the bangumi relay, which relays every
+// bangumi episode for everybody, and is the one a deployment starts with on.
+//
+// Each switch is changed only where the request names it, for the reason the
+// two halves of the room policy are: a page changing one should not quietly
+// reset the other to whatever it last read.
+func (a *API) setSettings(session Session, w http.ResponseWriter, r *http.Request) {
+	if a.settings == nil {
+		a.detached(w)
+		return
+	}
+
+	var body struct {
+		EmbyRelay    *bool `json:"embyRelay"`
+		YouTubeRelay *bool `json:"youtubeRelay"`
+		BangumiRelay *bool `json:"bangumiRelay"`
+	}
+
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil ||
+		body.EmbyRelay == nil && body.YouTubeRelay == nil && body.BangumiRelay == nil {
+		refuse(w, http.StatusBadRequest, "unreadable_request")
+		return
+	}
+
+	for _, one := range []struct {
+		to     *bool
+		set    func(bool) error
+		action string
+	}{
+		{body.EmbyRelay, a.settings.SetEmbyRelay, "set the media server relay"},
+		{body.YouTubeRelay, a.settings.SetYouTubeRelay, "set the YouTube relay"},
+		{body.BangumiRelay, a.settings.SetBangumiRelay, "set the bangumi relay"},
+	} {
+		if one.to == nil {
+			continue
+		}
+
+		said := "off"
+		if *one.to {
+			said = "on"
+		}
+
+		err := one.set(*one.to)
+		a.record(session, one.action, "", said, err)
+
+		if err != nil {
+			slog.Error("failed to "+one.action, "error", err)
+			refuse(w, http.StatusInternalServerError, "store_unwritable")
+			return
+		}
+	}
+
+	respond(w, a.watching())
 }
 
 func (a *API) closeRoom(session Session, w http.ResponseWriter, r *http.Request) {

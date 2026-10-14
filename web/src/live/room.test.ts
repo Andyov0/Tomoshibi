@@ -19,10 +19,25 @@ import { SHARE_FRAME_RATES, type ShareFrameRate,
  * here, rather than any of the things that looked fine while it was broken.
  */
 
-/** A stub of the one call `share` makes, which reports how it was made. */
+/**
+ * A stub of the calls `share` makes, which reports how they were made: the
+ * capture asked of the browser, and the options the picture was published with.
+ */
 function watchShare() {
 	const setScreenShareEnabled = vi.fn().mockResolvedValue(undefined);
-	const room = { localParticipant: { setScreenShareEnabled, trackPublications: new Map() } } as unknown as Room;
+	const createScreenTracks = vi.fn(async () => [
+		{ kind: "video", mediaStreamTrack: { getSettings: () => ({ width: 1920, height: 1080 }) }, stop: () => {} },
+	]);
+	const publishTrack = vi.fn(async () => ({ source: "screen_share" }));
+	const room = {
+		localParticipant: {
+			setScreenShareEnabled,
+			createScreenTracks,
+			publishTrack,
+			getTrackPublication: () => undefined,
+			trackPublications: new Map(),
+		},
+	} as unknown as Room;
 
 	return {
 		room,
@@ -36,13 +51,16 @@ function watchShare() {
 		 * askable.
 		 */
 		async started(frameRate: ShareFrameRate, quality: ShareQuality = "1080p") {
-			setScreenShareEnabled.mockClear();
+			createScreenTracks.mockClear();
+			publishTrack.mockClear();
 			await share(room, true, frameRate, quality);
 
-			const call = setScreenShareEnabled.mock.calls[0];
-			if (!call) throw new Error("share did not ask for a screen");
+			const captured = createScreenTracks.mock.calls[0] as unknown[] | undefined;
+			const published = publishTrack.mock.calls[0] as unknown[] | undefined;
+			if (!captured || !published) throw new Error("share did not ask for a screen");
 
-			const [, capture, publish] = call;
+			// biome-ignore lint: the options are read as the SDK would read them
+			const [capture, publish] = [captured[0], published[1]] as [any, any];
 			return { capture, publish };
 		},
 	};
@@ -147,8 +165,10 @@ describe("share", () => {
 	it("stops without asking for anything", async () => {
 		const { room } = watchShare();
 		const stop = room.localParticipant.setScreenShareEnabled as ReturnType<typeof vi.fn>;
+		const capture = room.localParticipant.createScreenTracks as ReturnType<typeof vi.fn>;
 
 		await share(room, false, 30);
-		expect(stop).toHaveBeenCalledWith(false, expect.anything(), expect.anything());
+		expect(stop).toHaveBeenCalledWith(false);
+		expect(capture).not.toHaveBeenCalled();
 	});
 });

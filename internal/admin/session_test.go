@@ -262,10 +262,11 @@ A restart used to sign everybody out.
 Sessions were held in memory and nowhere else, on the reasoning that one should
 not outlive the configuration that authorised it. That was true while the
 administrators lived in a file and changing them meant a restart. Once the list
-moved into the store it stopped being true — removing somebody takes effect on
-the next request — and all the behaviour did was throw everybody out whenever
-the process was upgraded, which during an afternoon of deployments is every few
-minutes and reads as the sign-in being broken.
+moved into the store it stopped being true — removing somebody reaches their
+open session within a minute, which TestARemovedAdministratorIsSignedOut holds
+— and all the behaviour did was throw everybody out whenever the process was
+upgraded, which during an afternoon of deployments is every few minutes and
+reads as the sign-in being broken.
 */
 
 func TestASessionSurvivesARestart(t *testing.T) {

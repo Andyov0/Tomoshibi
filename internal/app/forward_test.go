@@ -703,3 +703,107 @@ func (quiet) Announce(context.Context, string, string, []byte) error { return ni
 func (quiet) Tell(context.Context, string, string, string, []byte) error { return nil }
 
 func (quiet) Hold(context.Context, string, string) error { return nil }
+
+// The region a join answers with is the entry's, not the holder's.
+//
+// It is what a client reads to decide whether its viewer is in mainland China,
+// where YouTube cannot be reached and a video goes straight to the relayed copy.
+// The holder is the wrong machine to ask: somebody in Shanghai joining a meeting
+// held in Guangzhou came in through Shanghai, and somebody abroad joining a
+// meeting held in the mainland did not come in through the mainland at all —
+// whether or not their relay forwards; see the test after this one.
+func TestAJoinSaysTheRegionOfTheRelayItCameInThrough(t *testing.T) {
+	south := forwarder("guangzhou", "wss://gz.example.invalid", "gz.example.invalid:39219")
+	south.Region = "CN-South"
+
+	mux := control(t, config.PickProbe,
+		forwarder("shanghai", "wss://sh.example.invalid", "sh.example.invalid:39219"),
+		south,
+	)
+
+	region := func(relay string) (string, bool) {
+		request := httptest.NewRequest(http.MethodPost, "/api/rooms/standup/join",
+			strings.NewReader(`{"name":"somebody","relay":"`+relay+`"}`))
+		request.Header.Set("Content-Type", "application/json")
+
+		var answer struct {
+			Region  string          `json:"region"`
+			Forward json.RawMessage `json:"forward"`
+		}
+		if err := json.Unmarshal(ask(mux, request).Body.Bytes(), &answer); err != nil {
+			t.Fatal(err)
+		}
+
+		return answer.Region, len(answer.Forward) > 0
+	}
+
+	if got, _ := region("guangzhou"); got != "CN-South" {
+		t.Errorf("the first join, through guangzhou, said region %q", got)
+	}
+
+	got, forwarded := region("shanghai")
+	if !forwarded {
+		t.Fatal("the second join was not forwarded, so it cannot tell the entry from the holder")
+	}
+
+	if got != "CN-East" {
+		t.Errorf("a join through shanghai into a meeting held in guangzhou said region %q, "+
+			"want the entry's CN-East", got)
+	}
+}
+
+// And it is the relay the person chose, not the one the join sent them to.
+//
+// The test above has the entry forward, so the entry and the relay chosen are
+// the same machine and it cannot tell them apart. Where the chosen relay does
+// not forward, the join sends the person to the holder instead — and the region
+// used to be read off the entry after that, so somebody abroad whose relay does
+// not forward, joining a meeting held in Shanghai, was told CN-East and had every
+// YouTube video relayed by this deployment for nothing (found in review,
+// 2026-10-14). And where nobody chose — no relay named, or one that is not ours —
+// the relay is a hash of the room's name, which says nothing about the person
+// and on this fleet is usually in the mainland; that says nothing either.
+func TestAJoinSaysTheRegionOfTheRelayTheyChoseNotTheOneTheyWereSentTo(t *testing.T) {
+	shanghai := forwarder("shanghai", "wss://sh.example.invalid", "sh.example.invalid:39219")
+	tokyo := forwarder("tokyo", "wss://tk.example.invalid", "tk.example.invalid:39219")
+	tokyo.Region = "JP"
+	tokyo.Forwards = false
+
+	mux := control(t, config.PickProbe, shanghai, tokyo)
+
+	join := func(relay string) (region, sentTo string) {
+		request := httptest.NewRequest(http.MethodPost, "/api/rooms/standup/join",
+			strings.NewReader(`{"name":"somebody","relay":"`+relay+`"}`))
+		request.Header.Set("Content-Type", "application/json")
+
+		var answer struct {
+			Region string `json:"region"`
+			URL    string `json:"url"`
+		}
+		if err := json.Unmarshal(ask(mux, request).Body.Bytes(), &answer); err != nil {
+			t.Fatal(err)
+		}
+		return answer.Region, answer.URL
+	}
+
+	if got, _ := join("shanghai"); got != "CN-East" {
+		t.Fatalf("the first join, through shanghai, said region %q", got)
+	}
+
+	got, sentTo := join("tokyo")
+	if !strings.Contains(sentTo, "sh.example.invalid") {
+		t.Fatalf("a join through tokyo, which does not forward, was sent to %q rather than to the holder; "+
+			"the fixture no longer exercises the fault", sentTo)
+	}
+	if got != "JP" {
+		t.Errorf("somebody who chose tokyo and was sent to shanghai was told region %q; "+
+			"want the region of the relay they chose, JP", got)
+	}
+
+	for _, unchosen := range []string{"", "nowhere"} {
+		if got, _ := join(unchosen); got != "" {
+			t.Errorf("a join naming relay %q, which is no choice of ours, was told region %q; "+
+				"a hash of the room's name says nothing about where somebody is", unchosen, got)
+		}
+	}
+}

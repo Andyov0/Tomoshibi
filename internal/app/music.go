@@ -2,6 +2,8 @@ package app
 
 import (
 	"net/http"
+
+	"tomoshibi/internal/store"
 )
 
 /*
@@ -22,8 +24,12 @@ shown five paths and no address.
 	link      a playlist or song link as somebody shared it, and its tracks
 
 Signed in, because a library is somebody's subscription, and a path that let
-anybody holding the address play from it would be giving that away. Not limited
-further: who has an account on a deployment is already a decision somebody made.
+anybody holding the address play from it would be giving that away. And given
+the music permission, which every account holds unless somebody took it away:
+who has an account on a deployment is a decision somebody made, and so, now, is
+which of them may play from the library. Somebody without it still hears what
+is played and may still ask for a song at a jukebox somebody else opened —
+those travel through the call, as a guest's would.
 
 The query is passed on as it came. The gateway is the party that knows what a
 source or a quality is, and it refuses what it does not; reading the parameters
@@ -43,8 +49,7 @@ func (a *App) music(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, ok := a.signedIn(r); !ok {
-		fail(w, http.StatusUnauthorized, reasonNotSignedIn)
+	if _, ok := a.may(w, r, store.PermMusic); !ok {
 		return
 	}
 

@@ -1,5 +1,6 @@
 import { type RemoteParticipant, type Room, RoomEvent } from "livekit-client";
-import { type Resolved, TICKET, rememberInfo } from "./watch-api";
+import { signatureOf } from "./name";
+import { type Resolved, TICKET, type Unread, type Unresolved, rememberInfo } from "./watch-api";
 
 /**
  * Watching a video together.
@@ -29,6 +30,32 @@ import { type Resolved, TICKET, rememberInfo } from "./watch-api";
  * of a second a second. So a video now starts when the holder's player can
  * play it -- or STARTING_MS after it was chosen, if it never can -- and from
  * then on the timeline is the only clock.
+ *
+ * Whoever adds a video reads its link themselves where they can, and hands the
+ * show only the ticket it was filed under; the one running the show reads a
+ * link only for somebody who cannot -- a guest, or an account not given
+ * watching together -- and says to the server that it is reading for somebody
+ * else. The difference is what a film from a media server costs. Such a film
+ * plays only through the deployment's relay, and the server relays it only for
+ * the person given that who chose it (internal/app/watch.go), so a link read
+ * in the holder's browser on a guest's behalf must not be taken for the
+ * holder's choice. The first version had the holder read every link, which
+ * cost nothing while no video was anybody's to spend, and would have made
+ * every guest's paste the holder's spending once one was.
+ *
+ * Taking a ticket from somebody else is safe in a way taking an address would
+ * not be. A ticket is only a name the gateway issued; the holder asks the
+ * server what it plays before queueing it, and whether it is relayed was
+ * settled when it was read, by whose choice it was, not by who queued it.
+ *
+ * Except that a ticket travels: every film's is in the show everybody in the
+ * call is told, guests included, and a film's ticket is relayed for as long as
+ * the server's ledger holds it. So a relayed film is queued from somebody else
+ * only where they are the person whose grant it is -- the server names them
+ * with the film, and their signature is in their identity, which the media
+ * server enforces -- and a ticket copied out of one room and handed to the
+ * holder of another is refused there. See Theatre.addTicket for what that
+ * does not reach.
  *
  * In an encrypted call it is not offered at all. What everybody is watching is
  * data, which this project's SDK options do not encrypt, and it is not
@@ -119,7 +146,16 @@ export interface Show {
 
 /** What anybody may ask of the show. */
 export type Command =
+	/** A link, for whoever runs the show to read: from somebody who cannot read one. */
 	| { t: "add"; text: string }
+	/**
+	 * A link already read, by whoever asks, under its ticket. `text` is the link
+	 * as it was pasted, beside the ticket, for a holder whose page is older than
+	 * tickets and reads only text; a current holder takes the ticket and never
+	 * reads it. Left out for a media server's film, which an older holder would
+	 * read with its own session and so as its own choice.
+	 */
+	| { t: "add"; ticket: string; text?: string }
 	| { t: "play" }
 	| { t: "pause" }
 	| { t: "seek"; to: number }
@@ -127,8 +163,21 @@ export type Command =
 	| { t: "skip"; key?: string }
 	| { t: "remove"; key: string };
 
-/** Why a link pasted elsewhere was not added: said back to whoever pasted it. */
-export type Refusal = "not_a_video" | "unavailable" | "failed";
+/** Why a video was not added: said back to whoever asked, where that was elsewhere. */
+export type Refusal = Unresolved;
+
+/** Every refusal there is, for reading one that arrived from somebody else. */
+const REFUSALS: readonly Refusal[] = [
+	"not_a_video",
+	"unavailable",
+	"members_only",
+	"copy_protected",
+	"region_locked",
+	"not_found",
+	"not_allowed",
+	"emby_not_allowed",
+	"failed",
+];
 
 type Message =
 	| { t: "state"; show: Show }
@@ -139,9 +188,12 @@ type Message =
 
 /** What the show needs from outside; a seam for the tests. */
 export interface TheatreDeps {
-	resolve: (text: string) => Promise<Resolved | "not_a_video" | "unavailable" | "failed">;
-	/** A link that could not be added, and who pasted it. */
-	onRefused: (why: "not_a_video" | "unavailable" | "failed", by: string) => void;
+	/** What a link plays; `forOther` where it was added by somebody else (see resolveVideo). */
+	resolve: (text: string, forOther: boolean) => Promise<Resolved | Refusal>;
+	/** What a ticket somebody else read plays, as the server says (see readTicket). */
+	read: (ticket: string) => Promise<Resolved | Unread>;
+	/** A video that could not be added here, and who added it. */
+	onRefused: (why: Refusal, by: string) => void;
 }
 
 let counter = 0;
@@ -250,20 +302,92 @@ export class Theatre {
 		return show;
 	}
 
-	/** Add what a link plays. `from` is whoever pasted it elsewhere, told if it cannot be added. */
+	/**
+	 * Add what a link plays. `from` is whoever pasted it elsewhere, told if it
+	 * cannot be added, and for whom it is read as somebody else's.
+	 */
 	async add(text: string, by: string, from?: string): Promise<boolean> {
-		const found = await this.deps.resolve(text.slice(0, 2000));
+		const found = await this.deps.resolve(text.slice(0, 2000), from !== undefined);
 		if (this.closed) return false;
 		if (typeof found === "string") {
-			if (from) this.say({ t: "refused", why: found }, [from]);
-			else this.deps.onRefused(found, by);
+			// "not_allowed" here is about this browser's session, not the
+			// asker: a holder whose watching together was taken away partway
+			// through a show. Passed on, it would tell a guest that something
+			// had not been opened to them. For the asker the video cannot be
+			// played here, which is true.
+			this.refuse(from && found === "not_allowed" ? "unavailable" : found, by, from);
 			return false;
 		}
+		this.enqueue(found, by);
+		return true;
+	}
+
+	/**
+	 * Add a video somebody else already read, by its ticket: queued only once
+	 * the server says what it plays. `from` is whoever sent it, told if it
+	 * cannot be added.
+	 *
+	 * Asked rather than believed, because a ticket arrives from another
+	 * participant and is only a string: one that is expired, mistyped, or a
+	 * media server's film the server will not relay reads as nothing, and a
+	 * queue holding it would play nothing for everybody until the timeline ran
+	 * past it.
+	 *
+	 * And a film the server relays under somebody's grant is queued only from
+	 * that somebody: the signature in the sender's identity has to be the one
+	 * the server names as the film's grantor. Without it, a ticket copied out
+	 * of the show in one room -- everybody there is told it, guests included --
+	 * and handed to the holder of another was queued there, and relayed to that
+	 * whole room on the first person's grant and counted against them, for a
+	 * room they were never in. Said back as the media servers not being opened
+	 * to the sender, which is what is true of them for this film.
+	 *
+	 * What this does not reach, said plainly. It holds an honest holder to the
+	 * rule, which is the footing the server's for=other stands on: somebody
+	 * running a show of their own, with a page they have altered, can queue a
+	 * copied ticket in it themselves, and everybody watching that show fetches
+	 * the film through the relay. What bounds that is the server's ledger and
+	 * nothing here -- the ticket stops being relayed twelve hours after it was
+	 * chosen, within about thirty seconds when the grantor's Emby is taken away
+	 * or they are blocked (the server keeps a grant it has looked up that long),
+	 * and for everybody when the switch is turned off -- and
+	 * the bytes are counted against the grantor, where the management pages
+	 * show them. A film added here by the holder themselves is not checked, for
+	 * the same reason: nothing on this page can stop the page's own owner.
+	 */
+	async addTicket(ticket: string, by: string, from?: string): Promise<boolean> {
+		const found = TICKET.test(ticket) ? await this.deps.read(ticket) : "failed";
+		if (this.closed) return false;
+		// Said as what it is: a video that plays only through a relay the
+		// server will not run for it is one that cannot be played here, which
+		// a retry does not change.
+		if (typeof found === "string") {
+			this.refuse(found, by, from);
+			return false;
+		}
+		if (from !== undefined && found.grantor !== undefined) {
+			// Proven, and the same: a signature drawn from nothing is not a
+			// person, and is never anybody's grant.
+			const sender = signatureOf(from);
+			if (!sender?.proven || sender.trip !== found.grantor) {
+				this.refuse("emby_not_allowed", by, from);
+				return false;
+			}
+		}
+		this.enqueue(found, by);
+		return true;
+	}
+
+	private refuse(why: Refusal, by: string, from?: string): void {
+		if (from) this.say({ t: "refused", why }, [from]);
+		else this.deps.onRefused(why, by);
+	}
+
+	private enqueue(found: Resolved, by: string): void {
 		rememberInfo(found);
 		this.queue.push({ key: newKey(), by, ticket: found.ticket, duration: found.duration, live: found.live });
 		if (!this.now) this.next();
 		else this.changed();
-		return true;
 	}
 
 	play(): void {
@@ -361,9 +485,17 @@ export class Theatre {
 			case "hello":
 				this.announce();
 				return;
-			case "add":
-				void this.add(String(message.text), by, participant.identity);
+			case "add": {
+				// Either shape, from anybody: what arrives is only what somebody
+				// said it was.
+				const asked = message as { text?: unknown; ticket?: unknown };
+				if (asked.ticket !== undefined) {
+					void this.addTicket(typeof asked.ticket === "string" ? asked.ticket : "", by, participant.identity);
+				} else {
+					void this.add(String(asked.text), by, participant.identity);
+				}
 				return;
+			}
 			case "play":
 				this.play();
 				return;
@@ -544,7 +676,7 @@ export function command(room: Room, what: Command, by = room.localParticipant.na
 	if (mine) {
 		switch (what.t) {
 			case "add":
-				void mine.add(what.text, by);
+				void ("ticket" in what ? mine.addTicket(what.ticket, by) : mine.add(what.text, by));
 				break;
 			case "play":
 				mine.play();
@@ -601,7 +733,7 @@ export function hearShows(room: Room, onRefused: (why: Refusal) => void = () => 
 			notify();
 		} else if (message?.t === "refused" && heard.get(room)?.show.holder === participant.identity) {
 			const why = message.why;
-			onRefused(why === "not_a_video" || why === "unavailable" ? why : "failed");
+			onRefused(REFUSALS.includes(why) ? why : "failed");
 		} else if (message?.t === "closed" && heard.get(room)?.show.holder === participant.identity) {
 			heard.delete(room);
 			notify();

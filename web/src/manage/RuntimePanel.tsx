@@ -103,5 +103,16 @@ function show(value: unknown): string {
 	if (Array.isArray(value)) return value.length === 0 ? "—" : value.join(", ");
 	if (typeof value === "boolean") return value ? "true" : "false";
 
+	// A setting that is a group of settings, which meet.watch is: whether there
+	// is a gateway, whether the file relays nothing, and whether the switch in
+	// the store relays Emby anyway. One line of name and value pairs, in the
+	// file's own words, because String() of an object is "[object Object]" and
+	// that is what this row said the first time it was sent.
+	if (typeof value === "object") {
+		const pairs = Object.entries(value as Record<string, unknown>);
+
+		return pairs.length === 0 ? "—" : pairs.map(([name, one]) => `${name} ${show(one)}`).join("  ·  ");
+	}
+
 	return String(value);
 }

@@ -103,6 +103,21 @@ func (a *App) makeInvite(w http.ResponseWriter, r *http.Request) {
 		if invite, ok = standingInvite(w, r, invite, now); !ok {
 			return
 		}
+
+		// A standing link is the invite permission's, on top of being
+		// allowed to run the room. Being a member is what lets somebody act
+		// on a scope's meetings; handing strangers a way into them that
+		// outlives every meeting is a further thing an owner may not want
+		// every member doing. Asked of whoever is making it — the account
+		// behind the session or the passphrase, or the administrator, who
+		// holds it whatever their record says.
+		//
+		// The ordinary link a call makes is not asked: it dies with the
+		// meeting, and refusing it would take a host's door away from them.
+		if invite.Standing && !(who.Mark.Proven && a.holds(who.Mark.Trip, store.PermInvite)) {
+			fail(w, http.StatusForbidden, reasonNotAllowed)
+			return
+		}
 	}
 
 	token, err := store.NewInviteToken()

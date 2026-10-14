@@ -143,6 +143,15 @@ func (a *App) arrange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Arranging only. Reading one's meetings and cancelling them stay with
+	// being signed in, so somebody whose permission is taken away can still
+	// see what they already arranged and call it off rather than have it
+	// stand, reserved in their name, with no way to reach it.
+	if !a.holds(account.Trip, store.PermArrange) {
+		fail(w, http.StatusForbidden, reasonNotAllowed)
+		return
+	}
+
 	if a.joining() == room.ByAccount {
 		fail(w, http.StatusConflict, reasonNeedsInvites)
 		return

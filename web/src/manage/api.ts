@@ -259,10 +259,24 @@ export interface Participant {
 export interface Administrator {
 	trip: string;
 	name: string;
+	/**
+	 * Every capability they hold, moderate's four included.
+	 *
+	 * What to read to ask whether they may do something. Not what to edit: a
+	 * moderator's list names all four finer capabilities and was given none of
+	 * them by name, so a page that sent it back would be writing four grants
+	 * nobody chose.
+	 */
 	can: string[];
+	/** What is written against them, which is what the role control edits. */
+	granted?: string[];
 	added?: string;
 	/** Whoever is reading, so a page can say so and guard their own way back in. */
 	self?: boolean;
+	/** Every permission and whether they hold it. Only the Emby grant can differ. */
+	effective?: Record<string, boolean>;
+	/** What the Emby relay has carried on their behalf since the server started. */
+	embySpent?: number;
 }
 
 /** Somebody who was given a way in. */
@@ -277,6 +291,49 @@ export interface Account {
 	note?: string;
 	/** The groups they belong to, each a name a room may be held under after an `@`. */
 	scopes?: string[];
+	/**
+	 * Every permission and whether they hold it.
+	 *
+	 * Drawn from rather than the stored overrides the server also keeps, so
+	 * that the page never has to know a default: one changed on the server
+	 * would otherwise be drawn wrongly on every account that never moved it.
+	 */
+	effective?: Record<string, boolean>;
+	/** What the Emby relay has carried on their behalf since the server started. */
+	embySpent?: number;
+}
+
+/**
+ * Watching together, and what the deployment relays of it.
+ *
+ * Three facts rather than one switch, because the switch means something only
+ * where the other two say it can: without a gateway there is nothing to relay,
+ * and where the configuration file relays everything already the switch is
+ * holding nothing back.
+ */
+export interface Watching {
+	/** Whether there is a gateway at all. */
+	configured: boolean;
+	/** The file's meet.watch.direct_only: relay nothing unless the switch says. */
+	directOnly: boolean;
+	/** The switch kept in the store: relay films picked by people granted Emby. */
+	embyRelay: boolean;
+	/**
+	 * The other switch kept in the store: relay YouTube for every viewer who
+	 * cannot reach it. Absent from a server older than the switch, which read
+	 * as off, because that is what such a server does.
+	 */
+	youtubeRelay?: boolean;
+	/** What the YouTube relay has carried, in bytes, since the server started. */
+	youtubeSpent?: number;
+	/**
+	 * The third switch kept in the store: relay Bilibili's bangumi for every
+	 * viewer. On until somebody turns it off; absent from a server older than
+	 * the switch, which relays no bangumi, and read as off for that reason.
+	 */
+	bangumiRelay?: boolean;
+	/** What the bangumi relay has carried, in bytes, since the server started. */
+	bangumiSpent?: number;
 }
 
 /** Who may use a name nobody has used before. */
@@ -377,10 +434,26 @@ function explain(reason: string | undefined, status: number): string {
 			return t("That passphrase is not an administrator's.");
 		case "wrong_passphrase":
 			return t("That passphrase is not an administrator's.");
+		// Said about the role rather than about watching, which is what this
+		// used to say. With the acting half cut four ways, somebody refused here
+		// may well change accounts all day and simply not relays, and being told
+		// they may only watch is being told something untrue.
 		case "not_allowed":
-			return t("This account may watch, but not change anything.");
+			return t("Your administrator role does not cover this.");
+		// A capability the server does not know is a page newer than the server
+		// behind it, which is the useful thing to say; it was mapped to the
+		// sentence above, which blamed the reader for a version mismatch.
 		case "unknown_capability":
-			return t("This account may watch, but not change anything.");
+			return t("That is not a role this server knows. It may be running an older version.");
+		case "unknown_permission":
+			return t("That is not a permission this server knows. It may be running an older version.");
+		// The one box on the accounts page that the accounts capability cannot
+		// tick, and the passphrase of anybody it is ticked for, which is the
+		// same decision by another door. Said as who can, because the person
+		// reading it has no other way to learn why a press beside six that work
+		// did not.
+		case "emby_needs_moderate":
+			return t("Only an administrator who can manage everything can give or take away Emby, or set the passphrase of somebody who has it.");
 		case "signed_out":
 			return t("That session has ended. Sign in again.");
 		case "no_such_room":
@@ -459,7 +532,12 @@ function explain(reason: string | undefined, status: number): string {
 			return t("That is not the enrolment secret.");
 		case "no_certificate":
 			return t("There is no certificate to hand out.");
+		// Both, because the server says both: unreadable_request from some
+		// handlers and plain unreadable from the accounts and the roster. Only
+		// the first was here, so a malformed change to an account read as a bare
+		// HTTP 400.
 		case "unreadable_request":
+		case "unreadable":
 			return t("The request could not be read.");
 		case "avatar_too_large":
 			return t("That picture is too large.");
@@ -656,6 +734,34 @@ export const api = {
 			{ method: "PUT", body: JSON.stringify({ relay }) },
 		),
 
+	/** Whether the deployment relays the films people granted Emby pick, YouTube, and bangumi. */
+	settings: () => call<Watching>("/settings"),
+
+	/**
+	 * Turn that relay on or off for everybody at once.
+	 *
+	 * On relays nothing by itself: every grant starts unticked, so the switch is
+	 * the one place all of it can be stopped without finding each person.
+	 */
+	setEmbyRelay: (on: boolean) =>
+		call<Watching>("/settings", { method: "PUT", body: JSON.stringify({ embyRelay: on }) }),
+
+	/**
+	 * Turn the YouTube relay on or off for everybody at once.
+	 *
+	 * Sent on its own, as the Emby switch is: the server changes only the
+	 * switch a request names, so moving one never resets the other.
+	 */
+	setYouTubeRelay: (on: boolean) =>
+		call<Watching>("/settings", { method: "PUT", body: JSON.stringify({ youtubeRelay: on }) }),
+
+	/**
+	 * Turn the bangumi relay on or off for everybody at once. Sent on its own,
+	 * as the other two are.
+	 */
+	setBangumiRelay: (on: boolean) =>
+		call<Watching>("/settings", { method: "PUT", body: JSON.stringify({ bangumiRelay: on }) }),
+
 	setPolicy: (openedBy: Opening) =>
 		call<Policy>("/policy", { method: "PUT", body: JSON.stringify({ openedBy }) }),
 
@@ -735,10 +841,35 @@ export const api = {
 	 */
 	admins: () => call<Administrator[]>("/admins"),
 
-	addAdmin: (admin: { trip: string; name: string; can: string[] }) =>
-		call<{ added: string }>("/admins", { method: "POST", body: JSON.stringify(admin) }),
+	addAdmin: (admin: {
+		trip: string;
+		name: string;
+		can: string[];
+		perms?: Record<string, boolean>;
+	}) => call<{ added: string }>("/admins", { method: "POST", body: JSON.stringify(admin) }),
 
-	changeAdmin: (trip: string, change: { name: string; can: string[] }) =>
+	/**
+	 * Change whichever was sent.
+	 *
+	 * Each is optional and the server leaves an absent one alone. It used to
+	 * take the name and the role together and rebuild the record from them, so
+	 * a page renaming somebody had to send their role back — the expanded list,
+	 * which named four capabilities nobody had granted.
+	 *
+	 * `can` is the whole role, written as sent: what the role control means.
+	 * `caps` and `perms` are boxes, each laid over what the server holds, so a
+	 * box pressed on a page drawn a minute ago changes that box and nothing the
+	 * page drew beside it.
+	 */
+	changeAdmin: (
+		trip: string,
+		change: {
+			name?: string;
+			can?: string[];
+			caps?: Record<string, boolean>;
+			perms?: Record<string, boolean>;
+		},
+	) =>
 		call<{ changed: string }>(`/admins/${encodeURIComponent(trip)}`, {
 			method: "PATCH",
 			body: JSON.stringify(change),
@@ -783,20 +914,37 @@ export const api = {
 	 * stored and cannot be read back, which is why the page shows it once and
 	 * says so.
 	 */
-	addAccount: (name: string, passphrase: string) =>
+	addAccount: (name: string, passphrase: string, perms?: Record<string, boolean>) =>
 		call<{ name: string; trip: string }>("/accounts", {
 			method: "POST",
-			body: JSON.stringify({ name, passphrase }),
+			body: JSON.stringify({ name, passphrase, perms }),
 		}),
 
+	/**
+	 * Change part of an account.
+	 *
+	 * Permissions go as the boxes that were pressed, and the server lays them
+	 * over what it holds; one not named is left as it is. Scopes go whole and
+	 * replace what was there, since they are edited as one line.
+	 */
 	changeAccount: (
 		name: string,
-		change: { name?: string; passphrase?: string; blocked?: boolean; note?: string; scopes?: string[] },
+		change: {
+			name?: string;
+			passphrase?: string;
+			blocked?: boolean;
+			note?: string;
+			scopes?: string[];
+			perms?: Record<string, boolean>;
+		},
 	) =>
-		call<{ name: string; trip: string }>(`/accounts/${encodeURIComponent(name)}`, {
-			method: "PATCH",
-			body: JSON.stringify(change),
-		}),
+		call<{ name: string; trip: string; effective?: Record<string, boolean> }>(
+			`/accounts/${encodeURIComponent(name)}`,
+			{
+				method: "PATCH",
+				body: JSON.stringify(change),
+			},
+		),
 
 	dropAccount: (name: string) =>
 		call<{ removed: string }>(`/accounts/${encodeURIComponent(name)}`, { method: "DELETE" }),

@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft, Loader2, Mic, MicOff, ShieldAlert, Sparkles, UserRound, Video, VideoOff } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { keep, recall } from "@/lib/storage";
+import { rememberDevices, rememberedDevices, usableDeviceChoice } from "@/live/preferences";
 
 /*
  * The keys below still say the name this was called before.
@@ -34,7 +35,6 @@ import { keep, recall } from "@/lib/storage";
  * and back in English on the morning after a deployment.
  */
 const NAME_KEY = "meet-live.name";
-const DEVICES_KEY = "meet-live.devices";
 
 /*
  * The passphrase, kept so that it is already in the field the next time.
@@ -295,7 +295,7 @@ function Form({ room, onRoomChange, onJoin, guest = false, invitation, as, onBac
 	const t = useT();
 	const [name, setName] = useState(() => recall(NAME_KEY) ?? "");
 	const [secret, setSecret] = useState(() => recall(PASSPHRASE_KEY) ?? "");
-	const [devices, setDevices] = useState(remembered);
+	const [devices, setDevices] = useState(rememberedDevices);
 	const [track, setTrack] = useState<LocalVideoTrack>();
 
 	// Whether the preview is blurred, and whether it is busy becoming so. The
@@ -370,7 +370,11 @@ function Form({ room, onRoomChange, onJoin, guest = false, invitation, as, onBac
 			return;
 		}
 
-		createLocalVideoTrack()
+		// The camera last picked in a call, where it is still plugged in. The
+		// room asks for the same one when it starts (preferences.ts), and a
+		// preview of another camera would be a rehearsal of the wrong picture.
+		usableDeviceChoice()
+			.then((usable) => createLocalVideoTrack(usable.videoinput ? { deviceId: usable.videoinput } : undefined))
 			.then((made) => {
 				if (!live) {
 					made.stop();
@@ -471,7 +475,7 @@ function Form({ room, onRoomChange, onJoin, guest = false, invitation, as, onBac
 		// Not a name somebody else chose for them. It is this link's, and
 		// keeping it would greet them by it on every visit after.
 		if (!locked) keep(NAME_KEY, display);
-		keep(DEVICES_KEY, JSON.stringify(devices));
+		rememberDevices(devices);
 
 		// Whatever was last joined with, which means clearing the field and
 		// joining is how somebody takes it back off this machine — except as a
@@ -833,12 +837,6 @@ function Unavailable({ reason }: { reason: string }) {
 	);
 }
 
-/** What was chosen last time, or the defaults on a first visit. */
-/**
- * The devices as they were left, which is also what a reload should come back
- * with. Exported for that: somebody rejoining after a refresh has already made
- * these two decisions and should not be asked again.
- */
 /**
  * The name last joined under, for a reload that is going straight back in.
  *
@@ -848,21 +846,4 @@ function Unavailable({ reason }: { reason: string }) {
  */
 export function rememberedName(): string {
 	return parseName(recall(NAME_KEY) ?? "").name;
-}
-
-export function remembered(): { camera: boolean; microphone: boolean } {
-	const fallback = { camera: false, microphone: true };
-
-	try {
-		const stored = recall(DEVICES_KEY);
-		if (!stored) return fallback;
-
-		const parsed = JSON.parse(stored) as Partial<typeof fallback>;
-		return {
-			camera: parsed.camera ?? fallback.camera,
-			microphone: parsed.microphone ?? fallback.microphone,
-		};
-	} catch {
-		return fallback;
-	}
 }

@@ -5,6 +5,7 @@ import { useVideoInfo } from "@/hooks/useVideoInfo";
 import { keep, recall } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { clock } from "@/live/music";
+import { capping, watchQuality } from "@/live/preferences";
 import {
 	CLOSE_ENOUGH,
 	type Seen,
@@ -16,7 +17,7 @@ import {
 	seenShow,
 	subscribeShow,
 } from "@/live/watch";
-import type { Resolved } from "@/live/watch-api";
+import { type Resolved, askAgain, relayOnly } from "@/live/watch-api";
 import { BUFFERING, ENDED, PLAYING, type YouTubePlayer, youtubeApi } from "@/live/youtube";
 import type { Room } from "livekit-client";
 import { Clapperboard, CloudOff, ListVideo, Loader2, Pause, Play, SkipForward, Volume2, VolumeX } from "lucide-react";
@@ -69,6 +70,18 @@ const YOUTUBE_REFUSED_MS = 1500;
 /** How often the player is held to the show. */
 const KEEP_MS = 250;
 
+/**
+ * How many times a relay-only video that stopped partway is started again by
+ * itself before the viewer is asked to. hls.js gives up on a piece only after
+ * retrying it for about half a minute, so each of these is that long again: a
+ * relay that has not come back in a minute and a half is said to have stopped,
+ * with a press to try once more, rather than left as a spinner nobody explains.
+ */
+const RESUMES = 2;
+
+/** Where a relay-only video that had been playing stands, once its relay stopped. */
+type Halted = "resuming" | "stopped";
+
 const VOLUME_KEY = "meet-live.watch-volume";
 
 export function rememberedVolume(): number {
@@ -95,7 +108,18 @@ interface Handle {
 	youtube: boolean;
 }
 
-export function WatchScreen({ room, onStage, onOpenPanel }: { room: Room; onStage: boolean; onOpenPanel: () => void }) {
+export function WatchScreen({
+	room,
+	onStage,
+	onOpenPanel,
+	mainland = false,
+}: {
+	room: Room;
+	onStage: boolean;
+	onOpenPanel: () => void;
+	/** This call came in through a relay in mainland China; see Player. */
+	mainland?: boolean;
+}) {
 	const t = useT();
 	const seen = useSyncExternalStore(subscribeShow, () => seenShow(room));
 	const video = seen?.show.now;
@@ -129,12 +153,20 @@ export function WatchScreen({ room, onStage, onOpenPanel }: { room: Room; onStag
 		);
 	}
 
-	if (info === undefined || info === "failed") {
+	if (info === undefined || typeof info === "string") {
 		return (
 			<div className="absolute inset-0 grid place-items-center bg-black text-white/70" onClick={contain}>
-				{info === "failed" ? (
-					<div className="flex flex-col items-center gap-3 px-4 text-center">
-						<p className="text-sm">{t("The video could not be read. Try again.")}</p>
+				{info !== undefined ? (
+					<div className="flex flex-col items-center gap-3 px-4 text-center animate-fade-in">
+						<p className="text-sm">
+							{/* Not "try again" for a video that plays only through a
+							    relay the server will not run for it: a bangumi
+							    episode with the switch turned off, a film whose
+							    grant was withdrawn. No retry plays either. */}
+							{info === "unavailable"
+								? t("That video cannot be played here.")
+								: t("The video could not be read. Try again.")}
+						</p>
 						<Button
 							variant="secondary"
 							size="sm"
@@ -156,7 +188,15 @@ export function WatchScreen({ room, onStage, onOpenPanel }: { room: Room; onStag
 	// Keyed by the video, so the next one starts from a player of its own.
 	return (
 		<div className="absolute inset-0" onClick={contain}>
-			<Player key={video.key} room={room} video={video} info={info} seen={seen} onOpenPanel={onOpenPanel} />
+			<Player
+				key={video.key}
+				room={room}
+				video={video}
+				info={info}
+				seen={seen}
+				mainland={mainland}
+				onOpenPanel={onOpenPanel}
+			/>
 		</div>
 	);
 }
@@ -166,16 +206,39 @@ function Player({
 	video,
 	info,
 	seen,
+	mainland,
 	onOpenPanel,
 }: {
 	room: Room;
 	video: Video;
 	info: Resolved;
 	seen: Seen;
+	mainland: boolean;
 	onOpenPanel: () => void;
 }) {
 	const t = useT();
-	const [relayed, setRelayed] = useState(info.relay);
+	/*
+	 * Straight to the relay, for a YouTube video and a viewer who came in
+	 * through a relay in mainland China, where the server relays it at all.
+	 *
+	 * YouTube is the one source tried by waiting for it to fail: its player
+	 * script either arrives or it does not, and from the mainland it does not,
+	 * so every such viewer sat at a black tile for up to LOAD_MS, every video,
+	 * before being given the relay they were always going to be given. Which
+	 * relay a call came in through is the one honest thing a page knows about
+	 * where its viewer is (the join says its region), and a mainland one says
+	 * YouTube is not there.
+	 *
+	 * The relay then stands exactly as one fallen back to does: it is not a
+	 * relay chosen for its quality, so it is held to the tile's size and is not
+	 * abandoned for YouTube if it stalls — which from here would be the same
+	 * wait again, and a restart of the relay after it. Only where the answer
+	 * carried a relay: a ticket the server said it will not relay (X-Watch-Relay:
+	 * off) has none, and its viewer goes on trying YouTube, which is all there
+	 * is.
+	 */
+	const straightToRelay = mainland && info.play.kind === "youtube" && info.proxy !== undefined;
+	const [relayed, setRelayed] = useState(info.relay || straightToRelay);
 	const [blocked, setBlocked] = useState(false);
 	/**
 	 * Not playing for this viewer from where it is, with no relay to fall back
@@ -204,15 +267,40 @@ function Player({
 	latest.current = seen;
 	/** Once this player has played at all, a later stall is buffering, not a source that does not work. */
 	const played = useRef(false);
+	/*
+	 * A relay-only video whose relay stopped after it had played: hls.js gives
+	 * up on a fatal error and loads nothing more, so the picture stood at its
+	 * last frame for good, with nothing said, while the show went on. For a
+	 * bangumi episode the relay is the only way it plays at all, and what
+	 * stops it is the switch turned off partway, or the relay failing to
+	 * renew Bilibili's addresses for longer than hls.js keeps retrying.
+	 */
+	const [halted, setHalted] = useState<false | Halted>(false);
+	/*
+	 * Said apart. While it is being started again the picture may still be
+	 * playing from what was loaded before -- hls.js gives up half a minute
+	 * after the relay does, with up to thirty seconds ahead of it -- so that
+	 * is a note at the top, not a curtain over a moving picture. Stopped, it is
+	 * a minute and a half later, the picture has long since stood still, and
+	 * the press is the only way on.
+	 */
+	const resuming = useLingering(halted === "resuming", 160);
+	const haltedFor = useLingering(halted === "stopped", 160);
+	/** Times started again since it last played; see RESUMES. */
+	const resumed = useRef(0);
+	/** Starts the relay loading again, for the press once it has stopped. */
+	const restart = useRef<(() => void) | undefined>(undefined);
 
 	const videoElement = useRef<HTMLVideoElement>(null);
 	const youtubeHost = useRef<HTMLDivElement>(null);
 
 	const playsAsYoutube = info.play.kind === "youtube" && !relayed;
 	// The relay, unless this is playing from where the video is: a relay-only
-	// source has nowhere else to play from.
+	// source -- a media server's film, a bangumi episode -- has nowhere else to
+	// play from. Held to the player's size below like any relay this page did
+	// not choose for its quality (info.relay is never set on one).
 	const source =
-		relayed || info.play.kind === "youtube" || info.play.kind === "relay"
+		relayed || info.play.kind === "youtube" || relayOnly(info.play)
 			? info.proxy
 			: (info.play as { kind: "file" | "hls"; url: string });
 
@@ -242,7 +330,7 @@ function Player({
 				gaveUp = !info.proxy;
 				console.warn("watch: playing from where the video is failed", why, element.error?.code);
 				giveUp();
-			} else if (info.relay && info.play.kind !== "relay" && !triedDirect.current) {
+			} else if (info.relay && !relayOnly(info.play) && !triedDirect.current) {
 				// The relay was the first choice and failed: the lower quality
 				// from where the video is, rather than nothing.
 				console.warn("watch: the relay failed, playing from where the video is", why, element.error?.code);
@@ -253,7 +341,9 @@ function Player({
 		const errored = () => failed("error");
 		const began = () => {
 			played.current = true;
+			resumed.current = 0;
 			setUnreachable(false);
+			setHalted(false);
 		};
 		const playable = () => myTheatre(room)?.ready(video.key);
 		// Here, with the element it belongs to: a holder whose YouTube fell
@@ -286,17 +376,77 @@ function Player({
 				// no other way: there the deployment chose the quality, and the
 				// connection alone decides how much of it -- 4K where it is.
 				const hls = new Hls({ capLevelToPlayerSize: !info.relay, maxBufferLength: 30 });
+
+				// And held to this viewer's own ceiling, where they set one on
+				// their account page: a phone on a metered line has no use for
+				// the 4K a fast connection would otherwise be given.
+				//
+				// Enforced on every change to the player's ceiling rather than
+				// set once, because the size cap above is not set once either:
+				// it rewrites the ceiling whenever the tile is resized, and going
+				// full screen would otherwise lift it straight past the viewer's.
+				// Only ever lowered (see capping), so the tile's smaller ceiling
+				// still wins when it is the smaller one. Read when the video is
+				// opened, so a change on the account page applies from the next.
+				const ceiling = watchQuality();
+				if (ceiling !== "auto") {
+					const hold = () => {
+						const next = capping(hls.autoLevelCapping, hls.levels, ceiling);
+						if (next !== hls.autoLevelCapping) hls.autoLevelCapping = next;
+					};
+					hls.on(Hls.Events.MANIFEST_PARSED, hold);
+					hls.on(Hls.Events.LEVELS_UPDATED, hold);
+					hls.on(Hls.Events.MAX_AUTO_LEVEL_UPDATED, hold);
+				}
+				/*
+				 * A relay-only video that stopped after it had played (see
+				 * halted): the server is asked about the ticket again first,
+				 * since the switch turned off or a grant withdrawn is no fault
+				 * a retry cures -- told so, askAgain has the screen say the
+				 * video cannot be played here, and this player is gone. Otherwise
+				 * hls.js is set going again from where it stood, RESUMES times,
+				 * and then the viewer is told it stopped and given a press.
+				 * A fatal media error is recovered rather than reloaded, which is
+				 * hls.js's own remedy for a decoder that choked.
+				 */
+				// One asking at a time: a second fatal error while the server is
+				// being asked is the same stop, not another try.
+				let asking = false;
+				const resume = async (media: boolean) => {
+					if (asking) return;
+					asking = true;
+					setHalted("resuming");
+					const now = await askAgain(video.ticket);
+					asking = false;
+					if (stopped || now === "unavailable") return;
+					if (resumed.current >= RESUMES) {
+						setHalted("stopped");
+						return;
+					}
+					resumed.current += 1;
+					if (media) hls.recoverMediaError();
+					else hls.startLoad();
+				};
+				restart.current = () => {
+					resumed.current = 0;
+					setHalted("resuming");
+					hls.startLoad();
+				};
 				hls.on(Hls.Events.ERROR, (_event, data) => {
 					// Said, without the address: what failed and how is what
 					// anybody looking into a video that would not play needs.
 					if (data.fatal) {
 						console.warn("watch: the playlist failed", data.type, data.details, data.response?.code);
-						failed("playlist");
+						if (played.current && relayOnly(info.play)) void resume(data.type === Hls.ErrorTypes.MEDIA_ERROR);
+						else failed("playlist");
 					}
 				});
 				hls.loadSource(source.url);
 				hls.attachMedia(element);
-				destroy = () => hls.destroy();
+				destroy = () => {
+					restart.current = undefined;
+					hls.destroy();
+				};
 			});
 		} else {
 			element.src = source.url;
@@ -407,6 +557,12 @@ function Player({
 					},
 				});
 			},
+			// The API's script never arrived: the usual way YouTube is
+			// unreachable, and the quick one. youtubeApi gives up the moment
+			// the script fails to load, or after LOAD_MS where the connection
+			// hangs instead, which is what a viewer in mainland China meets;
+			// either is before the STALL_MS below, which is for a player that
+			// loaded and then never became ready.
 			() => {
 				if (!stopped) giveUp();
 			},
@@ -543,7 +699,7 @@ function Player({
 				<video ref={videoElement} playsInline className="absolute inset-0 size-full object-contain" />
 			)}
 
-			{waiting && !unreachable && (
+			{waiting && !unreachable && halted !== "stopped" && (
 				<div className="pointer-events-none absolute inset-0 grid place-items-center">
 					<Loader2 className="size-6 animate-spin text-white/70" />
 				</div>
@@ -581,6 +737,59 @@ function Player({
 								{t("Open the link")}
 							</a>
 						)}
+					</div>
+				</div>
+			)}
+
+			{resuming.mounted && (
+				<div
+					className={cn(
+						"pointer-events-none absolute inset-x-0 top-3 grid place-items-center",
+						resuming.leaving ? "animate-fade-out" : "animate-fade-in",
+					)}
+				>
+					<span className="flex items-center gap-2 rounded-full bg-black/70 px-4 py-2 text-sm text-white">
+						<Loader2 className="size-4 animate-spin" />
+						{t("Reconnecting…")}
+					</span>
+				</div>
+			)}
+
+			{/* The curtain under the controls, and what it says above them: the
+			    tile is often a strip of the screen not two hundred pixels tall,
+			    where the controls -- there to the pointer even while they are
+			    not shown -- cover its middle, and took the press meant for
+			    "Try again". Everywhere else on the tile a press still reaches
+			    the controls, so "Next video" is there for whoever would rather. */}
+			{haltedFor.mounted && (
+				<div
+					className={cn(
+						"pointer-events-none absolute inset-0 bg-black/85",
+						haltedFor.leaving ? "animate-fade-out" : "animate-fade-in",
+					)}
+				/>
+			)}
+			{haltedFor.mounted && (
+				<div
+					className={cn(
+						"pointer-events-none absolute inset-0 z-10 grid place-items-center px-4 text-center",
+						haltedFor.leaving ? "animate-fade-out" : "animate-fade-in",
+					)}
+				>
+					<div className="flex max-w-72 flex-col items-center gap-3 text-white">
+						<CloudOff className="size-6 text-white/70" />
+						<p className="text-sm">{t("The video stopped coming through.")}</p>
+						<Button
+							variant="secondary"
+							size="sm"
+							className="pointer-events-auto"
+							onClick={(event) => {
+								event.stopPropagation();
+								restart.current?.();
+							}}
+						>
+							{t("Try again")}
+						</Button>
 					</div>
 				</div>
 			)}

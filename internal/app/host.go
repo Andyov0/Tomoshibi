@@ -113,10 +113,18 @@ func (a *App) mayHost(r *http.Request, name string) (bearer, bool) {
 	// close the room from the management pages, which is the exact
 	// inconsistency the comment above this function was written about.
 	//
-	// The room is still named, because a session is permission to moderate this
-	// deployment rather than a licence to send requests without saying where.
+	// The room is still named, because a session is permission to act on this
+	// deployment's rooms rather than a licence to send requests without saying
+	// where.
+	//
+	// The rooms capability rather than moderate, because these are the acts
+	// the management pages put behind it — closing, removing, muting, moving —
+	// reached from the meeting instead. Moderate holds it, so every moderator
+	// keeps this; asked as moderate, an administrator given the rooms alone
+	// could close a meeting from one page and be told it was not theirs on the
+	// other.
 	if a.admin != nil {
-		if session, live := a.admin.SessionOf(r); live && session.Allows(config.Moderate) {
+		if session, live := a.admin.SessionOf(r); live && session.Allows(config.ManageRooms) {
 			if ok && who.Room == name {
 				return who, true
 			}
@@ -206,16 +214,17 @@ func (a *App) administrating(r *http.Request, mark room.Signature) bool {
 		return true
 	}
 
-	// A management session, and only one that may moderate.
+	// A management session, and only one that may act on rooms.
 	//
 	// The management pages are careful about the difference: closing a room,
-	// removing somebody and muting a track are all behind `moderate` there. This
-	// door asked only whether somebody was signed in, so an administrator
-	// trusted to look and not to touch could close any meeting, take any room,
-	// and place one on a machine reserved for administrators — the whole
-	// capability split bypassed for anything room-shaped.
+	// removing somebody and muting a track are all behind the rooms capability
+	// there, which moderate carries. This door asked only whether somebody was
+	// signed in, so an administrator trusted to look and not to touch could
+	// close any meeting, take any room, and place one on a machine reserved for
+	// administrators — the whole capability split bypassed for anything
+	// room-shaped.
 	if session, ok := a.admin.SessionOf(r); ok {
-		return session.Allows(config.Moderate)
+		return session.Allows(config.ManageRooms)
 	}
 
 	if account, ok := a.signedIn(r); ok {
@@ -226,7 +235,11 @@ func (a *App) administrating(r *http.Request, mark room.Signature) bool {
 }
 
 // mayModerate reports whether a mark belongs to an administrator who may act
-// rather than only watch.
+// on rooms rather than only watch.
+//
+// The rooms capability, for the reason mayHost asks for it: an administrator
+// given the fleet or the accounts and not the rooms has no more business ending
+// somebody's meeting from inside it than from the management pages.
 func (a *App) mayModerate(mark room.Signature) bool {
 	if !mark.Proven {
 		return false
@@ -234,7 +247,7 @@ func (a *App) mayModerate(mark room.Signature) bool {
 
 	for _, one := range a.administrators() {
 		if one.Trip == mark.Trip {
-			return one.Allows(config.Moderate)
+			return one.Allows(config.ManageRooms)
 		}
 	}
 
@@ -318,12 +331,23 @@ func (a *App) handOver(w http.ResponseWriter, r *http.Request) {
 	// handing out the thing the whole scheme rests on.
 	mark, valid := room.SignatureOf(strings.TrimSpace(body.To))
 
+	if !valid {
+		fail(w, http.StatusBadRequest, reasonNoSuchPerson)
+		return
+	}
+
 	// Handed only to somebody who can prove the name they are being handed it
 	// under. An issued mark belongs to a tab rather than to a person and can be
 	// worn by anybody who reads it, so a room parked on one answers to whoever
 	// asks — which is not a host, it is an unlocked door with a label on it.
-	if !valid || !mark.Proven {
-		fail(w, http.StatusBadRequest, reasonNoSuchPerson)
+	//
+	// A refusal of its own rather than the one above. Both used to answer
+	// no_such_person, which the panel reads as somebody having left, so a host
+	// handing the room to a guest sitting in the call was told the guest had
+	// gone. What the host needs to hear is the way out: the guest rejoins with
+	// a passphrase.
+	if !mark.Proven {
+		fail(w, http.StatusBadRequest, reasonNotProven)
 		return
 	}
 

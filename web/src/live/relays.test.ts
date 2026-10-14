@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fastest, forget, preferred, relays } from "./relays";
+import { fastest, forget, mainland, preferred, relays } from "./relays";
 
 const sh = { name: "shanghai", url: "wss://sh.example.com" };
 const hk = { name: "hongkong", url: "wss://hk.example.com" };
@@ -212,5 +212,25 @@ describe("preferred", () => {
 		serve([sh, hk], true, { "sh.example.com": 50, "hk.example.com": 5 });
 
 		expect(await preferred()).toBe("hongkong");
+	});
+});
+
+/*
+ * Which regions are mainland China, which decides whether a viewer is sent
+ * straight to the relay for YouTube. Wrong one way, a viewer in Shanghai waits
+ * for a player that never comes; wrong the other, somebody abroad is streamed
+ * every video through the deployment for nothing.
+ */
+describe("mainland", () => {
+	it("is the deployment's CN regions, however they are typed", () => {
+		for (const region of ["CN-East", "cn-south", "CN-Southwest", "CN", " CN-North ", "CN/Shanghai"]) {
+			expect(mainland(region), region).toBe(true);
+		}
+	});
+
+	it("is nothing else", () => {
+		for (const region of [undefined, "", "HK", "JP-Tokyo", "Oversea/Asia", "CNX", "SG-CN"]) {
+			expect(mainland(region), String(region)).toBe(false);
+		}
 	});
 });

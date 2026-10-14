@@ -23,7 +23,10 @@ export function WatchPanel({
 	onClose,
 }: {
 	room: Room;
-	/** Whether this person can start a show: signed in, on a deployment with a watch gateway. */
+	/**
+	 * Whether this person can read links and start a show: signed in, given
+	 * watching together, on a deployment with a watch gateway.
+	 */
 	ready: boolean;
 	/** Playing its way out, for the exit animation. */
 	leaving?: boolean;
@@ -32,7 +35,8 @@ export function WatchPanel({
 	const t = useT();
 	const [tab, setTab] = useState<"queue" | "media">("queue");
 	// Asked once the panel opens, and only of somebody who could start a show:
-	// browsing is for choosing, and choosing is theirs.
+	// browsing is for choosing, and choosing is theirs. The server lists none
+	// for somebody not given the media servers, which leaves the tab out.
 	const [servers, setServers] = useState<MediaServer[]>([]);
 	useEffect(() => {
 		if (!ready || room.options.e2ee !== undefined) return;
@@ -89,6 +93,8 @@ export function WatchPanel({
 			{tab === "media" && servers.length > 0 ? (
 				<MediaBrowser
 					servers={servers}
+					// Read in this browser, under this person's grant, even in
+					// somebody else's show; see addVideo.
 					onChoose={async (link) => {
 						if (await addVideo(room, link, ready, t)) setTab("queue");
 					}}

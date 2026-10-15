@@ -80,6 +80,42 @@ describe("every colour a class asks for", () => {
 	});
 });
 
+describe("every colour named for what it means", () => {
+	/*
+	 * The other half of the same fault: a name that extends nothing, reached for
+	 * because it is what a colour for that purpose is called somewhere else.
+	 *
+	 * The button that lets somebody in from the door asked for `bg-ok` and the
+	 * host's crown for `text-warn`, and this theme has neither. The button
+	 * rendered as dark text on no background at all, which a host looking for
+	 * a way to admit somebody read as there being only "Not now"; the crown
+	 * that is coloured so a knock is seen out of the corner of an eye was never
+	 * coloured. Neither looked broken, because a missing colour looks like a
+	 * plain one. A list of the names such colours go by elsewhere is short and
+	 * does not grow with Tailwind, which is why it is a list.
+	 */
+	it("is one this theme defines", () => {
+		const meanings = "ok|warn|warning|success|error|info|positive|negative|caution|alert|attention|primary|secondary";
+		const prefixes = "bg|text|border|ring|fill|stroke|outline|accent|caret|divide|from|to|via";
+		const missing: string[] = [];
+
+		for (const { path, text } of code) {
+			for (const [, name] of text.matchAll(
+				new RegExp(`(?<![\\w-])(?:${prefixes})-(${meanings})(?![\\w-])`, "g"),
+			)) {
+				if (!name || defined.has(name)) continue;
+
+				missing.push(`${path.replace(root, "")}: ${name}`);
+			}
+		}
+
+		expect(
+			[...new Set(missing)],
+			"these name a colour this theme does not define, so they compile to nothing",
+		).toEqual([]);
+	});
+});
+
 describe("every animation a class asks for", () => {
 	/** Declared with @utility, which is what makes a variant of it possible. */
 	const utilities = new Set([...css.matchAll(/@utility\s+(animate-[a-z-]+)/g)].map((m) => m[1] ?? ""));

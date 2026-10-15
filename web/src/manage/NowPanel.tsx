@@ -714,7 +714,7 @@ function Load({ load, cpus }: { load: number; cpus?: number }) {
 				<span
 					className={cn(
 						"block h-full rounded-full transition-[width] duration-500",
-						per > 0.8 ? "bg-danger" : per > 0.5 ? "bg-tally" : "bg-ok",
+						per > 0.8 ? "bg-danger" : per > 0.5 ? "bg-tally" : "bg-good",
 					)}
 					style={{ width: `${Math.max(per * 100, per > 0 ? 3 : 0)}%` }}
 				/>

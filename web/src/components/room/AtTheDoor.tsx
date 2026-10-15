@@ -117,7 +117,7 @@ export function AtTheDoor({ waiting, busy, decide }: Door) {
 						disabled={busy === one.id}
 						onClick={() => void decide(one.id, true)}
 						className={cn(
-							"rounded-md bg-ok px-2 py-1 text-[11px] text-bg",
+							"rounded-md bg-fg px-2 py-1 text-[11px] text-bg",
 							"transition-opacity hover:opacity-90 disabled:opacity-40",
 						)}
 					>{t("Let in")}</button>

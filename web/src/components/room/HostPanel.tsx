@@ -400,7 +400,7 @@ export function Hosting({ room, standing }: { room: Room; standing: Standing }) 
 					// Coloured rather than only counted: the number is four pixels
 					// tall and the colour is the thing seen out of the corner of an
 					// eye.
-					!open && waiting > 0 && "text-warn",
+					!open && waiting > 0 && "text-tally",
 				)}
 			>
 				<Crown className="size-3.5" />
